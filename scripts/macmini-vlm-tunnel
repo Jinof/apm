@@ -1,0 +1,18 @@
+#!/bin/sh
+set -eu
+
+local_port="${APM_VLM_LOCAL_PORT:-11435}"
+remote_host="${APM_VLM_SSH_HOST:-}"
+
+if [ -z "$remote_host" ]; then
+  echo "APM_VLM_SSH_HOST must name an authorized SSH host" >&2
+  exit 2
+fi
+
+exec ssh \
+  -N \
+  -o ExitOnForwardFailure=yes \
+  -o ServerAliveInterval=30 \
+  -o ServerAliveCountMax=3 \
+  -L "127.0.0.1:${local_port}:127.0.0.1:11434" \
+  "$remote_host"

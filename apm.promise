@@ -1,0 +1,1469 @@
+meta:
+  title "AI Photo Manager System Promise"
+  domain photo_management
+  version v18
+  status active
+  owner product
+  summary "Local-first photo discovery with separate photo and heatmap tabs, a day-grouped photo wall, vertically chronological GitHub-style annual daily, weekly, and monthly heatmaps, a full-original-resolution in-app viewer, user-triggered DINOv2 visual-similarity checks, on-device identity recognition, anonymous multimodal annotation, and search without modifying original files."
+  source "human prompts 2026-08-10 through 2026-08-17, including local face and pet identity, anonymous VLM markers, selected-versus-full annotation, bounded-context inference, DINOv2 whole-photo similarity and explicit check scopes, separate photo and heatmap tabs with vertically chronological annual daily, weekly, and monthly heatmaps, plus read-only full-original-resolution in-app photo viewing"
+
+resource User kind actor:
+  label "用户"
+  summary "A person managing and searching a local photo library."
+
+resource PhotoLibrary kind system:
+  label "照片库"
+  summary "The local APM catalog and search index."
+  maps PhotoAssetFieldPromise relation constrains
+  maps PhotoLocationFieldPromise relation constrains
+
+resource Photo kind entity:
+  label "照片"
+  summary "Photo content discovered without changing the original file."
+  maps PhotoAssetFieldPromise relation constrains
+
+resource PhotoAnnotation kind data:
+  label "照片标注"
+  summary "Versioned multimodal-model output used for retrieval."
+  maps PhotoAnnotationFieldPromise relation constrains
+
+resource LocalModel kind capability:
+  label "本地多模态模型"
+  summary "A vision-language model running on the user's machine."
+  maps TagPhotoFunctionPromise relation supports
+
+resource CloudModel kind external:
+  label "云端多模态模型"
+  summary "An optional remote fallback that is disabled unless explicitly configured."
+
+resource SearchResult kind ui:
+  label "搜索结果"
+  summary "Matching local photo paths with their latest annotation."
+  maps SearchPhotosFunctionPromise relation supports
+
+resource SearchAgent kind capability:
+  label "相册搜索 Agent"
+  summary "A minimal text-planning agent that invokes one read-only local photo-search skill."
+  maps AgentSearchPhotosFunctionPromise relation supports
+
+resource RecognitionProfile kind data:
+  label "旧版名称候选"
+  summary "Legacy CLI candidate labels retained for compatibility; Android identity never uses VLM name candidates."
+  maps RecognitionProfileFieldPromise relation constrains
+
+resource PersonIdentity kind data:
+  label "本地人物身份"
+  summary "A user-named person represented only by app-private face embeddings and never by a retained reference image."
+  maps PersonIdentityFieldPromise relation constrains
+
+resource FaceTemplate kind data:
+  label "注册人脸模板"
+  summary "A normalized on-device face embedding created from the one face explicitly selected by the user."
+  maps FaceTemplateFieldPromise relation constrains
+
+resource FaceObservation kind data:
+  label "照片人脸观察"
+  summary "One locally detected face embedding with a thresholded matched or unknown result and complete model provenance."
+  maps FaceObservationFieldPromise relation constrains
+
+resource PetIdentity kind data:
+  label "本地宠物身份"
+  summary "A user-named pet represented by app-private visual embeddings and never by a retained reference image."
+  maps PetIdentityFieldPromise relation constrains
+
+resource PetTemplate kind data:
+  label "注册宠物模板"
+  summary "A normalized on-device visual embedding created from the one detected cat or dog explicitly selected by the user."
+  maps PetTemplateFieldPromise relation constrains
+
+resource PetObservation kind data:
+  label "照片宠物观察"
+  summary "One locally detected cat or dog embedding with a thresholded matched or unknown result and complete model provenance."
+  maps PetObservationFieldPromise relation constrains
+
+resource PhotoVisualFeature kind data:
+  label "照片视觉特征"
+  summary "Versioned on-device DINOv2 ViT-S/14 registers global and 4x4 spatial embeddings for one photo."
+  maps PhotoVisualFeatureFieldPromise relation constrains
+
+resource GeneralSubjectObservation kind data:
+  label "通用主体观察"
+  summary "One locally detected non-person, non-pet subject crop represented by a DINOv2 embedding and auditable bounds."
+  maps GeneralSubjectObservationFieldPromise relation constrains
+
+resource SimilarPhotoResult kind ui:
+  label "相似照片结果"
+  summary "A read-only ranked candidate with separate burst, whole-scene, composition, and subject evidence."
+  maps SimilarPhotoResultFieldPromise relation constrains
+  maps FindSimilarAndroidPhotosFunctionPromise relation supports
+
+resource AndroidPhotoWall kind ui:
+  label "按日照片墙"
+  summary "All currently accessible Android photos split between a photo tab with real capture-day groups and a separate heatmap tab with vertically chronological GitHub-style annual daily, weekly, and monthly heatmaps."
+  maps AndroidPhotoWallFieldPromise relation constrains
+  maps BrowseAndroidPhotoWallFunctionPromise relation supports
+
+resource AndroidPhotoViewer kind ui:
+  label "应用内照片查看器"
+  summary "A read-only full-screen APM destination that decodes the selected URI at its complete intrinsic image resolution, supports original-pixel inspection, and provides previous or next navigation."
+  maps AndroidPhotoViewerFieldPromise relation constrains
+  maps ViewAndroidPhotoFunctionPromise relation supports
+
+resource SimilarityCheckRequest kind data:
+  label "相似检查请求"
+  summary "One explicit user-confirmed incremental, custom recent, or full visual-similarity check scope."
+  maps SimilarityCheckRequestFieldPromise relation constrains
+  maps CheckAndroidVisualSimilarityFunctionPromise relation supports
+
+resource AnnotationSelection kind data:
+  label "Android 标注选择"
+  summary "The current explicit set of photos granted through the system photo picker for selected-photo annotation."
+  maps AndroidAnnotationSelectionFieldPromise relation constrains
+
+resource LocalFaceModel kind capability:
+  label "本地人脸模型"
+  summary "Bundled on-device face detector and embedding model used without a network request."
+  maps RegisterPersonIdentityFunctionPromise relation supports
+  maps MatchAndroidFacesFunctionPromise relation supports
+
+resource LocalPetModel kind capability:
+  label "本地宠物模型"
+  summary "Bundled on-device cat and dog detector plus visual embedding model used without a network request."
+  maps RegisterPetIdentityFunctionPromise relation supports
+  maps MatchAndroidPetsFunctionPromise relation supports
+
+resource LocalVisualModel kind capability:
+  label "本地 DINOv2 视觉模型"
+  summary "The public Apache-2.0 DINOv2 ViT-S/14 registers image encoder executed by ONNX Runtime Android that returns a normalized global vector and spatial patch tokens without a network request."
+  maps IndexAndroidVisualSimilarityFunctionPromise relation supports
+  maps CheckAndroidVisualSimilarityFunctionPromise relation supports
+  maps FindSimilarAndroidPhotosFunctionPromise relation supports
+
+resource AndroidApp kind system:
+  label "Android Native App"
+  summary "A native Android client that reads MediaStore, stores a device-local catalog, calls an explicitly configured VLM, and searches structured annotations."
+  maps AndroidMediaLocationFieldPromise relation constrains
+  maps InferenceConfigurationFieldPromise relation constrains
+  maps RecognitionProfileFieldPromise relation constrains
+  maps PersonIdentityFieldPromise relation constrains
+  maps FaceTemplateFieldPromise relation constrains
+  maps FaceObservationFieldPromise relation constrains
+  maps PetIdentityFieldPromise relation constrains
+  maps PetTemplateFieldPromise relation constrains
+  maps PetObservationFieldPromise relation constrains
+  maps PhotoVisualFeatureFieldPromise relation constrains
+  maps GeneralSubjectObservationFieldPromise relation constrains
+  maps SimilarPhotoResultFieldPromise relation constrains
+  maps AndroidPhotoWallFieldPromise relation constrains
+  maps AndroidPhotoViewerFieldPromise relation constrains
+  maps SimilarityCheckRequestFieldPromise relation constrains
+  maps AndroidAnnotationSelectionFieldPromise relation constrains
+  maps AndroidSearchStateFieldPromise relation constrains
+  maps ScanAndroidGalleryFunctionPromise relation supports
+  maps SelectAndroidPhotosForAnnotationFunctionPromise relation supports
+  maps AnnotateAndroidPhotosFunctionPromise relation supports
+  maps SearchAndroidGalleryFunctionPromise relation supports
+  maps AgentSearchPhotosFunctionPromise relation supports
+  maps RegisterPersonIdentityFunctionPromise relation supports
+  maps MatchAndroidFacesFunctionPromise relation supports
+  maps RegisterPetIdentityFunctionPromise relation supports
+  maps MatchAndroidPetsFunctionPromise relation supports
+  maps IndexAndroidVisualSimilarityFunctionPromise relation supports
+  maps CheckAndroidVisualSimilarityFunctionPromise relation supports
+  maps FindSimilarAndroidPhotosFunctionPromise relation supports
+  maps BrowseAndroidPhotoWallFunctionPromise relation supports
+  maps ViewAndroidPhotoFunctionPromise relation supports
+
+term scan kind action:
+  label "扫描"
+  summary "Discover photo files beneath a user-selected directory."
+
+term annotate kind action:
+  label "标注"
+  summary "Generate searchable structured metadata for a photo."
+
+term search kind action:
+  label "搜索"
+  summary "Retrieve photos from local indexed metadata."
+
+term use kind action:
+  label "使用"
+  summary "Select one model capability for annotation."
+
+term configure kind action:
+  label "配置"
+  summary "Save an inference endpoint, model name, and explicit remote-transfer decision."
+
+term register kind action:
+  label "注册"
+  summary "Name one explicitly selected detected person face or pet and store only its local embedding template."
+
+term match kind action:
+  label "匹配"
+  summary "Compare a locally detected person or pet embedding with same-kind templates and retain unknown when confidence is insufficient."
+
+term select kind action:
+  label "选择"
+  summary "Grant access to an explicit set of photos through the Android system photo picker."
+
+term index kind action:
+  label "索引"
+  summary "Create versioned local visual features from permission-accessible photo thumbnails."
+
+term compare kind action:
+  label "比较"
+  summary "Rank accessible photos by explicit visual, temporal, layout, and subject evidence."
+
+term check kind action:
+  label "检查"
+  summary "Refresh visual features for one explicit incremental, recent, or full photo scope."
+
+term browse kind action:
+  label "浏览"
+  summary "Inspect permission-accessible photos by capture day in thumbnail or detail presentation."
+
+term view kind action:
+  label "查看"
+  summary "Open and inspect one accessible photo inside APM without mutating or handing off its original content."
+
+term searchable_index kind effect:
+  label "可搜索索引"
+  summary "An index supports lookup by generated captions, tags, and visible text."
+
+term matching_local_paths kind effect:
+  label "匹配的本地路径"
+  summary "Search returns current paths for matching photo content."
+
+term local_first kind constraint:
+  label "本地优先"
+  summary "Photo bytes remain on-device unless the user explicitly enables a remote provider."
+  maps TagPhotoFunctionPromise relation constrains
+
+term originals_read_only kind constraint:
+  label "原图只读"
+  summary "APM must never modify or delete user photo files."
+  maps ScanLibraryFunctionPromise relation constrains
+
+term local_library kind scope:
+  label "本地照片库"
+  summary "Directories explicitly selected by the user on this device."
+
+intent PhotoManagementSystemIntent priority must:
+  label "AI 照片管理系统意图"
+  statement "AI assists users in managing photos by creating searchable multimodal annotations, preferring locally deployed models."
+  rationale "Searchable local metadata reduces manual organization work while keeping private photos on-device by default."
+  status active
+  root true
+  source "human prompt 2026-08-10"
+  maps PhotoAssetFieldPromise relation constrains
+  maps PhotoLocationFieldPromise relation constrains
+  maps PhotoAnnotationFieldPromise relation constrains
+
+intent DiscoverPhotosIntent priority must:
+  label "发现照片"
+  statement "The user can scan an explicitly selected local directory without altering original files."
+  rationale "The catalog must reflect files while ownership of originals stays with the user."
+  status active
+  source "MVP interpretation 2026-08-10"
+  parent PhotoManagementSystemIntent relation refines
+  requires DiscoverLocalPhotos actor User action scan resource Photo scope local_library effect searchable_index constraint originals_read_only priority must
+  maps ScanLibraryFunctionPromise relation motivates
+
+intent AnnotatePhotosIntent priority must:
+  label "多模态标注照片"
+  statement "The system creates structured captions, tags, and visible text using a multimodal model with complete provenance."
+  rationale "Versioned structured output makes indexing repeatable and model upgrades auditable."
+  status active
+  source "human prompt and MVP interpretation 2026-08-10"
+  parent PhotoManagementSystemIntent relation refines
+  requires AnnotatePhoto actor User action annotate resource PhotoAnnotation scope local_library effect searchable_index constraint local_first priority must
+  maps TagPhotoFunctionPromise relation motivates
+
+intent PreferLocalModelIntent priority must:
+  label "优先本地模型"
+  statement "Local multimodal inference is the default; remote inference requires explicit configuration."
+  rationale "Personal photos are sensitive and should not leave the device silently."
+  status active
+  source "human prompt 2026-08-10"
+  parent PhotoManagementSystemIntent relation constrains
+  prefers PreferLocalInference actor PhotoLibrary action use resource LocalModel over CloudModel scope local_library constraint local_first priority must
+  maps TagPhotoFunctionPromise relation constrains
+
+intent SearchPhotosIntent priority must:
+  label "搜索照片"
+  statement "The user can search generated captions, tags, and visible text and receive matching current local paths."
+  rationale "Search is the user-visible outcome of multimodal annotation."
+  status active
+  source "human prompt 2026-08-10"
+  parent PhotoManagementSystemIntent relation refines
+  requires SearchLocalPhotos actor User action search resource PhotoLibrary scope local_library effect matching_local_paths priority must
+  maps SearchPhotosFunctionPromise relation motivates
+
+intent AndroidNativeAppIntent priority must:
+  label "Android 原生相册管理"
+  statement "The user can grant scoped photo access, scan Android MediaStore without mutating originals, generate structured VLM annotations, and search them entirely from a native Android app."
+  rationale "The requested product must be usable on Android rather than only through the existing command-line MVP."
+  status active
+  source "human prompt 2026-08-12"
+  parent PhotoManagementSystemIntent relation refines
+  requires ManageAndroidGallery actor User action scan resource AndroidApp scope local_library effect searchable_index constraint originals_read_only priority must
+  maps AndroidMediaLocationFieldPromise relation constrains
+  maps ScanAndroidGalleryFunctionPromise relation motivates
+  maps AnnotateAndroidPhotosFunctionPromise relation motivates
+  maps SearchAndroidGalleryFunctionPromise relation motivates
+
+intent BrowseAndroidPhotoWallIntent priority must:
+  label "按日浏览照片墙"
+  statement "The user can switch between a dedicated photo tab and a dedicated heatmap tab, browse every currently accessible photo exactly once under its real local capture day, and inspect vertically chronological GitHub-style annual heatmaps aggregated by every day, week, or month."
+  rationale "Separating browsing from vertically scrolling annual density views keeps both the photo wall and long-range day, week, and month patterns legible without requiring every photo to be annotated."
+  status active
+  source "human prompts 2026-08-16 and 2026-08-17"
+  parent AndroidNativeAppIntent relation refines
+  requires BrowsePhotoWall actor User action browse resource AndroidPhotoWall scope local_library constraint originals_read_only priority must
+  maps AndroidPhotoWallFieldPromise relation constrains
+  maps BrowseAndroidPhotoWallFunctionPromise relation motivates
+
+intent ViewAndroidPhotoIntent priority must:
+  label "在 APM 内查看照片"
+  statement "Tapping an accessible photo in APM opens a native full-screen viewer inside APM, where the user can inspect it with aspect-preserving fit, zoom and pan it, and move to adjacent accessible photos without handing the URI to another app."
+  rationale "Viewing is a core gallery action and must remain available even when no external image application is installed or desired."
+  status active
+  source "human prompt 2026-08-16"
+  parent AndroidNativeAppIntent relation refines
+  requires ViewPhoto actor User action browse resource AndroidPhotoViewer scope local_library constraint originals_read_only priority must
+  maps AndroidPhotoViewerFieldPromise relation constrains
+  maps ViewAndroidPhotoFunctionPromise relation motivates
+
+intent ScopedAndroidAnnotationIntent priority must:
+  label "所选或全量标注"
+  statement "The user can annotate exactly the photos explicitly authorized through 选择照片, or annotate every currently authorized accessible photo without a hidden batch limit."
+  rationale "A visible scope choice prevents accidental whole-library inference while still supporting deliberate full-library annotation."
+  status active
+  source "human prompt 2026-08-13"
+  parent AndroidNativeAppIntent relation refines
+  requires SelectAnnotationPhotos actor User action select resource AnnotationSelection scope local_library constraint originals_read_only priority must
+  maps AndroidAnnotationSelectionFieldPromise relation constrains
+  maps SelectAndroidPhotosForAnnotationFunctionPromise relation motivates
+  maps AnnotateAndroidPhotosFunctionPromise relation constrains
+
+intent StructuredPhotoFacetsIntent priority must:
+  label "结构化照片标签"
+  statement "Every new annotation separates daylight, sky, counted objects, visually presented people, actions, scenes, weather, general tags, and visible text."
+  rationale "Typed facets make searches such as 天黑、两只狗、女人、跑步 or 海边 auditable and useful."
+  status active
+  source "human prompt 2026-08-12"
+  parent AnnotatePhotosIntent relation refines
+  maps PhotoAnnotationFieldPromise relation constrains
+  maps AnnotateAndroidPhotosFunctionPromise relation motivates
+
+intent ExplicitAndroidInferenceIntent priority must:
+  label "Android 推理地址显式授权"
+  statement "The Android app defaults to a loopback Ollama URL and refuses any non-loopback endpoint until the user explicitly allows sending photo bytes to it."
+  rationale "A phone commonly calls a private-LAN VLM, but personal photo transfer must never be implicit."
+  status active
+  source "privacy interpretation 2026-08-12"
+  parent PreferLocalModelIntent relation refines
+  requires ConfigureInference actor User action configure resource AndroidApp scope local_library constraint local_first priority must
+  maps InferenceConfigurationFieldPromise relation constrains
+  maps ConfigureAndroidModelFunctionPromise relation motivates
+
+intent Material3AndroidExperienceIntent priority must:
+  label "Material 3 Android 体验"
+  statement "The Android app presents a coherent Material Design 3 hierarchy, uses a dedicated model-settings screen, and exposes search only after searchable annotations exist."
+  rationale "The primary experience should be calm, legible, state-aware, and consistent with current native Android interaction patterns."
+  status active
+  source "human prompt 2026-08-13"
+  parent AndroidNativeAppIntent relation refines
+  maps AndroidSearchStateFieldPromise relation constrains
+  maps ConfigureAndroidModelFunctionPromise relation constrains
+  maps SearchAndroidGalleryFunctionPromise relation constrains
+
+intent ReselectPartialGalleryIntent priority must:
+  label "部分照片可重复选择"
+  statement "On Android 14 or later, every scan action while access is partial reopens the system selection flow so the user can add or change visible photos."
+  rationale "Treating partial permission as sufficient without reselection traps the user in the first selected subset."
+  status active
+  source "human prompt 2026-08-13 and Android 14 selected photos access guidance"
+  parent AndroidNativeAppIntent relation refines
+  maps ScanAndroidGalleryFunctionPromise relation constrains
+
+intent RecognizeRegisteredPetsIntent priority must:
+  label "本地注册并识别宠物"
+  statement "The user can choose a reference photo, tap one locally detected cat or dog, name it, and later match the same pet using only on-device visual embeddings."
+  rationale "A dedicated local pet detector and conservative embedding matcher keeps pet names out of VLM identity guesses."
+  status active
+  source "human prompt 2026-08-13"
+  parent AnnotatePhotosIntent relation refines
+  maps PetIdentityFieldPromise relation constrains
+  maps PetTemplateFieldPromise relation constrains
+  maps PetObservationFieldPromise relation constrains
+  maps RegisterPetIdentityFunctionPromise relation motivates
+  maps MatchAndroidPetsFunctionPromise relation motivates
+  maps AnnotateAndroidPhotosFunctionPromise relation constrains
+
+intent RecognizeRegisteredPeopleIntent priority must:
+  label "本地注册并识别同一人物"
+  statement "The user can choose a reference photo, tap one detected face, name it, and later match the same person in scanned photos using only on-device face embeddings."
+  rationale "A dedicated embedding matcher is more reliable and auditable than asking a VLM to guess identity from names."
+  status active
+  source "human prompt 2026-08-13"
+  parent AndroidNativeAppIntent relation refines
+  requires RegisterKnownPerson actor User action register resource PersonIdentity scope local_library constraint local_first priority must
+  maps PersonIdentityFieldPromise relation constrains
+  maps FaceTemplateFieldPromise relation constrains
+  maps FaceObservationFieldPromise relation constrains
+  maps RegisterPersonIdentityFunctionPromise relation motivates
+  maps MatchAndroidFacesFunctionPromise relation motivates
+
+intent AgentSearchIntent priority must:
+  label "Agent 自主搜索"
+  statement "A minimal Agent turns one natural-language request into bounded invocations of a read-only local photo-search skill and returns deduplicated accessible results."
+  rationale "Tool-mediated planning supports compound requests without granting the Agent catalog or photo mutation rights."
+  status active
+  source "human prompt 2026-08-13"
+  parent SearchPhotosIntent relation refines
+  maps AgentSearchPhotosFunctionPromise relation motivates
+
+intent DiscoverSimilarPhotosIntent priority must:
+  label "查看相似照片"
+  statement "The user can tap 检查相似, explicitly choose incremental new-photo checking, a custom recent hours, days, or weeks window, or a full-library check, then open one accessible photo and inspect locally ranked burst, same-scene, composition-similar, and subject-similar photos."
+  rationale "Pixel-level visual relationships require local image embeddings and spatial evidence; captions and VLM tags are too lossy to decide similarity."
+  status active
+  source "human prompt 2026-08-15"
+  parent AndroidNativeAppIntent relation refines
+  requires CompareSimilarPhotos actor User action compare resource SimilarPhotoResult scope local_library constraint local_first priority must
+  requires CheckSimilarPhotos actor User action check resource SimilarityCheckRequest scope local_library constraint local_first priority must
+  maps SimilarityCheckRequestFieldPromise relation constrains
+  maps PhotoVisualFeatureFieldPromise relation constrains
+  maps GeneralSubjectObservationFieldPromise relation constrains
+  maps SimilarPhotoResultFieldPromise relation constrains
+  maps IndexAndroidVisualSimilarityFunctionPromise relation motivates
+  maps CheckAndroidVisualSimilarityFunctionPromise relation motivates
+  maps FindSimilarAndroidPhotosFunctionPromise relation motivates
+
+type PhotoID kind id base string:
+  label "照片内容标识"
+  summary "A lowercase SHA-256 digest of immutable photo bytes."
+  format sha256
+  generated true
+
+type FilePath kind value base path:
+  label "文件路径"
+  summary "An absolute normalized local filesystem path."
+  format absolute
+  generated false
+
+field PhotoAssetFieldPromise for PhotoAsset:
+  label "照片内容字段 Promise"
+  summary "Defines content-addressed photo truth independently of file location."
+  field id type PhotoID required true nullable false default null semantic "Stable identity derived from original bytes." mutable false system true readers scan,annotate,search writers scan
+  field mediaType type string required true nullable false default null semantic "Detected media type or extension-derived image type." mutable false system true readers scan,annotate,search writers scan
+  field byteSize type integer required true nullable false default 0 semantic "Original file size in bytes." mutable false system true readers scan,search writers scan
+  field discoveredAt type datetime required true nullable false default null semantic "First catalog discovery time." mutable false system true readers scan,search writers scan
+  invariant PhotoAsset.id_is_content_hash statement "PhotoAsset.id is the lowercase SHA-256 digest of the original bytes." refs PhotoAsset.id
+  invariant PhotoAsset.byte_size_non_negative statement "PhotoAsset.byteSize cannot be negative." refs PhotoAsset.byteSize must "PhotoAsset.byteSize >= 0"
+  forbid PhotoAsset.no_original_mutation_flag statement "Do not introduce catalog state that claims ownership or mutation rights over original files." refs PhotoAsset.id
+
+field PhotoLocationFieldPromise for PhotoLocation:
+  label "照片位置字段 Promise"
+  summary "Tracks one filesystem location for content without deleting history."
+  field path type FilePath required true nullable false default null semantic "Absolute normalized source path." mutable false system false readers scan,annotate,search writers scan
+  field photoId type PhotoID required true nullable false default null semantic "Content-addressed photo identity." mutable true system true readers scan,annotate,search writers scan
+  field rootPath type FilePath required true nullable false default null semantic "User-selected scan root containing the path." mutable true system false readers scan,search writers scan
+  field present type boolean required true nullable false default true semantic "Whether the path was observed in its latest root scan." mutable true system true readers scan,annotate,search writers scan
+  field modifiedNanoseconds type integer required true nullable false default 0 semantic "Filesystem modification timestamp used for scan diagnostics." mutable true system true readers scan writers scan
+  field lastSeenAt type datetime required true nullable false default null semantic "Most recent scan observation time." mutable true system true readers scan,search writers scan
+  invariant PhotoLocation.annotatable_path_present statement "Only present photo paths may be sent to a model." refs PhotoLocation.present when "PhotoLocation.present == true" must "PhotoLocation.path != null"
+  forbid PhotoLocation.no_implicit_delete statement "A missing path is marked absent; its catalog history is not implicitly deleted." refs PhotoLocation.present,PhotoLocation.lastSeenAt
+
+field PhotoAnnotationFieldPromise for PhotoAnnotation:
+  label "照片标注字段 Promise"
+  summary "Defines immutable, versioned model-generated search metadata."
+  field id type integer required true nullable false default null semantic "Monotonic annotation record identifier." mutable false system true readers annotate,search writers annotate
+  field photoId type PhotoID required true nullable false default null semantic "Photo content that was analyzed." mutable false system true readers annotate,search writers annotate
+  field caption type text required true nullable false default "" semantic "Concise Chinese natural-language description template that may contain only validated anonymous Pn or PETn subject markers; the UI replaces markers locally at read time." mutable false system true readers search writers annotate
+  field tags type json required true nullable false default "[]" semantic "Deduplicated Chinese retrieval concepts and visible proper nouns." mutable false system true readers search writers annotate
+  field facets type json required true nullable false default "{}" semantic "Validated structured daylight, sky, counted objects, people presentation, actions, scenes, and weather used for retrieval." mutable false system true readers search writers annotate
+  field visibleText type text required true nullable false default "" semantic "Text visibly present in the photo, empty when none is legible." mutable false system true readers search writers annotate
+  field subjectMentions type json required true nullable false default "[]" semantic "Validated VLM semantic observations keyed only by anonymous markers supplied in the image overlay; contains no identity name." mutable false system true readers search writers annotate
+  field recognizedSubjects type json required true nullable false default "[]" semantic "Read-time searchable person and pet names composed exclusively from accepted local observations; never accepted from VLM output." mutable true system true readers search writers match
+  field modelProvider type string required true nullable false default ollama semantic "Inference runtime that received the image." mutable false system true readers annotate,search writers annotate
+  field modelName type string required true nullable false default null semantic "Exact configured model identifier." mutable false system false readers annotate,search writers annotate
+  field promptVersion type string required true nullable false default null semantic "Version of the annotation instruction and schema." mutable false system true readers annotate,search writers annotate
+  field createdAt type datetime required true nullable false default null semantic "Annotation completion time." mutable false system true readers annotate,search writers annotate
+  invariant PhotoAnnotation.provenance_complete statement "Every annotation records provider, model, prompt version, and creation time." refs PhotoAnnotation.modelProvider,PhotoAnnotation.modelName,PhotoAnnotation.promptVersion,PhotoAnnotation.createdAt must "PhotoAnnotation.modelProvider != null and PhotoAnnotation.modelName != null and PhotoAnnotation.promptVersion != null and PhotoAnnotation.createdAt != null"
+  invariant PhotoAnnotation.facets_complete statement "Every v5 annotation contains daylight, sky, objects with positive counts, people presentation with positive counts, actions, scenes, weather, and validated anonymous subject mentions, using unknown or empty output instead of guessing." refs PhotoAnnotation.facets,PhotoAnnotation.subjectMentions
+  invariant PhotoAnnotation.anonymous_markers_only statement "Every VLM subject mention uses an allowed Pn or PETn marker overlaid by the phone, its kind matches that marker, and no identity label is present in the request or response." refs PhotoAnnotation.caption,PhotoAnnotation.subjectMentions
+  invariant PhotoAnnotation.recognized_subjects_constrained statement "Every recognized person comes from a matched local FaceObservation and every recognized pet comes from a matched local PetObservation; uncertainty produces no name." refs PhotoAnnotation.recognizedSubjects,FaceObservation.matchedIdentityId,PetObservation.matchedIdentityId
+  forbid PhotoAnnotation.no_unattributed_metadata statement "Do not write generated search metadata without model provenance." refs PhotoAnnotation.modelProvider,PhotoAnnotation.modelName,PhotoAnnotation.promptVersion
+  forbid PhotoAnnotation.no_overwrite_history statement "Re-annotation appends a new record and never overwrites earlier annotations." refs PhotoAnnotation.id,PhotoAnnotation.photoId
+
+field AndroidMediaLocationFieldPromise for AndroidMediaLocation:
+  label "Android MediaStore 位置字段 Promise"
+  summary "Tracks one read-only Android MediaStore content URI and its current accessibility without treating lost permission as deletion."
+  field uri type string required true nullable false default null semantic "Canonical content URI returned by MediaStore." mutable false system true readers scan,annotate,search writers scan
+  field mediaStoreId type integer required true nullable false default null semantic "MediaStore row identifier within the external image collection." mutable false system true readers scan writers scan
+  field photoId type PhotoID required true nullable false default null semantic "SHA-256 identity computed by reading, never changing, the original content stream." mutable true system true readers scan,annotate,search writers scan
+  field displayName type string required true nullable false default "" semantic "Display name exposed by MediaStore." mutable true system true readers scan,search writers scan
+  field dateTakenMillis type integer required false nullable true default null semantic "Best available MediaStore capture timestamp in Unix epoch milliseconds; null means capture time is unavailable and must not be inferred." mutable true system true readers scan,compare writers scan
+  field accessible type boolean required true nullable false default true semantic "Whether the URI was visible and readable during the latest permission-scoped scan." mutable true system true readers scan,annotate,search writers scan
+  field modifiedSeconds type integer required true nullable false default 0 semantic "MediaStore modification timestamp used to avoid rehashing unchanged bytes." mutable true system true readers scan writers scan
+  field lastSeenAt type datetime required true nullable false default null semantic "Most recent permission-scoped scan observation time." mutable true system true readers scan,search writers scan
+  invariant AndroidMediaLocation.content_identity statement "An accessible URI maps to the SHA-256 digest of the bytes read from ContentResolver." refs AndroidMediaLocation.uri,AndroidMediaLocation.photoId,AndroidMediaLocation.accessible
+  forbid AndroidMediaLocation.no_filesystem_assumption statement "A content URI is not converted into or treated as a writable filesystem path." refs AndroidMediaLocation.uri
+  forbid AndroidMediaLocation.no_delete_inference statement "accessible=false records current permission visibility only and never claims the original was deleted." refs AndroidMediaLocation.accessible,AndroidMediaLocation.lastSeenAt
+
+field AndroidPhotoWallFieldPromise for AndroidPhotoWall:
+  label "Android 按日照片墙字段 Promise"
+  summary "Defines one read-only UI projection over all distinct currently accessible photos, separate photo and heatmap tabs, real local capture-day groups, display mode, and vertically chronological GitHub-style annual heatmaps at daily, weekly, and monthly granularity."
+  field photoIds type json required true nullable false default "[]" semantic "Every distinct currently accessible content photoId exactly once, independent of annotation state." mutable true system true readers browse writers browse
+  field dayGroups type json required true nullable false default "[]" semantic "Descending local-date groups followed by one optional unknown-capture-time group; order inside each group is descending dateTakenMillis then stable photoId." mutable true system true readers browse writers browse
+  field displayMode type string required true nullable false default thumbnails semantic "User-selected thumbnails or details presentation; it changes layout only." mutable true system false readers browse writers browse
+  field contentTab type string required true nullable false default photos semantic "User-selected top-level gallery content tab: photos owns photo display controls and the day-grouped wall, while heatmap owns year and granularity controls plus the annual heatmap." mutable true system false readers browse writers browse
+  field displayedYear type integer required true nullable false default null semantic "Calendar year shown by the heatmap, initially the latest captured-photo year or the current year when none is dated." mutable true system false readers browse writers browse
+  field heatmapGranularity type string required true nullable false default day semantic "User-selected annual aggregation unit: day, week, or month; changing it changes only heatmap aggregation and selection scope." mutable true system false readers browse writers browse
+  field selectedRange type json required false nullable true default null semantic "Optional inclusive device-local capture-date range selected from one non-empty heatmap cell; it is one date for day mode, the in-year part of a Sunday-through-Saturday calendar week for week mode, or one calendar month for month mode; null shows every day group." mutable true system false readers browse writers browse
+  field dailyCounts type json required true nullable false default "{}" semantic "Map from real local capture date to the count of distinct currently accessible photoIds captured that day." mutable true system true readers browse writers browse
+  invariant AndroidPhotoWall.accessible_distinct statement "photoIds contains every and only distinct currently accessible AndroidMediaLocation.photoId exactly once, including unannotated photos and libraries larger than search limits." refs AndroidPhotoWall.photoIds,AndroidMediaLocation.photoId,AndroidMediaLocation.accessible
+  invariant AndroidPhotoWall.real_capture_day statement "A dated photo day is derived only by converting dateTakenMillis through the device time zone; null dateTakenMillis belongs only to the unknown group and never uses modified, discovered, indexed, or annotation time as a fallback." refs AndroidPhotoWall.dayGroups,AndroidMediaLocation.dateTakenMillis
+  invariant AndroidPhotoWall.mode_preserves_membership statement "Switching displayMode, contentTab, or heatmapGranularity preserves photoIds, day membership, descending order, displayedYear, and dailyCounts exactly; changing heatmap granularity clears only selectedRange, while changing contentTab preserves selectedRange so the photo tab can show the chosen heatmap range." refs AndroidPhotoWall.displayMode,AndroidPhotoWall.contentTab,AndroidPhotoWall.heatmapGranularity,AndroidPhotoWall.photoIds,AndroidPhotoWall.dayGroups,AndroidPhotoWall.displayedYear,AndroidPhotoWall.selectedRange,AndroidPhotoWall.dailyCounts
+  invariant AndroidPhotoWall.tab_ownership statement "The photos tab contains photo display controls, optional selected-range summary, and photo cards but no annual heatmap; the heatmap tab contains annual year, granularity, grid, guide, and selected-range controls but no photo cards." refs AndroidPhotoWall.contentTab,AndroidPhotoWall.displayMode,AndroidPhotoWall.displayedYear,AndroidPhotoWall.heatmapGranularity,AndroidPhotoWall.selectedRange
+  invariant AndroidPhotoWall.heatmap_exact_counts statement "For displayedYear, day mode exposes every calendar date, week mode exposes every intersecting Sunday-through-Saturday week clipped to that year, and month mode exposes all twelve calendar months; every cell count is the exact sum of distinct dailyCounts in its inclusive range and each mode independently maps zero through its annual maximum to monotonic discrete levels zero through four, reserving zero for empty cells." refs AndroidPhotoWall.displayedYear,AndroidPhotoWall.heatmapGranularity,AndroidPhotoWall.dailyCounts
+  invariant AndroidPhotoWall.selected_range_exact statement "selectedRange is null or equals one non-empty cell range for the current displayedYear and heatmapGranularity, and when present the wall shows exactly the dated groups inside that inclusive range without relabeling photos." refs AndroidPhotoWall.displayedYear,AndroidPhotoWall.heatmapGranularity,AndroidPhotoWall.selectedRange,AndroidPhotoWall.dayGroups,AndroidPhotoWall.dailyCounts
+  forbid AndroidPhotoWall.no_annotation_gate statement "A photo cannot disappear from the wall solely because it lacks a VLM annotation, face or pet match, visual feature, or search text." refs AndroidPhotoWall.photoIds
+  forbid AndroidPhotoWall.no_original_mutation statement "Browsing, switching content tabs, toggling modes or granularity, navigating years, and selecting a daily, weekly, or monthly heatmap range never writes to MediaStore or changes an original photo." refs AndroidPhotoWall.contentTab,AndroidPhotoWall.displayMode,AndroidPhotoWall.displayedYear,AndroidPhotoWall.heatmapGranularity,AndroidPhotoWall.selectedRange,AndroidMediaLocation.uri
+
+field AndroidPhotoViewerFieldPromise for AndroidPhotoViewer:
+  label "应用内照片查看器字段 Promise"
+  summary "Defines the accessible ordered photo sequence, selected photo, complete original-resolution in-memory image, and ephemeral zoom state of APM's native viewer."
+  field photoIds type json required true nullable false default "[]" semantic "Stable wall-order sequence of every distinct currently accessible photo available to viewer navigation." mutable true system true readers view writers view
+  field selectedPhotoId type string required false nullable true default null semantic "The currently displayed accessible photo identity, initially the exact photo tapped by the user." mutable true system false readers view writers view
+  field displayBitmap type json required false nullable true default null semantic "Metadata for an in-memory decode made directly from the selected original content URI at the decoder's complete orientation-correct intrinsic width and height; decoded pixels are never persisted as a new photo." mutable true system true readers view writers view
+  field zoomScale type number required true nullable false default 1 semantic "Current selected-photo scale clamped from 1 through an image-specific maximum that is at least 5 and large enough to inspect one original image pixel per display pixel, reset to 1 when the selected photo changes." mutable true system false readers view writers view
+  field panOffset type json required true nullable false default "{\"x\":0,\"y\":0}" semantic "Ephemeral display translation clamped to prevent the zoomed image from being panned entirely away, reset to zero when the selected photo changes." mutable true system false readers view writers view
+  invariant AndroidPhotoViewer.accessible_sequence statement "photoIds contains every distinct currently accessible AndroidPhotoWall.photoIds identity once in the same stable order, and selectedPhotoId is null only while no valid accessible photo can be selected." refs AndroidPhotoViewer.photoIds,AndroidPhotoViewer.selectedPhotoId,AndroidPhotoWall.photoIds
+  invariant AndroidPhotoViewer.original_decode statement "A successful displayBitmap is decoded read-only from the selected AndroidMediaLocation.uri without loadThumbnail, target-size reduction, sampling, cropping, or other resolution loss; its dimensions equal the decoder's orientation-correct intrinsic original dimensions." refs AndroidPhotoViewer.displayBitmap,AndroidPhotoViewer.selectedPhotoId,AndroidMediaLocation.uri
+  invariant AndroidPhotoViewer.zoom_bounds statement "zoomScale remains between 1 and max(5, nativePixelScale), where nativePixelScale fits one decoded original pixel to one display pixel; panOffset remains bounded and selecting another photo resets both values before its bitmap is shown." refs AndroidPhotoViewer.zoomScale,AndroidPhotoViewer.panOffset,AndroidPhotoViewer.selectedPhotoId
+  forbid AndroidPhotoViewer.no_external_handoff statement "Opening or navigating the viewer cannot dispatch the selected content URI through an ACTION_VIEW or other external-app handoff." refs AndroidPhotoViewer.selectedPhotoId,AndroidMediaLocation.uri
+  forbid AndroidPhotoViewer.no_original_mutation statement "Viewing, decoding, zooming, panning, and navigating never update, move, rename, trash, delete, or rewrite an original photo." refs AndroidPhotoViewer.displayBitmap,AndroidMediaLocation.uri
+
+field AndroidAnnotationSelectionFieldPromise for AndroidAnnotationSelection:
+  label "Android 标注选择字段 Promise"
+  summary "Persists the latest explicit system-picker selection used by selected-photo annotation."
+  field photoIds type json required true nullable false default "[]" semantic "Deduplicated content identities returned by the latest completed 选择照片 flow." mutable true system false readers select,annotate writers select
+  field selectedAt type datetime required false nullable true default null semantic "Completion time of the latest non-empty system photo-picker selection." mutable true system true readers select,annotate writers select
+  field source type string required true nullable false default system_photo_picker semantic "Authorization source; selected-photo annotation accepts only the Android system photo picker." mutable false system true readers select,annotate writers select
+  invariant AndroidAnnotationSelection.explicit_picker_only statement "Every selected photoId comes from the latest completed Android system photo-picker result and maps to a currently readable content URI." refs AndroidAnnotationSelection.photoIds,AndroidAnnotationSelection.source,AndroidMediaLocation.uri,AndroidMediaLocation.accessible
+  invariant AndroidAnnotationSelection.replace_not_union statement "A completed non-empty selection replaces the previous selected-photo scope instead of silently unioning old photos." refs AndroidAnnotationSelection.photoIds,AndroidAnnotationSelection.selectedAt
+  forbid AndroidAnnotationSelection.no_implicit_selection statement "Scanning the full accessible library, viewing search results, or opening a photo cannot add it to selected-photo annotation scope." refs AndroidAnnotationSelection.photoIds,AndroidMediaLocation.accessible
+
+field InferenceConfigurationFieldPromise for InferenceConfiguration:
+  label "推理配置字段 Promise"
+  summary "Stores the Android user's explicit VLM endpoint and photo-transfer decision."
+  field endpoint type string required true nullable false default http://127.0.0.1:11434 semantic "Validated HTTP or HTTPS Ollama base URL." mutable true system false readers configure,annotate writers configure
+  field modelName type string required true nullable false default qwen3-vl:4b semantic "Exact Ollama model identifier." mutable true system false readers configure,annotate writers configure
+  field allowRemote type boolean required true nullable false default false semantic "Explicit consent to send photo bytes to a non-loopback endpoint." mutable true system false readers configure,annotate writers configure
+  field updatedAt type datetime required true nullable false default null semantic "Most recent successful configuration save time." mutable true system true readers configure,annotate writers configure
+  invariant InferenceConfiguration.remote_requires_consent statement "A non-loopback endpoint is valid only when allowRemote is true." refs InferenceConfiguration.endpoint,InferenceConfiguration.allowRemote
+  forbid InferenceConfiguration.no_implicit_cloud statement "No remote or cloud endpoint may be enabled by defaults, DNS fallback, or hidden state." refs InferenceConfiguration.endpoint,InferenceConfiguration.allowRemote
+
+field RecognitionProfileFieldPromise for RecognitionProfile:
+  label "旧版 VLM 名称字段 Promise"
+  summary "Retains normalized CLI-only candidate labels while Android person and pet identity are owned by local templates."
+  field personNames type json required true nullable false default "[]" semantic "Legacy CLI-only person candidates; Android VLM inference must ignore this field for identity." mutable true system false readers annotate writers configure
+  field petNames type json required true nullable false default "[]" semantic "Legacy CLI-only pet candidates; Android VLM inference must ignore this field for identity." mutable true system false readers annotate writers configure
+  field updatedAt type datetime required true nullable false default null semantic "Most recent successful recognition-profile save time." mutable true system true readers configure,annotate writers configure
+  invariant RecognitionProfile.normalized_unique statement "Names are trimmed, non-empty, length-bounded, deduplicated case-insensitively, and a name cannot belong to both kinds." refs RecognitionProfile.personNames,RecognitionProfile.petNames
+  forbid RecognitionProfile.no_forced_match statement "A configured candidate is not evidence that the subject appears in any photo." refs RecognitionProfile.personNames,RecognitionProfile.petNames
+  forbid RecognitionProfile.android_vlm_no_identity statement "Android VLM prompts and schemas never receive person or pet candidate names and cannot emit any identity label." refs RecognitionProfile.personNames,RecognitionProfile.petNames
+
+field PersonIdentityFieldPromise for PersonIdentity:
+  label "本地人物身份字段 Promise"
+  summary "Stores one normalized user label for one or more app-private face templates."
+  field id type integer required true nullable false default null semantic "App-private stable identity identifier." mutable false system true readers register,match,search writers register
+  field name type string required true nullable false default null semantic "Trimmed user-provided name unique without case." mutable true system false readers register,match,search writers register
+  field createdAt type datetime required true nullable false default null semantic "First successful registration time." mutable false system true readers register,search writers register
+  field updatedAt type datetime required true nullable false default null semantic "Most recent template addition or label update time." mutable true system true readers register,search writers register
+  invariant PersonIdentity.normalized_unique_name statement "Identity names are non-empty, length-bounded, and unique case-insensitively." refs PersonIdentity.name
+  forbid PersonIdentity.no_implicit_identity statement "A person identity exists only after the user taps a detected reference face and supplies its name." refs PersonIdentity.id,PersonIdentity.name
+
+field FaceTemplateFieldPromise for FaceTemplate:
+  label "注册人脸模板字段 Promise"
+  summary "Stores one normalized embedding for the exact reference face selected by the user."
+  field id type integer required true nullable false default null semantic "Monotonic local template identifier." mutable false system true readers register,match writers register
+  field identityId type integer required true nullable false default null semantic "User-named PersonIdentity represented by this template." mutable false system true readers register,match writers register
+  field embedding type json required true nullable false default "[]" semantic "L2-normalized floating-point vector stored in the app-private database." mutable false system true readers match writers register
+  field dimension type integer required true nullable false default 0 semantic "Exact vector length required by the embedding model." mutable false system true readers register,match writers register
+  field modelName type string required true nullable false default null semantic "Bundled face embedding model identifier and version." mutable false system true readers register,match writers register
+  field sourcePhotoId type PhotoID required false nullable true default null semantic "Content hash when the picked reference is already cataloged; otherwise absent." mutable false system true readers register writers register
+  field boundingBox type json required true nullable false default "{}" semantic "Normalized selected face bounds used for audit without retaining pixels." mutable false system true readers register writers register
+  field createdAt type datetime required true nullable false default null semantic "Template creation time." mutable false system true readers register,match writers register
+  invariant FaceTemplate.normalized_embedding statement "Every template dimension is positive and its finite embedding has unit L2 norm within numerical tolerance." refs FaceTemplate.embedding,FaceTemplate.dimension
+  invariant FaceTemplate.selected_face_only statement "The stored embedding corresponds to the one detected face explicitly tapped by the user." refs FaceTemplate.boundingBox,FaceTemplate.identityId
+  forbid FaceTemplate.no_reference_pixels statement "Do not persist a reference bitmap, face crop, image bytes, or an external copy of the biometric template." refs FaceTemplate.embedding,FaceTemplate.sourcePhotoId
+
+field FaceObservationFieldPromise for FaceObservation:
+  label "照片人脸匹配字段 Promise"
+  summary "Stores each detected face embedding and an auditable matched or unknown decision."
+  field id type integer required true nullable false default null semantic "Monotonic local face-observation identifier." mutable false system true readers match,search writers match
+  field photoId type PhotoID required true nullable false default null semantic "Catalog photo containing the detected face." mutable false system true readers match,search writers match
+  field faceIndex type integer required true nullable false default 0 semantic "Stable top-to-bottom then left-to-right order after cross-scale deduplication." mutable false system true readers match writers match
+  field embedding type json required true nullable false default "[]" semantic "L2-normalized local face vector retained for rematching when templates change." mutable false system true readers match writers match
+  field boundingBox type json required true nullable false default "{}" semantic "Normalized detected face bounds mapped back to the original in-memory thumbnail coordinate space." mutable false system true readers match writers match
+  field detectorScore type number required true nullable false default 0 semantic "Face detector confidence." mutable false system true readers match writers match
+  field modelName type string required true nullable false default null semantic "Exact bundled face embedding model version." mutable false system true readers match,search writers match
+  field pipelineVersion type string required true nullable false default null semantic "Exact detector scale, cross-scale deduplication, landmark mapping, and embedding pipeline version used for this observation." mutable false system true readers match,search writers match
+  field matchState type string required true nullable false default unknown semantic "Either matched or unknown." mutable true system true readers match,search writers match
+  field matchedIdentityId type integer required false nullable true default null semantic "Best accepted PersonIdentity; null for unknown." mutable true system true readers match,search writers match
+  field similarity type number required false nullable true default null semantic "Best cosine similarity retained even when rejected as unknown." mutable true system true readers match,search writers match
+  field threshold type number required true nullable false default 0.55 semantic "Minimum cosine similarity required for an accepted match." mutable false system true readers match,search writers match
+  field indexedAt type datetime required true nullable false default null semantic "Most recent local detection and matching time." mutable true system true readers match writers match
+  invariant FaceObservation.explicit_unknown statement "matchState is matched only when similarity meets threshold, the best identity clears the ambiguity margin, and matchedIdentityId is non-null; otherwise state is unknown and matchedIdentityId is null." refs FaceObservation.matchState,FaceObservation.matchedIdentityId,FaceObservation.similarity,FaceObservation.threshold
+  invariant FaceObservation.local_model_provenance statement "Every face observation records exact detector-pipeline and embedding model versions, threshold, score, and time." refs FaceObservation.detectorScore,FaceObservation.modelName,FaceObservation.pipelineVersion,FaceObservation.threshold,FaceObservation.indexedAt
+  invariant FaceObservation.one_physical_face_once statement "Overlapping detections of the same physical face from different image scales produce one spatially ordered observation with original-space bounds." refs FaceObservation.faceIndex,FaceObservation.boundingBox,FaceObservation.detectorScore
+  forbid FaceObservation.no_vlm_identity statement "A VLM response cannot create or change matchedIdentityId or matchState." refs FaceObservation.matchState,FaceObservation.matchedIdentityId
+
+field PetIdentityFieldPromise for PetIdentity:
+  label "本地宠物身份字段 Promise"
+  summary "Stores one normalized user label for one or more app-private pet visual templates."
+  field id type integer required true nullable false default null semantic "App-private stable pet identity identifier." mutable false system true readers register,match,search writers register
+  field name type string required true nullable false default null semantic "Trimmed user-provided pet name unique without case." mutable true system false readers register,match,search writers register
+  field createdAt type datetime required true nullable false default null semantic "First successful pet registration time." mutable false system true readers register,search writers register
+  field updatedAt type datetime required true nullable false default null semantic "Most recent template addition or label update time." mutable true system true readers register,search writers register
+  invariant PetIdentity.normalized_unique_name statement "Pet names are non-empty, length-bounded, and unique case-insensitively within pet identities." refs PetIdentity.name
+  forbid PetIdentity.no_implicit_identity statement "A pet identity exists only after the user selects pet mode, taps one locally detected cat or dog, and supplies its name." refs PetIdentity.id,PetIdentity.name
+
+field PetTemplateFieldPromise for PetTemplate:
+  label "注册宠物模板字段 Promise"
+  summary "Stores one normalized visual embedding for the exact detected pet selected by the user."
+  field id type integer required true nullable false default null semantic "Monotonic local pet-template identifier." mutable false system true readers register,match writers register
+  field identityId type integer required true nullable false default null semantic "User-named PetIdentity represented by this template." mutable false system true readers register,match writers register
+  field species type string required true nullable false default null semantic "Detector category cat or dog; comparisons never cross species." mutable false system true readers register,match writers register
+  field embedding type json required true nullable false default "[]" semantic "L2-normalized visual vector stored in the app-private database." mutable false system true readers match writers register
+  field dimension type integer required true nullable false default 0 semantic "Exact vector length required by the pet embedding model." mutable false system true readers register,match writers register
+  field modelName type string required true nullable false default null semantic "Bundled pet visual embedding model identifier and version." mutable false system true readers register,match writers register
+  field sourcePhotoId type PhotoID required false nullable true default null semantic "Content hash when the picked reference is already cataloged; otherwise absent." mutable false system true readers register writers register
+  field boundingBox type json required true nullable false default "{}" semantic "Normalized selected pet bounds used for audit without retaining pixels." mutable false system true readers register writers register
+  field createdAt type datetime required true nullable false default null semantic "Template creation time." mutable false system true readers register,match writers register
+  invariant PetTemplate.normalized_embedding statement "Every pet template dimension is positive and its finite embedding has unit L2 norm within numerical tolerance." refs PetTemplate.embedding,PetTemplate.dimension
+  invariant PetTemplate.selected_pet_only statement "The stored embedding corresponds to the one locally detected cat or dog explicitly tapped by the user." refs PetTemplate.boundingBox,PetTemplate.identityId,PetTemplate.species
+  forbid PetTemplate.no_reference_pixels statement "Do not persist a reference bitmap, pet crop, image bytes, or an external copy of the template." refs PetTemplate.embedding,PetTemplate.sourcePhotoId
+
+field PetObservationFieldPromise for PetObservation:
+  label "照片宠物匹配字段 Promise"
+  summary "Stores each locally detected cat or dog embedding and an auditable matched or unknown decision."
+  field id type integer required true nullable false default null semantic "Monotonic local pet-observation identifier." mutable false system true readers match,search writers match
+  field photoId type PhotoID required true nullable false default null semantic "Catalog photo containing the detected pet." mutable false system true readers match,search writers match
+  field petIndex type integer required true nullable false default 0 semantic "Stable top-to-bottom then left-to-right order after detector suppression." mutable false system true readers match writers match
+  field species type string required true nullable false default null semantic "Detector category cat or dog." mutable false system true readers match writers match
+  field embedding type json required true nullable false default "[]" semantic "L2-normalized local pet vector retained for rematching when templates change." mutable false system true readers match writers match
+  field boundingBox type json required true nullable false default "{}" semantic "Normalized detected pet bounds in the in-memory thumbnail coordinate space." mutable false system true readers match writers match
+  field detectorScore type number required true nullable false default 0 semantic "Pet detector confidence." mutable false system true readers match writers match
+  field modelName type string required true nullable false default null semantic "Exact bundled pet embedding model version." mutable false system true readers match,search writers match
+  field pipelineVersion type string required true nullable false default null semantic "Exact pet detector, crop padding, ordering, and embedding pipeline version." mutable false system true readers match,search writers match
+  field matchState type string required true nullable false default unknown semantic "Either matched or unknown." mutable true system true readers match,search writers match
+  field matchedIdentityId type integer required false nullable true default null semantic "Best accepted same-species PetIdentity; null for unknown." mutable true system true readers match,search writers match
+  field similarity type number required false nullable true default null semantic "Best cosine similarity retained even when rejected as unknown." mutable true system true readers match,search writers match
+  field threshold type number required true nullable false default 0.9 semantic "Conservative minimum cosine similarity required for an accepted pet match." mutable false system true readers match,search writers match
+  field indexedAt type datetime required true nullable false default null semantic "Most recent local pet detection and matching time." mutable true system true readers match writers match
+  invariant PetObservation.explicit_unknown statement "matchState is matched only when same-species similarity meets threshold, the best identity clears the ambiguity margin, and matchedIdentityId is non-null; otherwise state is unknown and matchedIdentityId is null." refs PetObservation.matchState,PetObservation.matchedIdentityId,PetObservation.similarity,PetObservation.threshold,PetObservation.species
+  invariant PetObservation.local_model_provenance statement "Every pet observation records exact detector-pipeline and embedding model versions, species, threshold, score, bounds, and time." refs PetObservation.detectorScore,PetObservation.modelName,PetObservation.pipelineVersion,PetObservation.species,PetObservation.threshold,PetObservation.indexedAt
+  forbid PetObservation.no_vlm_identity statement "A VLM response cannot create or change a pet matchedIdentityId or matchState." refs PetObservation.matchState,PetObservation.matchedIdentityId
+
+field SimilarityCheckRequestFieldPromise for SimilarityCheckRequest:
+  label "相似检查范围字段 Promise"
+  summary "Captures the exact user-confirmed incremental, recent, or full scope before any visual feature work begins."
+  field mode type string required true nullable false default incremental semantic "Exactly incremental, recent, or full." mutable false system false readers check writers -
+  field recentAmount type integer required false nullable true default null semantic "User-entered positive quantity used only by recent mode." mutable false system false readers check writers -
+  field recentUnit type string required false nullable true default null semantic "User-selected hours, days, or weeks unit used only by recent mode." mutable false system false readers check writers -
+  field requestedAtMillis type integer required true nullable false default null semantic "Wall-clock Unix epoch milliseconds captured once when the user confirms the check." mutable false system true readers check writers -
+  field recentCutoffMillis type integer required false nullable true default null semantic "Overflow-safe requestedAtMillis minus the exact selected recent duration; null outside recent mode." mutable false system true readers check writers -
+  invariant SimilarityCheckRequest.explicit_mode statement "mode is exactly incremental, recent, or full and is never inferred from existing feature counts." refs SimilarityCheckRequest.mode
+  invariant SimilarityCheckRequest.recent_complete statement "recentAmount in [1,9999], a valid recentUnit, and a non-negative recentCutoffMillis are present if and only if mode is recent." refs SimilarityCheckRequest.mode,SimilarityCheckRequest.recentAmount,SimilarityCheckRequest.recentUnit,SimilarityCheckRequest.requestedAtMillis,SimilarityCheckRequest.recentCutoffMillis
+  forbid SimilarityCheckRequest.no_hidden_recent_fallback statement "An invalid, blank, zero, negative, overflowing, or unknown-unit recent request cannot silently become incremental, full, or a default duration." refs SimilarityCheckRequest.recentAmount,SimilarityCheckRequest.recentUnit,SimilarityCheckRequest.recentCutoffMillis
+
+field PhotoVisualFeatureFieldPromise for PhotoVisualFeature:
+  label "照片视觉特征字段 Promise"
+  summary "Stores one versioned DINOv2 ViT-S/14 registers whole-photo descriptor and sixteen spatial cells without retaining derived pixels."
+  field photoId type PhotoID required true nullable false default null semantic "Content-addressed photo represented by this feature." mutable false system true readers index,compare writers index
+  field globalEmbedding type json required true nullable false default "[]" semantic "Finite L2-normalized DINOv2 class-token visual vector encoded in app-private storage." mutable false system true readers compare writers index
+  field dimension type integer required true nullable false default 0 semantic "Exact vector dimension shared by the global vector and every spatial cell." mutable false system true readers index,compare writers index
+  field patchGrid type json required true nullable false default "[]" semantic "Exactly sixteen independently normalized row-major 4x4 spatial descriptors pooled from the 16x16 DINOv2 patch-token grid after excluding class and register tokens." mutable false system true readers compare writers index
+  field gridSize type integer required true nullable false default 4 semantic "Fixed spatial grid edge length." mutable false system true readers index,compare writers index
+  field modelName type string required true nullable false default null semantic "Exact DINOv2 ViT-S/14 registers checkpoint identity." mutable false system true readers index,compare writers index
+  field pipelineVersion type string required true nullable false default null semantic "Exact preprocessing, global pooling, patch pooling, and quantization version." mutable false system true readers index,compare writers index
+  field indexedAt type datetime required true nullable false default null semantic "Successful local feature extraction time." mutable true system true readers compare writers index
+  invariant PhotoVisualFeature.normalized_global statement "The global embedding is finite, non-empty, dimension-matched, and unit L2 normalized before storage." refs PhotoVisualFeature.globalEmbedding,PhotoVisualFeature.dimension
+  invariant PhotoVisualFeature.four_by_four_grid statement "patchGrid contains exactly sixteen finite, dimension-matched, independently normalized cells in row-major image coordinates and gridSize is exactly 4." refs PhotoVisualFeature.patchGrid,PhotoVisualFeature.dimension,PhotoVisualFeature.gridSize
+  invariant PhotoVisualFeature.provenance_complete statement "Every feature records the exact DINOv2 checkpoint, pipeline version, content identity, and index time." refs PhotoVisualFeature.photoId,PhotoVisualFeature.modelName,PhotoVisualFeature.pipelineVersion,PhotoVisualFeature.indexedAt
+  forbid PhotoVisualFeature.no_pixels statement "Do not persist thumbnails, patch pixels, crops, original bytes, or a second photo copy as visual-index state." refs PhotoVisualFeature.globalEmbedding,PhotoVisualFeature.patchGrid
+  forbid PhotoVisualFeature.no_vlm_embedding statement "VLM captions, tags, prompts, and outputs cannot create or modify DINOv2 vectors." refs PhotoVisualFeature.globalEmbedding,PhotoVisualFeature.patchGrid
+
+field GeneralSubjectObservationFieldPromise for GeneralSubjectObservation:
+  label "通用主体观察字段 Promise"
+  summary "Stores one quality-eligible non-person, non-cat, non-dog detector crop as a local DINOv2 subject vector."
+  field id type integer required true nullable false default null semantic "Monotonic local observation identifier." mutable false system true readers compare writers index
+  field photoId type PhotoID required true nullable false default null semantic "Photo containing this detected subject." mutable false system true readers compare writers index
+  field subjectIndex type integer required true nullable false default 0 semantic "Stable top-to-bottom then left-to-right observation order." mutable false system true readers compare writers index
+  field category type string required true nullable false default null semantic "Local detector category used only as compatible matching evidence." mutable false system true readers compare writers index
+  field embedding type json required true nullable false default "[]" semantic "Finite L2-normalized DINOv2 vector of the padded in-memory subject crop." mutable false system true readers compare writers index
+  field dimension type integer required true nullable false default 0 semantic "Exact subject-vector dimension." mutable false system true readers index,compare writers index
+  field boundingBox type json required true nullable false default "{}" semantic "Normalized detector bounds in source-thumbnail coordinates." mutable false system true readers compare writers index
+  field detectorScore type number required true nullable false default 0 semantic "Local detector confidence in [0,1]." mutable false system true readers compare writers index
+  field detectorName type string required true nullable false default null semantic "Exact bundled detector identity." mutable false system true readers index,compare writers index
+  field modelName type string required true nullable false default null semantic "Exact DINOv2 checkpoint used for the crop." mutable false system true readers index,compare writers index
+  field pipelineVersion type string required true nullable false default null semantic "Exact detector, crop, and embedding pipeline version." mutable false system true readers index,compare writers index
+  field indexedAt type datetime required true nullable false default null semantic "Successful local subject extraction time." mutable true system true readers compare writers index
+  invariant GeneralSubjectObservation.valid_embedding statement "Every retained subject has a finite non-zero normalized vector whose stored dimension matches the model output." refs GeneralSubjectObservation.embedding,GeneralSubjectObservation.dimension
+  invariant GeneralSubjectObservation.explicit_bounds statement "Every subject has valid normalized non-empty bounds, a confidence in [0,1], and a stable index." refs GeneralSubjectObservation.boundingBox,GeneralSubjectObservation.detectorScore,GeneralSubjectObservation.subjectIndex
+  forbid GeneralSubjectObservation.no_person_or_pet_duplication statement "Person, cat, and dog detections are not persisted here because existing face and pet observations are reused for subject similarity." refs GeneralSubjectObservation.category
+  forbid GeneralSubjectObservation.no_crop_retention statement "The padded subject bitmap exists only in memory and is never persisted or transmitted." refs GeneralSubjectObservation.embedding,GeneralSubjectObservation.boundingBox
+
+field SimilarPhotoResultFieldPromise for SimilarPhotoResult:
+  label "相似照片结果字段 Promise"
+  summary "Represents one derived accessible candidate while keeping independent relationship evidence visible."
+  field queryPhotoId type PhotoID required true nullable false default null semantic "Photo for which similarity was requested." mutable false system true readers compare writers -
+  field candidatePhotoId type PhotoID required true nullable false default null semantic "Different accessible candidate photo." mutable false system true readers compare writers -
+  field relationship type string required true nullable false default visually_similar semantic "Primary display class: burst, same_scene, composition_similar, subject_similar, or visually_similar." mutable false system true readers compare writers -
+  field globalSimilarity type number required true nullable false default 0 semantic "Cosine similarity of normalized whole-photo DINOv2 vectors." mutable false system true readers compare writers -
+  field compositionSimilarity type number required true nullable false default 0 semantic "Position-preserving aggregate similarity across the sixteen corresponding 4x4 cells." mutable false system true readers compare writers -
+  field subjectSimilarity type number required false nullable true default null semantic "Best compatible evidence from registered faces, pets, or general detected subjects; null when none exists." mutable false system true readers compare writers -
+  field captureDeltaMillis type integer required false nullable true default null semantic "Absolute capture-time difference when both photos have capture timestamps." mutable false system true readers compare writers -
+  field rankScore type number required true nullable false default 0 semantic "Deterministic weighted score derived only from visual, spatial, subject, and time evidence." mutable false system true readers compare writers -
+  field explanation type text required true nullable false default "" semantic "Human-readable explanation composed after ranking from relationship evidence and overlapping VLM-derived tags." mutable false system true readers compare writers -
+  invariant SimilarPhotoResult.score_bounds statement "All present similarity and rank scores are finite and bounded to [0,1]." refs SimilarPhotoResult.globalSimilarity,SimilarPhotoResult.compositionSimilarity,SimilarPhotoResult.subjectSimilarity,SimilarPhotoResult.rankScore
+  invariant SimilarPhotoResult.different_photos statement "A result never compares a photo to the same content identity." refs SimilarPhotoResult.queryPhotoId,SimilarPhotoResult.candidatePhotoId
+  invariant SimilarPhotoResult.explanation_after_rank statement "The explanation may quote overlapping local annotation facets or tags only after rank and relationship are fixed." refs SimilarPhotoResult.rankScore,SimilarPhotoResult.explanation
+  forbid SimilarPhotoResult.no_vlm_score statement "VLM captions, tags, facets, model confidence, and generated explanations cannot change numeric similarity, relationship classification, or ordering." refs SimilarPhotoResult.relationship,SimilarPhotoResult.rankScore,SimilarPhotoResult.explanation
+  forbid SimilarPhotoResult.no_delete_claim statement "Similarity results never imply that either original is duplicate, safe to delete, owned, or mutable." refs SimilarPhotoResult.queryPhotoId,SimilarPhotoResult.candidatePhotoId
+
+field AndroidSearchStateFieldPromise for AndroidSearchState:
+  label "Android 搜索状态字段 Promise"
+  summary "Derives whether search is usable and which suggestion chips are justified by current annotations."
+  field annotationCount type integer required true nullable false default 0 semantic "Number of distinct photos with a current annotation." mutable true system true readers annotate,search writers annotate
+  field enabled type boolean required true nullable false default false semantic "Whether the search input and submission action are enabled." mutable true system true readers search writers annotate
+  field suggestions type json required true nullable false default "[]" semantic "Deduplicated suggestions derived only from latest accessible annotations, never static presets." mutable true system true readers search writers annotate
+  invariant AndroidSearchState.enabled_after_annotation statement "Search is enabled if and only if annotationCount is greater than zero." refs AndroidSearchState.annotationCount,AndroidSearchState.enabled
+  invariant AndroidSearchState.no_default_suggestions statement "suggestions is empty before the first annotation and every non-empty suggestion occurs in current annotation metadata." refs AndroidSearchState.annotationCount,AndroidSearchState.suggestions
+  forbid AndroidSearchState.no_static_presets statement "Do not populate suggestions from hard-coded example terms or unannotated photos." refs AndroidSearchState.suggestions
+
+function ScanLibraryFunctionPromise action scan:
+  label "扫描照片库 Function Promise"
+  summary "Discovers supported photo files and refreshes current path presence."
+  depends PhotoAssetFieldPromise,PhotoLocationFieldPromise
+  trigger "User selects an absolute local directory and invokes scan."
+  precondition ScanLibrary.root_exists statement "The selected root exists and is a readable directory." refs PhotoLocation.rootPath
+  reads PhotoLocation.path,PhotoLocation.rootPath,PhotoLocation.present,PhotoLocation.modifiedNanoseconds
+  writes PhotoAsset.id,PhotoAsset.mediaType,PhotoAsset.byteSize,PhotoAsset.discoveredAt,PhotoLocation.path,PhotoLocation.photoId,PhotoLocation.rootPath,PhotoLocation.present,PhotoLocation.modifiedNanoseconds,PhotoLocation.lastSeenAt
+  ensure ScanLibrary.content_addressed statement "Each discovered file maps to a PhotoAsset identified by its SHA-256 bytes." refs PhotoAsset.id,PhotoLocation.photoId
+  ensure ScanLibrary.missing_marked statement "Previously known paths beneath this root that are not observed become present=false without deleting history." refs PhotoLocation.rootPath,PhotoLocation.present
+  sideeffect ScanLibrary.catalog_only statement "Only the APM catalog is written; source files are never modified." refs PhotoLocation.path
+  idempotency "Scanning an unchanged root preserves content identities and updates only observation metadata."
+  forbid ScanLibrary.no_source_write statement "Never write, rename, move, or delete a source photo." refs PhotoLocation.path
+
+function TagPhotoFunctionPromise action annotate:
+  label "本地模型标注 Function Promise"
+  summary "Sends one present photo to a configured local model and appends validated annotation output."
+  depends PhotoAssetFieldPromise,PhotoLocationFieldPromise,PhotoAnnotationFieldPromise
+  trigger "User requests annotation of unannotated photos or explicitly requests re-annotation."
+  precondition TagPhoto.path_present statement "At least one current readable path exists for the photo." refs PhotoLocation.path,PhotoLocation.present
+  precondition TagPhoto.local_default statement "The default provider is the loopback Ollama endpoint." refs PhotoAnnotation.modelProvider
+  reads PhotoAsset.id,PhotoLocation.path,PhotoLocation.present,PhotoAnnotation.photoId,PhotoAnnotation.modelName,PhotoAnnotation.promptVersion
+  writes PhotoAnnotation.id,PhotoAnnotation.photoId,PhotoAnnotation.caption,PhotoAnnotation.tags,PhotoAnnotation.facets,PhotoAnnotation.visibleText,PhotoAnnotation.modelProvider,PhotoAnnotation.modelName,PhotoAnnotation.promptVersion,PhotoAnnotation.createdAt
+  ensure TagPhoto.validated_structured_output statement "Caption, tags, structured facets, and visible text are validated against the annotation schema before insertion." refs PhotoAnnotation.caption,PhotoAnnotation.tags,PhotoAnnotation.facets,PhotoAnnotation.visibleText
+  ensure TagPhoto.provenance_recorded statement "The exact provider, model name, and prompt version are stored with every successful result." refs PhotoAnnotation.modelProvider,PhotoAnnotation.modelName,PhotoAnnotation.promptVersion
+  reject TagPhoto.model_unavailable statement "No annotation is written when the configured model endpoint is unavailable." refs PhotoAnnotation.modelProvider,PhotoAnnotation.modelName
+  reject TagPhoto.invalid_output statement "No annotation is written when output fails schema validation." refs PhotoAnnotation.caption,PhotoAnnotation.tags,PhotoAnnotation.facets,PhotoAnnotation.visibleText
+  sideeffect TagPhoto.local_inference statement "The photo is sent to the configured loopback Ollama endpoint by default." refs PhotoLocation.path,PhotoAnnotation.modelProvider
+  idempotency "Without force, a photo with the same model and prompt version is skipped; force appends a new immutable annotation."
+  forbid TagPhoto.no_implicit_remote statement "Never send photo bytes to a non-loopback endpoint without explicit configuration." refs PhotoLocation.path,PhotoAnnotation.modelProvider
+
+function SearchPhotosFunctionPromise action search:
+  label "搜索照片 Function Promise"
+  summary "Finds current photo paths using the latest annotation per photo."
+  depends PhotoLocationFieldPromise,PhotoAnnotationFieldPromise
+  trigger "User provides a non-empty text query."
+  precondition SearchPhotos.non_empty_query statement "The normalized search query is not empty." refs PhotoAnnotation.caption,PhotoAnnotation.tags,PhotoAnnotation.facets,PhotoAnnotation.visibleText
+  reads PhotoLocation.path,PhotoLocation.photoId,PhotoLocation.present,PhotoAnnotation.photoId,PhotoAnnotation.caption,PhotoAnnotation.tags,PhotoAnnotation.facets,PhotoAnnotation.visibleText,PhotoAnnotation.id
+  writes -
+  ensure SearchPhotos.latest_annotation statement "Matching uses the latest appended annotation for each photo." refs PhotoAnnotation.id,PhotoAnnotation.photoId
+  ensure SearchPhotos.current_paths_only statement "Returned paths have present=true." refs PhotoLocation.path,PhotoLocation.present
+  reject SearchPhotos.empty_query statement "An empty or whitespace-only query is rejected." refs PhotoAnnotation.caption,PhotoAnnotation.tags,PhotoAnnotation.facets,PhotoAnnotation.visibleText
+  sideeffect SearchPhotos.read_only statement "Search does not change catalog or photo files." refs PhotoLocation.path
+  idempotency "The same query against unchanged catalog state returns the same ordered results."
+  forbid SearchPhotos.no_absent_paths statement "Never return a path whose latest presence state is false." refs PhotoLocation.path,PhotoLocation.present
+
+function ConfigureAndroidModelFunctionPromise action configure:
+  label "配置 Android VLM Function Promise"
+  summary "Validates and stores the endpoint, model, and explicit remote photo-transfer decision, with a route to local person and pet identity management."
+  depends InferenceConfigurationFieldPromise
+  trigger "User navigates from the main app bar to the dedicated model-settings screen and saves settings there."
+  precondition ConfigureAndroidModel.valid_url statement "The endpoint is an absolute HTTP or HTTPS URL with a host and the model name is non-empty." refs InferenceConfiguration.endpoint,InferenceConfiguration.modelName
+  reads InferenceConfiguration.endpoint,InferenceConfiguration.modelName,InferenceConfiguration.allowRemote
+  writes InferenceConfiguration.endpoint,InferenceConfiguration.modelName,InferenceConfiguration.allowRemote,InferenceConfiguration.updatedAt
+  ensure ConfigureAndroidModel.remote_consent statement "A non-loopback endpoint is persisted only with allowRemote=true." refs InferenceConfiguration.endpoint,InferenceConfiguration.allowRemote
+  ensure ConfigureAndroidModel.dedicated_screen statement "Endpoint, model, consent explanation, and save action are presented on a separate navigable screen rather than a transient dialog on the gallery screen." refs InferenceConfiguration.endpoint,InferenceConfiguration.modelName,InferenceConfiguration.allowRemote
+  ensure ConfigureAndroidModel.local_identity_route statement "The dedicated settings screen directs both person and pet registration to the separate local identity screen and does not collect Android VLM identity candidates." refs InferenceConfiguration.endpoint
+  reject ConfigureAndroidModel.remote_without_consent statement "Saving a non-loopback endpoint without explicit consent is rejected." refs InferenceConfiguration.endpoint,InferenceConfiguration.allowRemote
+  sideeffect ConfigureAndroidModel.local_settings_only statement "Configuration writes only app-private preferences and sends no photo." refs InferenceConfiguration.updatedAt
+  idempotency "Saving the same valid values preserves the same effective inference configuration."
+  forbid ConfigureAndroidModel.no_request_on_save statement "Saving settings must not upload or annotate any photo." refs InferenceConfiguration.endpoint
+
+function ScanAndroidGalleryFunctionPromise action scan:
+  label "扫描 Android 相册 Function Promise"
+  summary "Reads permission-visible MediaStore images, hashes original content streams, and refreshes the app-private catalog."
+  depends PhotoAssetFieldPromise,AndroidMediaLocationFieldPromise,FaceTemplateFieldPromise,FaceObservationFieldPromise,PetTemplateFieldPromise,PetObservationFieldPromise
+  trigger "User grants Android photo permission and invokes scan."
+  precondition ScanAndroidGallery.permission statement "Android has granted full or selected-photo read access." refs AndroidMediaLocation.accessible
+  reads AndroidMediaLocation.uri,AndroidMediaLocation.mediaStoreId,AndroidMediaLocation.modifiedSeconds,AndroidMediaLocation.accessible
+  writes PhotoAsset.id,PhotoAsset.mediaType,PhotoAsset.byteSize,PhotoAsset.discoveredAt,AndroidMediaLocation.uri,AndroidMediaLocation.mediaStoreId,AndroidMediaLocation.photoId,AndroidMediaLocation.displayName,AndroidMediaLocation.accessible,AndroidMediaLocation.modifiedSeconds,AndroidMediaLocation.lastSeenAt
+  ensure ScanAndroidGallery.content_hash statement "Every newly observed or changed URI is identified by streaming SHA-256 over ContentResolver bytes." refs PhotoAsset.id,AndroidMediaLocation.photoId,AndroidMediaLocation.uri
+  ensure ScanAndroidGallery.permission_scoped_visibility statement "Previously cataloged URIs not visible in this scan become accessible=false without deletion claims." refs AndroidMediaLocation.accessible,AndroidMediaLocation.lastSeenAt
+  ensure ScanAndroidGallery.partial_reselection statement "On Android 14 or later, if access is partial, every user scan action launches the system selected-photo permission flow before querying MediaStore." refs AndroidMediaLocation.accessible
+  ensure ScanAndroidGallery.local_face_index statement "When at least one person template exists, every newly visible unindexed photo is passed to the bundled local detector and embedding matcher after catalog scan." refs FaceTemplate.identityId,FaceObservation.photoId,FaceObservation.modelName
+  ensure ScanAndroidGallery.local_pet_index statement "When at least one pet template exists, every newly visible unindexed photo is passed to the bundled local cat-and-dog detector and pet embedding matcher after catalog scan." refs PetTemplate.identityId,PetObservation.photoId,PetObservation.modelName
+  sideeffect ScanAndroidGallery.catalog_only statement "Only the app-private SQLite catalog changes." refs AndroidMediaLocation.uri
+  idempotency "An unchanged permission-visible MediaStore snapshot keeps content identities and reuses hashes for unchanged metadata."
+  forbid ScanAndroidGallery.no_media_mutation statement "Never update, move, rename, trash, or delete a MediaStore item." refs AndroidMediaLocation.uri
+
+function BrowseAndroidPhotoWallFunctionPromise action browse:
+  label "浏览 Android 按日照片墙 Function Promise"
+  summary "Loads every distinct currently accessible photo into a lazy day-grouped photo tab and renders a separate vertically scrolling heatmap tab with GitHub-style annual daily, weekly, and monthly views from exact daily counts."
+  depends AndroidMediaLocationFieldPromise,AndroidPhotoWallFieldPromise,PhotoAnnotationFieldPromise
+  trigger "The gallery screen opens, accessible catalog state changes, the photo or heatmap content tab changes, the display mode or heatmap granularity changes, the displayed year changes, or the user selects or clears a heatmap range."
+  precondition BrowseAndroidPhotoWall.catalog_available statement "The app-private catalog may be empty, but any projected row must have one currently accessible MediaStore location." refs AndroidMediaLocation.photoId,AndroidMediaLocation.accessible
+  reads AndroidMediaLocation.photoId,AndroidMediaLocation.uri,AndroidMediaLocation.displayName,AndroidMediaLocation.dateTakenMillis,AndroidMediaLocation.accessible,PhotoAnnotation.photoId,PhotoAnnotation.caption,PhotoAnnotation.tags,PhotoAnnotation.facets,PhotoAnnotation.createdAt
+  writes AndroidPhotoWall.photoIds,AndroidPhotoWall.dayGroups,AndroidPhotoWall.displayMode,AndroidPhotoWall.contentTab,AndroidPhotoWall.displayedYear,AndroidPhotoWall.heatmapGranularity,AndroidPhotoWall.selectedRange,AndroidPhotoWall.dailyCounts
+  ensure BrowseAndroidPhotoWall.all_accessible_photos statement "The wall query has no search-result limit, includes annotated and unannotated photos, chooses one currently accessible URI per distinct photoId, and excludes inaccessible locations." refs AndroidPhotoWall.photoIds,AndroidMediaLocation.photoId,AndroidMediaLocation.uri,AndroidMediaLocation.accessible
+  ensure BrowseAndroidPhotoWall.day_sections statement "Photos are grouped by device-local date derived only from dateTakenMillis, dated groups and photos are newest first, and null capture times appear once in a final unknown-time group." refs AndroidPhotoWall.dayGroups,AndroidMediaLocation.dateTakenMillis
+  ensure BrowseAndroidPhotoWall.thumbnail_mode statement "Thumbnail mode renders a lazy three-column square grid with one tappable thumbnail per projected photo." refs AndroidPhotoWall.displayMode,AndroidPhotoWall.photoIds
+  ensure BrowseAndroidPhotoWall.detail_mode statement "Detail mode renders the same photos in the same order as full-width cards and shows annotation content only when a latest annotation exists." refs AndroidPhotoWall.displayMode,AndroidPhotoWall.photoIds,PhotoAnnotation.caption
+  ensure BrowseAndroidPhotoWall.content_tabs statement "A two-item native tab row exposes photos and heatmap as mutually exclusive content destinations: photos shows no annual heatmap, heatmap shows no photo cards, and a selected-range action from heatmap switches to photos without changing the exact range." refs AndroidPhotoWall.contentTab,AndroidPhotoWall.selectedRange,AndroidPhotoWall.dayGroups
+  ensure BrowseAndroidPhotoWall.annual_heatmaps statement "Previous and next controls navigate natural calendar years, and a day, week, or month selector switches three GitHub-style views whose chronology moves down the screen without a nested horizontal year scroller: day mode renders one Sunday-through-Saturday week per row with weekday columns and month labels along the vertical axis; week mode renders every 53 or 54 intersecting calendar week as one chronological row; month mode renders all twelve calendar months as chronological rows. All modes use GitHub's square green five-level visual grammar, a 少-to-多 guide, selected-range emphasis, exact counts, and complete accessible range descriptions." refs AndroidPhotoWall.contentTab,AndroidPhotoWall.displayedYear,AndroidPhotoWall.heatmapGranularity,AndroidPhotoWall.selectedRange,AndroidPhotoWall.dailyCounts
+  ensure BrowseAndroidPhotoWall.range_filter statement "Tapping a non-empty daily, weekly, or monthly cell selects exactly the real capture-day groups in that inclusive cell range, shows the exact selected range and count in the heatmap tab, offers a visible action to view the selection in the photos tab, and a clear action restores all groups." refs AndroidPhotoWall.contentTab,AndroidPhotoWall.displayedYear,AndroidPhotoWall.heatmapGranularity,AndroidPhotoWall.selectedRange,AndroidPhotoWall.dayGroups,AndroidPhotoWall.dailyCounts
+  reject BrowseAndroidPhotoWall.inaccessible statement "A photo without a currently accessible MediaStore location is absent even if an annotation remains." refs AndroidMediaLocation.accessible,PhotoAnnotation.photoId
+  sideeffect BrowseAndroidPhotoWall.read_only statement "Browsing reads the catalog and thumbnails only; tab, display, aggregation, and selection state remain app-local and do not mutate MediaStore or annotation history." refs AndroidMediaLocation.uri,AndroidPhotoWall.contentTab,AndroidPhotoWall.displayMode,AndroidPhotoWall.displayedYear,AndroidPhotoWall.heatmapGranularity,AndroidPhotoWall.selectedRange
+  idempotency "The same accessible catalog, device time zone, content tab, display mode, displayed year, heatmap granularity, and selected range produce the same membership, groups, counts, levels, and stable order."
+  forbid BrowseAndroidPhotoWall.no_date_fallback statement "Modified time, discovery time, index time, and annotation time cannot stand in for a missing capture timestamp." refs AndroidMediaLocation.dateTakenMillis,PhotoAnnotation.createdAt
+
+function ViewAndroidPhotoFunctionPromise action view:
+  label "在 APM 内查看照片 Function Promise"
+  summary "Opens the tapped accessible photo in APM's native full-screen viewer, decodes its complete original image resolution, supports original-pixel zoom and bounded pan, and navigates the stable accessible-photo sequence."
+  depends AndroidMediaLocationFieldPromise,AndroidPhotoWallFieldPromise,AndroidPhotoViewerFieldPromise
+  trigger "The user taps an accessible photo in the photo wall, text search, Agent search, or similar-photo results, or selects previous or next inside the viewer."
+  precondition ViewAndroidPhoto.accessible_photo statement "The requested photoId maps to a currently accessible URI in the app-private catalog." refs AndroidMediaLocation.photoId,AndroidMediaLocation.uri,AndroidMediaLocation.accessible
+  reads AndroidPhotoWall.photoIds,AndroidMediaLocation.photoId,AndroidMediaLocation.uri,AndroidMediaLocation.displayName,AndroidMediaLocation.dateTakenMillis,AndroidMediaLocation.accessible
+  writes AndroidPhotoViewer.photoIds,AndroidPhotoViewer.selectedPhotoId,AndroidPhotoViewer.displayBitmap,AndroidPhotoViewer.zoomScale,AndroidPhotoViewer.panOffset
+  ensure ViewAndroidPhoto.in_app_destination statement "Opening from every APM photo-result surface starts the private native PhotoViewerActivity and keeps the user inside APM rather than resolving an external image application." refs AndroidPhotoViewer.selectedPhotoId,AndroidMediaLocation.uri
+  ensure ViewAndroidPhoto.exact_initial_selection statement "The first selectedPhotoId equals the exact accessible photoId tapped by the user, even when it originated in search or similarity results." refs AndroidPhotoViewer.selectedPhotoId,AndroidMediaLocation.photoId
+  ensure ViewAndroidPhoto.aspect_fit statement "The selected original URI is decoded off the main thread with ImageDecoder at its complete orientation-correct intrinsic dimensions and preserved aspect ratio, then shown fully fit on a dark full-screen surface at scale 1 without a thumbnail request or target size." refs AndroidPhotoViewer.displayBitmap,AndroidPhotoViewer.zoomScale
+  ensure ViewAndroidPhoto.zoom_and_pan statement "Pinch gestures clamp scale from 1 through max(5, nativePixelScale), permitting at least one original pixel per display pixel; pan remains bounded while zoomed, and changing selectedPhotoId resets scale and pan before rendering that photo." refs AndroidPhotoViewer.zoomScale,AndroidPhotoViewer.panOffset,AndroidPhotoViewer.selectedPhotoId
+  ensure ViewAndroidPhoto.adjacent_navigation statement "Visible previous and next controls move by one through the stable accessible wall order, disable at sequence boundaries, and show the current one-based position and total count." refs AndroidPhotoViewer.photoIds,AndroidPhotoViewer.selectedPhotoId
+  reject ViewAndroidPhoto.inaccessible_or_unreadable statement "A missing, newly inaccessible, or undecodable URI shows an in-app error state and never falls back to an external viewer or fabricates image content." refs AndroidMediaLocation.uri,AndroidMediaLocation.accessible,AndroidPhotoViewer.displayBitmap
+  sideeffect ViewAndroidPhoto.read_only statement "The function reads the app-private catalog and selected content URI only; navigation and gesture state are ephemeral and no MediaStore or annotation row is written." refs AndroidMediaLocation.uri,AndroidPhotoViewer.selectedPhotoId,AndroidPhotoViewer.zoomScale,AndroidPhotoViewer.panOffset
+  idempotency "Opening the same accessible photo against the same catalog order selects the same item and decodes the same complete original dimensions; gesture state always starts at scale 1 and zero pan."
+  forbid ViewAndroidPhoto.no_external_view statement "No viewer entry point constructs or dispatches Intent.ACTION_VIEW for a photo URI." refs AndroidMediaLocation.uri,AndroidPhotoViewer.selectedPhotoId
+
+function SelectAndroidPhotosForAnnotationFunctionPromise action select:
+  label "选择 Android 待标注照片 Function Promise"
+  summary "Uses the Android system multi-photo picker to grant read access, catalog only the returned URIs, and replace the selected-photo annotation scope."
+  depends PhotoAssetFieldPromise,AndroidMediaLocationFieldPromise,AndroidAnnotationSelectionFieldPromise
+  trigger "User taps 选择照片 and completes the Android system photo picker."
+  precondition SelectAndroidPhotosForAnnotation.system_result statement "The returned URI list comes from the registered Android system photo-picker contract." refs AndroidAnnotationSelection.source
+  reads AndroidMediaLocation.uri,AndroidMediaLocation.photoId,AndroidMediaLocation.accessible,AndroidAnnotationSelection.photoIds
+  writes PhotoAsset.id,PhotoAsset.mediaType,PhotoAsset.byteSize,PhotoAsset.discoveredAt,AndroidMediaLocation.uri,AndroidMediaLocation.mediaStoreId,AndroidMediaLocation.photoId,AndroidMediaLocation.displayName,AndroidMediaLocation.accessible,AndroidMediaLocation.modifiedSeconds,AndroidMediaLocation.lastSeenAt,AndroidAnnotationSelection.photoIds,AndroidAnnotationSelection.selectedAt
+  ensure SelectAndroidPhotosForAnnotation.content_hash statement "Every returned readable URI is content-addressed by streaming SHA-256 without modifying the original." refs PhotoAsset.id,AndroidMediaLocation.uri,AndroidMediaLocation.photoId
+  ensure SelectAndroidPhotosForAnnotation.exact_scope statement "After a non-empty picker result, photoIds contains exactly the deduplicated readable selected photos and no previously selected extras." refs AndroidAnnotationSelection.photoIds,AndroidAnnotationSelection.selectedAt
+  ensure SelectAndroidPhotosForAnnotation.preserve_other_access statement "Cataloging a selected set does not mark other previously authorized locations inaccessible." refs AndroidMediaLocation.accessible
+  reject SelectAndroidPhotosForAnnotation.cancelled statement "A cancelled or empty picker result starts no annotation and does not silently select the full library." refs AndroidAnnotationSelection.photoIds
+  reject SelectAndroidPhotosForAnnotation.unreadable statement "An unreadable returned URI is excluded, reported, and never sent to a model." refs AndroidMediaLocation.uri,AndroidMediaLocation.accessible
+  sideeffect SelectAndroidPhotosForAnnotation.catalog_and_selection_only statement "Only picker grants, app-private catalog rows, and the app-private selection set change." refs AndroidMediaLocation.uri,AndroidAnnotationSelection.photoIds
+  idempotency "Selecting the same unchanged URI set preserves content identities and replaces the selection with the same deduplicated photo IDs."
+  forbid SelectAndroidPhotosForAnnotation.no_media_mutation statement "Never update, move, rename, trash, or delete a selected source photo." refs AndroidMediaLocation.uri
+
+function RegisterPersonIdentityFunctionPromise action register:
+  label "注册本地人物 Function Promise"
+  summary "Uses Android Photo Picker, detects faces locally, lets the user tap exactly one face and name it, then stores only its embedding template."
+  depends AndroidMediaLocationFieldPromise,PersonIdentityFieldPromise,FaceTemplateFieldPromise,FaceObservationFieldPromise
+  trigger "User opens local person recognition, chooses a reference photo, taps one detected face, enters a name, and saves."
+  precondition RegisterPersonIdentity.reference_readable statement "The picker-granted content URI is readable for this registration operation." refs AndroidMediaLocation.uri
+  precondition RegisterPersonIdentity.face_selected statement "At least one quality-eligible face is detected and the user explicitly taps exactly one bounding box." refs FaceTemplate.boundingBox
+  precondition RegisterPersonIdentity.valid_name statement "The trimmed name is non-empty, length-bounded, and compatible with unique local identity labels." refs PersonIdentity.name
+  reads AndroidMediaLocation.uri,AndroidMediaLocation.photoId,PersonIdentity.name,FaceTemplate.modelName
+  writes PersonIdentity.id,PersonIdentity.name,PersonIdentity.createdAt,PersonIdentity.updatedAt,FaceTemplate.id,FaceTemplate.identityId,FaceTemplate.embedding,FaceTemplate.dimension,FaceTemplate.modelName,FaceTemplate.sourcePhotoId,FaceTemplate.boundingBox,FaceTemplate.createdAt,FaceObservation.matchState,FaceObservation.matchedIdentityId,FaceObservation.similarity
+  ensure RegisterPersonIdentity.selected_embedding statement "Only the tapped face is aligned, cropped in memory, embedded, L2-normalized, and associated with the entered identity." refs FaceTemplate.identityId,FaceTemplate.embedding,FaceTemplate.boundingBox
+  ensure RegisterPersonIdentity.scale_robust_reference statement "A clear quality-eligible frontal face remains detectable when it fills most of the reference photo because at least one bounded downscaled detector pass keeps it within the detector's trained face-size range." refs FaceTemplate.boundingBox,FaceTemplate.embedding
+  ensure RegisterPersonIdentity.local_only statement "Face detection, alignment, embedding, template storage, and rematching run on device without any HTTP request." refs FaceTemplate.embedding,FaceObservation.embedding
+  ensure RegisterPersonIdentity.rematch_existing statement "After a template is added, stored observations are rematched so already scanned annotated photos can become searchable by the identity name without another VLM call." refs FaceObservation.matchedIdentityId,FaceObservation.similarity
+  reject RegisterPersonIdentity.no_face statement "A reference with no quality-eligible face after all required detection scales creates no identity or template, and the UI does not falsely claim that the face was necessarily too small." refs FaceTemplate.id,FaceTemplate.boundingBox
+  reject RegisterPersonIdentity.no_selection statement "A detected face that the user did not tap cannot be registered." refs FaceTemplate.boundingBox
+  reject RegisterPersonIdentity.invalid_embedding statement "A missing, non-finite, wrong-dimension, or zero-norm embedding creates no template." refs FaceTemplate.embedding,FaceTemplate.dimension
+  sideeffect RegisterPersonIdentity.private_biometric_store statement "Only app-private identity, template, and derived match rows change; original and reference photo bytes remain unchanged." refs PersonIdentity.id,FaceTemplate.id
+  idempotency "Registering another valid reference under the same normalized name appends a template to that identity rather than creating a duplicate identity."
+  forbid RegisterPersonIdentity.no_reference_retention statement "Never store the picked bitmap, aligned face crop, image bytes, or upload the template." refs FaceTemplate.embedding,FaceTemplate.sourcePhotoId
+
+function MatchAndroidFacesFunctionPromise action match:
+  label "本地匹配相册人脸 Function Promise"
+  summary "Detects faces in accessible photos, extracts local embeddings, and records only thresholded unambiguous identity matches; every other face is unknown."
+  depends AndroidMediaLocationFieldPromise,PersonIdentityFieldPromise,FaceTemplateFieldPromise,FaceObservationFieldPromise
+  trigger "A scan discovers an unindexed accessible photo, registration changes templates, or annotation requests current local identities."
+  precondition MatchAndroidFaces.accessible statement "Only a currently permission-accessible content URI is read for first-time detection." refs AndroidMediaLocation.uri,AndroidMediaLocation.accessible
+  reads AndroidMediaLocation.uri,AndroidMediaLocation.photoId,AndroidMediaLocation.accessible,PersonIdentity.id,PersonIdentity.name,FaceTemplate.identityId,FaceTemplate.embedding,FaceTemplate.dimension,FaceTemplate.modelName,FaceObservation.embedding,FaceObservation.modelName
+  writes FaceObservation.id,FaceObservation.photoId,FaceObservation.faceIndex,FaceObservation.embedding,FaceObservation.boundingBox,FaceObservation.detectorScore,FaceObservation.modelName,FaceObservation.pipelineVersion,FaceObservation.matchState,FaceObservation.matchedIdentityId,FaceObservation.similarity,FaceObservation.threshold,FaceObservation.indexedAt
+  ensure MatchAndroidFaces.local_embedding statement "Detection, five-landmark alignment, cropping, and embedding run with bundled models on device and never call the VLM endpoint." refs FaceObservation.embedding,FaceObservation.modelName
+  ensure MatchAndroidFaces.multiscale_coverage statement "Bounded detector passes cover large close-up faces and smaller distant faces, map boxes and five landmarks back to one original coordinate space, and use original-resolution pixels for alignment and embedding." refs FaceObservation.boundingBox,FaceObservation.embedding,FaceObservation.detectorScore
+  ensure MatchAndroidFaces.cross_scale_dedup statement "Cross-scale overlap suppression emits one observation per physical face in stable spatial order." refs FaceObservation.faceIndex,FaceObservation.boundingBox,FaceObservation.detectorScore
+  ensure MatchAndroidFaces.pipeline_reindex statement "Changing detector scale or deduplication behavior changes the face-index pipeline version so photos previously recorded with zero or stale detections are eligible for automatic re-indexing without invalidating compatible registered embeddings." refs FaceObservation.pipelineVersion,FaceObservation.indexedAt,FaceTemplate.modelName
+  ensure MatchAndroidFaces.threshold_and_margin statement "A person is accepted only when the best cosine similarity is at least 0.55 and exceeds the best different identity by at least 0.05." refs FaceObservation.similarity,FaceObservation.threshold,FaceObservation.matchedIdentityId
+  ensure MatchAndroidFaces.unknown_by_default statement "No templates, low similarity, ambiguous candidates, invalid faces, and unmatched faces produce unknown with no identity name." refs FaceObservation.matchState,FaceObservation.matchedIdentityId
+  ensure MatchAndroidFaces.current_provenance statement "Each indexed photo records zero-face completion or one observation per detected face for the current detector and embedding model version." refs FaceObservation.photoId,FaceObservation.faceIndex,FaceObservation.modelName,FaceObservation.indexedAt
+  reject MatchAndroidFaces.inaccessible statement "No new photo pixels are read when the MediaStore URI is not currently accessible." refs AndroidMediaLocation.uri,AndroidMediaLocation.accessible
+  reject MatchAndroidFaces.invalid_embedding statement "Non-finite, wrong-dimension, or zero-norm embeddings are not matched or persisted as identities." refs FaceObservation.embedding
+  sideeffect MatchAndroidFaces.local_database_only statement "Only app-private face index and derived match rows change." refs FaceObservation.id,FaceObservation.matchedIdentityId
+  idempotency "A photo already indexed with the same content hash and face model is not re-read; template changes rematch stored embeddings only."
+  forbid MatchAndroidFaces.no_vlm_person_decision statement "VLM captions, prompts, candidate names, and responses cannot influence person match scores or identity decisions." refs FaceObservation.matchState,FaceObservation.matchedIdentityId
+
+function RegisterPetIdentityFunctionPromise action register:
+  label "注册本地宠物 Function Promise"
+  summary "Uses Android Photo Picker, detects cats and dogs locally, lets the user tap exactly one detected pet and name it, then stores only its visual embedding template."
+  depends AndroidMediaLocationFieldPromise,PetIdentityFieldPromise,PetTemplateFieldPromise,PetObservationFieldPromise
+  trigger "User opens local identity recognition, selects pet mode, chooses a reference photo, taps one detected cat or dog, enters a name, and saves."
+  precondition RegisterPetIdentity.reference_readable statement "The picker-granted content URI is readable for this registration operation." refs AndroidMediaLocation.uri
+  precondition RegisterPetIdentity.pet_selected statement "At least one quality-eligible cat or dog is locally detected and the user explicitly taps exactly one bounding box." refs PetTemplate.boundingBox,PetTemplate.species
+  precondition RegisterPetIdentity.valid_name statement "The trimmed pet name is non-empty, length-bounded, and compatible with unique local pet labels." refs PetIdentity.name
+  reads AndroidMediaLocation.uri,AndroidMediaLocation.photoId,PetIdentity.name,PetTemplate.modelName,PetTemplate.species
+  writes PetIdentity.id,PetIdentity.name,PetIdentity.createdAt,PetIdentity.updatedAt,PetTemplate.id,PetTemplate.identityId,PetTemplate.species,PetTemplate.embedding,PetTemplate.dimension,PetTemplate.modelName,PetTemplate.sourcePhotoId,PetTemplate.boundingBox,PetTemplate.createdAt,PetObservation.matchState,PetObservation.matchedIdentityId,PetObservation.similarity
+  ensure RegisterPetIdentity.selected_embedding statement "Only the tapped pet crop is embedded in memory, L2-normalized, and associated with the entered pet identity and detected species." refs PetTemplate.identityId,PetTemplate.species,PetTemplate.embedding,PetTemplate.boundingBox
+  ensure RegisterPetIdentity.local_only statement "Pet detection, cropping, embedding, template storage, and rematching run on device without any HTTP request." refs PetTemplate.embedding,PetObservation.embedding
+  ensure RegisterPetIdentity.rematch_existing statement "After a pet template is added, stored same-species observations are rematched so already annotated photos can become searchable by the pet name without another VLM call." refs PetObservation.matchedIdentityId,PetObservation.similarity
+  reject RegisterPetIdentity.no_pet statement "A reference with no quality-eligible cat or dog creates no identity or template and reports the supported categories clearly." refs PetTemplate.id,PetTemplate.boundingBox
+  reject RegisterPetIdentity.no_selection statement "A detected pet that the user did not tap cannot be registered." refs PetTemplate.boundingBox
+  reject RegisterPetIdentity.invalid_embedding statement "A missing, non-finite, wrong-dimension, or zero-norm pet embedding creates no template." refs PetTemplate.embedding,PetTemplate.dimension
+  sideeffect RegisterPetIdentity.private_template_store statement "Only app-private identity, template, and derived match rows change; original and reference photo bytes remain unchanged." refs PetIdentity.id,PetTemplate.id
+  idempotency "Registering another valid reference under the same normalized pet name appends a template to that pet identity rather than creating a duplicate."
+  forbid RegisterPetIdentity.no_reference_retention statement "Never store the picked bitmap, pet crop, image bytes, or upload the template." refs PetTemplate.embedding,PetTemplate.sourcePhotoId
+
+function MatchAndroidPetsFunctionPromise action match:
+  label "本地匹配相册宠物 Function Promise"
+  summary "Detects cats and dogs in accessible photos, extracts local visual embeddings, and records only conservative same-species unambiguous identity matches; every other pet is unknown."
+  depends AndroidMediaLocationFieldPromise,PetIdentityFieldPromise,PetTemplateFieldPromise,PetObservationFieldPromise
+  trigger "A scan discovers an unindexed accessible photo, pet registration changes templates, or annotation requests current local identities."
+  precondition MatchAndroidPets.accessible statement "Only a currently permission-accessible content URI is read for first-time detection." refs AndroidMediaLocation.uri,AndroidMediaLocation.accessible
+  reads AndroidMediaLocation.uri,AndroidMediaLocation.photoId,AndroidMediaLocation.accessible,PetIdentity.id,PetIdentity.name,PetTemplate.identityId,PetTemplate.species,PetTemplate.embedding,PetTemplate.dimension,PetTemplate.modelName,PetObservation.embedding,PetObservation.modelName
+  writes PetObservation.id,PetObservation.photoId,PetObservation.petIndex,PetObservation.species,PetObservation.embedding,PetObservation.boundingBox,PetObservation.detectorScore,PetObservation.modelName,PetObservation.pipelineVersion,PetObservation.matchState,PetObservation.matchedIdentityId,PetObservation.similarity,PetObservation.threshold,PetObservation.indexedAt
+  ensure MatchAndroidPets.local_embedding statement "Detection, padded cropping, and embedding run with bundled models on device and never call the VLM endpoint." refs PetObservation.embedding,PetObservation.modelName
+  ensure MatchAndroidPets.same_species_only statement "Cat observations compare only with cat templates and dog observations compare only with dog templates." refs PetObservation.species,PetObservation.matchedIdentityId,PetTemplate.species
+  ensure MatchAndroidPets.threshold_and_margin statement "A pet is accepted only when the best cosine similarity is at least 0.90 and exceeds the best different same-species identity by at least 0.04." refs PetObservation.similarity,PetObservation.threshold,PetObservation.matchedIdentityId
+  ensure MatchAndroidPets.unknown_by_default statement "No templates, low similarity, ambiguity, unsupported species, invalid crops, and unmatched pets produce unknown with no identity name." refs PetObservation.matchState,PetObservation.matchedIdentityId
+  ensure MatchAndroidPets.current_provenance statement "Each indexed photo records zero-pet completion or one observation per detected cat or dog for the current detector and embedding pipeline version." refs PetObservation.photoId,PetObservation.petIndex,PetObservation.modelName,PetObservation.pipelineVersion,PetObservation.indexedAt
+  reject MatchAndroidPets.inaccessible statement "No new photo pixels are read when the MediaStore URI is not currently accessible." refs AndroidMediaLocation.uri,AndroidMediaLocation.accessible
+  reject MatchAndroidPets.invalid_embedding statement "Non-finite, wrong-dimension, or zero-norm embeddings are not matched or persisted as identities." refs PetObservation.embedding
+  sideeffect MatchAndroidPets.local_database_only statement "Only app-private pet index and derived match rows change." refs PetObservation.id,PetObservation.matchedIdentityId
+  idempotency "A photo already indexed with the same content hash and pet pipeline is not re-read; template changes rematch stored embeddings only."
+  forbid MatchAndroidPets.no_vlm_pet_decision statement "VLM captions, prompts, candidate names, and responses cannot influence pet match scores or identity decisions." refs PetObservation.matchState,PetObservation.matchedIdentityId
+
+function CheckAndroidVisualSimilarityFunctionPromise action check:
+  label "触发 Android 相似检查 Function Promise"
+  summary "The 检查相似 button requires one explicit scope, refreshes MediaStore visibility, and delegates only that scope to the local DINOv2 visual indexer."
+  depends SimilarityCheckRequestFieldPromise,AndroidMediaLocationFieldPromise,PhotoVisualFeatureFieldPromise,GeneralSubjectObservationFieldPromise
+  trigger "User taps 检查相似, chooses 增量检查, 近期检查, or 全量检查, supplies a valid custom duration when required, and confirms."
+  precondition CheckAndroidVisualSimilarity.explicit_scope statement "Exactly one valid SimilarityCheckRequest is confirmed before permission or indexing work begins." refs SimilarityCheckRequest.mode,SimilarityCheckRequest.recentAmount,SimilarityCheckRequest.recentUnit,SimilarityCheckRequest.requestedAtMillis,SimilarityCheckRequest.recentCutoffMillis
+  precondition CheckAndroidVisualSimilarity.model_available statement "The checksum-verified bundled DINOv2 model is available before the check starts." refs PhotoVisualFeature.modelName,PhotoVisualFeature.pipelineVersion
+  reads SimilarityCheckRequest.mode,SimilarityCheckRequest.recentAmount,SimilarityCheckRequest.recentUnit,SimilarityCheckRequest.requestedAtMillis,SimilarityCheckRequest.recentCutoffMillis,AndroidMediaLocation.photoId,AndroidMediaLocation.uri,AndroidMediaLocation.dateTakenMillis,AndroidMediaLocation.accessible,PhotoVisualFeature.photoId,PhotoVisualFeature.modelName,PhotoVisualFeature.pipelineVersion
+  writes PhotoVisualFeature.photoId,PhotoVisualFeature.globalEmbedding,PhotoVisualFeature.dimension,PhotoVisualFeature.patchGrid,PhotoVisualFeature.gridSize,PhotoVisualFeature.modelName,PhotoVisualFeature.pipelineVersion,PhotoVisualFeature.indexedAt,GeneralSubjectObservation.id,GeneralSubjectObservation.photoId,GeneralSubjectObservation.subjectIndex,GeneralSubjectObservation.category,GeneralSubjectObservation.embedding,GeneralSubjectObservation.dimension,GeneralSubjectObservation.boundingBox,GeneralSubjectObservation.detectorScore,GeneralSubjectObservation.detectorName,GeneralSubjectObservation.modelName,GeneralSubjectObservation.pipelineVersion,GeneralSubjectObservation.indexedAt
+  ensure CheckAndroidVisualSimilarity.one_button_three_modes statement "The primary screen exposes one 检查相似 button whose confirmation surface visibly offers incremental new-photo, custom recent, and full-library checks." refs SimilarityCheckRequest.mode,SimilarityCheckRequest.recentAmount,SimilarityCheckRequest.recentUnit
+  ensure CheckAndroidVisualSimilarity.refresh_visibility statement "Every confirmed mode first refreshes the currently authorized MediaStore snapshot; Android 14 partial access reopens reselection before scanning." refs AndroidMediaLocation.uri,AndroidMediaLocation.accessible,AndroidMediaLocation.lastSeenAt
+  ensure CheckAndroidVisualSimilarity.incremental_scope statement "Incremental mode processes only currently accessible content lacking the exact current model and pipeline feature, so newly discovered and previously unfinished photos are added without recomputing current photos." refs SimilarityCheckRequest.mode,AndroidMediaLocation.photoId,AndroidMediaLocation.accessible,PhotoVisualFeature.photoId,PhotoVisualFeature.modelName,PhotoVisualFeature.pipelineVersion
+  ensure CheckAndroidVisualSimilarity.recent_scope statement "Recent mode recomputes every currently accessible photo whose real MediaStore dateTakenMillis is at or after the user-derived cutoff, including photos already indexed by the current pipeline." refs SimilarityCheckRequest.mode,SimilarityCheckRequest.recentCutoffMillis,AndroidMediaLocation.dateTakenMillis,AndroidMediaLocation.accessible,PhotoVisualFeature.indexedAt
+  ensure CheckAndroidVisualSimilarity.full_scope statement "Full mode recomputes every currently accessible photo with no hidden count limit, including photos already indexed by the current pipeline." refs SimilarityCheckRequest.mode,AndroidMediaLocation.photoId,AndroidMediaLocation.accessible,PhotoVisualFeature.indexedAt
+  ensure CheckAndroidVisualSimilarity.scope_report statement "Progress and completion visibly report selected mode, considered photos, successful refreshes, failures, and recent photos excluded because capture time is unavailable." refs SimilarityCheckRequest.mode,AndroidMediaLocation.dateTakenMillis,PhotoVisualFeature.indexedAt
+  reject CheckAndroidVisualSimilarity.invalid_recent statement "A recent request with invalid amount, unit, cutoff, or missing capture time never expands to a broader photo scope; unknown capture-time photos are counted as excluded." refs SimilarityCheckRequest.recentAmount,SimilarityCheckRequest.recentUnit,SimilarityCheckRequest.recentCutoffMillis,AndroidMediaLocation.dateTakenMillis
+  reject CheckAndroidVisualSimilarity.inaccessible statement "No photo outside current permission-visible MediaStore state is decoded or indexed." refs AndroidMediaLocation.uri,AndroidMediaLocation.accessible
+  sideeffect CheckAndroidVisualSimilarity.derived_only statement "Only app-private catalog visibility and derived visual feature rows change; originals are read-only and no network request occurs." refs AndroidMediaLocation.uri,AndroidMediaLocation.accessible,PhotoVisualFeature.globalEmbedding,GeneralSubjectObservation.embedding
+  idempotency "Incremental mode converges to zero pending current-pipeline photos; repeated recent or full checks replace each successful derived feature atomically rather than adding duplicate rows."
+  forbid CheckAndroidVisualSimilarity.no_predelete statement "A forced recent or full check never deletes a prior valid feature before a replacement for that photo has been fully computed and committed." refs PhotoVisualFeature.photoId,PhotoVisualFeature.indexedAt
+
+function IndexAndroidVisualSimilarityFunctionPromise action index:
+  label "索引 Android 视觉相似特征 Function Promise"
+  summary "Uses the public DINOv2 ViT-S/14 registers checkpoint on device to index normalized whole-photo and 4x4 spatial vectors, then reuses local face and pet observations and embeds quality-eligible general subject crops."
+  depends AndroidMediaLocationFieldPromise,PhotoVisualFeatureFieldPromise,FaceObservationFieldPromise,PetObservationFieldPromise,GeneralSubjectObservationFieldPromise
+  trigger "A validated similarity check supplies an explicit photo scope, a newly accessible photo lacks the current pipeline, or the DINOv2 pipeline version changes."
+  precondition IndexAndroidVisualSimilarity.accessible statement "Only currently permission-accessible content URIs are decoded." refs AndroidMediaLocation.uri,AndroidMediaLocation.accessible
+  precondition IndexAndroidVisualSimilarity.model_available statement "The exact public DINOv2 ViT-S/14 registers checkpoint is present in app-private or packaged model storage and passes its expected SHA-256 identity check before indexing." refs PhotoVisualFeature.modelName,PhotoVisualFeature.pipelineVersion
+  reads AndroidMediaLocation.uri,AndroidMediaLocation.photoId,AndroidMediaLocation.accessible,FaceObservation.photoId,FaceObservation.embedding,FaceObservation.boundingBox,PetObservation.photoId,PetObservation.embedding,PetObservation.boundingBox
+  writes PhotoVisualFeature.photoId,PhotoVisualFeature.globalEmbedding,PhotoVisualFeature.dimension,PhotoVisualFeature.patchGrid,PhotoVisualFeature.gridSize,PhotoVisualFeature.modelName,PhotoVisualFeature.pipelineVersion,PhotoVisualFeature.indexedAt,GeneralSubjectObservation.id,GeneralSubjectObservation.photoId,GeneralSubjectObservation.subjectIndex,GeneralSubjectObservation.category,GeneralSubjectObservation.embedding,GeneralSubjectObservation.dimension,GeneralSubjectObservation.boundingBox,GeneralSubjectObservation.detectorScore,GeneralSubjectObservation.detectorName,GeneralSubjectObservation.modelName,GeneralSubjectObservation.pipelineVersion,GeneralSubjectObservation.indexedAt
+  ensure IndexAndroidVisualSimilarity.dinov2_global statement "One bounded orientation-corrected in-memory thumbnail produces a finite L2-normalized 384-dimensional DINOv2 class-token descriptor from an exact [1,261,384] model output." refs PhotoVisualFeature.globalEmbedding,PhotoVisualFeature.dimension,PhotoVisualFeature.modelName
+  ensure IndexAndroidVisualSimilarity.four_by_four_patches statement "After excluding one class and four register tokens, the 16x16 DINOv2 patch tokens are pooled by original coordinates into exactly sixteen row-major 4x4 cells and every cell is normalized independently." refs PhotoVisualFeature.patchGrid,PhotoVisualFeature.gridSize,PhotoVisualFeature.dimension
+  ensure IndexAndroidVisualSimilarity.general_subject_crops statement "The bundled local object detector selects a bounded number of quality-eligible non-person, non-cat, non-dog subjects; padded crops are embedded by the same DINOv2 checkpoint and discarded immediately." refs GeneralSubjectObservation.category,GeneralSubjectObservation.embedding,GeneralSubjectObservation.boundingBox
+  ensure IndexAndroidVisualSimilarity.reuse_identity_observations statement "Person and pet subject evidence reuses existing local FaceObservation and PetObservation embeddings and bounds rather than duplicating detections in the general-subject table." refs FaceObservation.embedding,FaceObservation.boundingBox,PetObservation.embedding,PetObservation.boundingBox,GeneralSubjectObservation.category
+  ensure IndexAndroidVisualSimilarity.provenance statement "Every committed feature records content identity, exact checkpoint, detector, preprocessing, pooling, quantization, and successful index time." refs PhotoVisualFeature.photoId,PhotoVisualFeature.modelName,PhotoVisualFeature.pipelineVersion,PhotoVisualFeature.indexedAt,GeneralSubjectObservation.detectorName,GeneralSubjectObservation.modelName,GeneralSubjectObservation.pipelineVersion
+  ensure IndexAndroidVisualSimilarity.resumable statement "Incremental scope skips a photo already indexed by the same content identity and pipeline; explicit recent or full scopes may atomically replace it, while every failure remains retryable without erasing an older valid feature." refs PhotoVisualFeature.photoId,PhotoVisualFeature.pipelineVersion,PhotoVisualFeature.indexedAt
+  reject IndexAndroidVisualSimilarity.inaccessible statement "No photo pixels are read when current MediaStore permission is absent." refs AndroidMediaLocation.uri,AndroidMediaLocation.accessible
+  reject IndexAndroidVisualSimilarity.missing_model statement "A missing, wrong, or checksum-mismatched DINOv2 model writes no visual or subject feature and reports a visible actionable error." refs PhotoVisualFeature.modelName,PhotoVisualFeature.pipelineVersion
+  reject IndexAndroidVisualSimilarity.invalid_output statement "Wrong dimensions, non-finite values, empty vectors, missing patch cells, or zero norms commit no partial feature set for that photo." refs PhotoVisualFeature.globalEmbedding,PhotoVisualFeature.patchGrid,GeneralSubjectObservation.embedding
+  sideeffect IndexAndroidVisualSimilarity.local_database_only statement "Only app-private derived feature rows change; thumbnails and crops stay in memory, no HTTP request occurs, and MediaStore originals remain unchanged." refs AndroidMediaLocation.uri,PhotoVisualFeature.globalEmbedding,GeneralSubjectObservation.embedding
+  idempotency "The same content hash, checkpoint, and pipeline produces one atomically replaceable derived feature set rather than duplicate rows, regardless of how many explicit checks run."
+  forbid IndexAndroidVisualSimilarity.no_vlm_features statement "Neither VLM output nor annotation state can create, alter, or fill missing visual vectors." refs PhotoVisualFeature.globalEmbedding,PhotoVisualFeature.patchGrid
+
+function FindSimilarAndroidPhotosFunctionPromise action compare:
+  label "查看 Android 相似照片 Function Promise"
+  summary "Ranks accessible photos with separate DINOv2 whole-scene, 4x4 composition, capture-time, registered face and pet, and general-subject evidence, then adds a non-scoring explanation from local VLM-derived tags."
+  depends AndroidMediaLocationFieldPromise,PhotoVisualFeatureFieldPromise,FaceObservationFieldPromise,PetObservationFieldPromise,GeneralSubjectObservationFieldPromise,PhotoAnnotationFieldPromise,SimilarPhotoResultFieldPromise
+  trigger "User taps 查看相似照片 on a photo with current visual features."
+  precondition FindSimilarAndroidPhotos.query_feature statement "The query photo has a valid current DINOv2 feature set and remains accessible." refs AndroidMediaLocation.photoId,AndroidMediaLocation.accessible,PhotoVisualFeature.photoId,PhotoVisualFeature.pipelineVersion
+  reads AndroidMediaLocation.photoId,AndroidMediaLocation.uri,AndroidMediaLocation.displayName,AndroidMediaLocation.dateTakenMillis,AndroidMediaLocation.accessible,PhotoVisualFeature.photoId,PhotoVisualFeature.globalEmbedding,PhotoVisualFeature.dimension,PhotoVisualFeature.patchGrid,PhotoVisualFeature.gridSize,PhotoVisualFeature.modelName,PhotoVisualFeature.pipelineVersion,FaceObservation.photoId,FaceObservation.embedding,PetObservation.photoId,PetObservation.embedding,GeneralSubjectObservation.photoId,GeneralSubjectObservation.category,GeneralSubjectObservation.embedding,PhotoAnnotation.photoId,PhotoAnnotation.tags,PhotoAnnotation.facets
+  writes -
+  ensure FindSimilarAndroidPhotos.global_similarity statement "Whole-scene similarity is cosine similarity between compatible normalized DINOv2 global vectors." refs SimilarPhotoResult.globalSimilarity,PhotoVisualFeature.globalEmbedding
+  ensure FindSimilarAndroidPhotos.composition_similarity statement "Composition similarity compares corresponding row-major 4x4 cells and aggregates all sixteen bounded cell cosines without discarding spatial position." refs SimilarPhotoResult.compositionSimilarity,PhotoVisualFeature.patchGrid,PhotoVisualFeature.gridSize
+  ensure FindSimilarAndroidPhotos.burst_evidence statement "Capture-time proximity can classify a high-global, high-composition pair as burst, but time alone cannot make visually dissimilar photos similar." refs AndroidMediaLocation.dateTakenMillis,SimilarPhotoResult.captureDeltaMillis,SimilarPhotoResult.relationship,SimilarPhotoResult.globalSimilarity,SimilarPhotoResult.compositionSimilarity
+  ensure FindSimilarAndroidPhotos.subject_evidence statement "Subject similarity uses compatible maximum matching across existing face observations, existing same-species pet observations, and same-category general-subject observations; missing subject evidence remains null rather than zero." refs FaceObservation.embedding,PetObservation.embedding,GeneralSubjectObservation.category,GeneralSubjectObservation.embedding,SimilarPhotoResult.subjectSimilarity
+  ensure FindSimilarAndroidPhotos.typed_relationship statement "Every candidate exposes independent global, composition, subject, and time evidence plus one primary relationship selected by deterministic versioned thresholds." refs SimilarPhotoResult.relationship,SimilarPhotoResult.globalSimilarity,SimilarPhotoResult.compositionSimilarity,SimilarPhotoResult.subjectSimilarity,SimilarPhotoResult.captureDeltaMillis,SimilarPhotoResult.rankScore
+  ensure FindSimilarAndroidPhotos.accessible_only statement "The query and every candidate resolve to currently accessible MediaStore URIs and the same content identity is excluded." refs AndroidMediaLocation.uri,AndroidMediaLocation.accessible,SimilarPhotoResult.queryPhotoId,SimilarPhotoResult.candidatePhotoId
+  ensure FindSimilarAndroidPhotos.vlm_explanation_only statement "After ranking is final, overlapping local VLM-derived tags and facets may be rendered as why-similar text; removing or changing annotations cannot change scores, relationship, or ordering." refs PhotoAnnotation.tags,PhotoAnnotation.facets,SimilarPhotoResult.explanation,SimilarPhotoResult.rankScore
+  reject FindSimilarAndroidPhotos.missing_feature statement "A photo without current valid visual features shows an indexing action and returns no fabricated similarity." refs PhotoVisualFeature.photoId,PhotoVisualFeature.pipelineVersion
+  reject FindSimilarAndroidPhotos.incompatible_model statement "Features with different checkpoint identity, dimension, grid size, or pipeline version are not compared." refs PhotoVisualFeature.modelName,PhotoVisualFeature.dimension,PhotoVisualFeature.gridSize,PhotoVisualFeature.pipelineVersion
+  sideeffect FindSimilarAndroidPhotos.read_only statement "Viewing similarity writes neither catalog state nor MediaStore and never deletes, moves, hides, or labels an original as redundant." refs AndroidMediaLocation.uri,SimilarPhotoResult.queryPhotoId,SimilarPhotoResult.candidatePhotoId
+  idempotency "The same query against unchanged feature and accessibility state returns the same score-descending, content-id-stable order."
+  forbid FindSimilarAndroidPhotos.no_vlm_ranking statement "VLM output and explanation text cannot contribute to candidate inclusion, numeric score, relationship class, or ordering." refs PhotoAnnotation.tags,PhotoAnnotation.facets,SimilarPhotoResult.rankScore,SimilarPhotoResult.relationship
+
+function AnnotateAndroidPhotosFunctionPromise action annotate:
+  label "Android VLM 标注 Function Promise"
+  summary "Overlays anonymous markers on a bounded read-only thumbnail, sends it with an explicit context budget to the explicitly authorized Ollama endpoint for v6 grammar-safe semantics, validates marker-bound observations, and replaces markers with local person or pet names only on device."
+  depends AndroidMediaLocationFieldPromise,AndroidAnnotationSelectionFieldPromise,InferenceConfigurationFieldPromise,PersonIdentityFieldPromise,FaceObservationFieldPromise,PetIdentityFieldPromise,PetObservationFieldPromise,PhotoAnnotationFieldPromise,AndroidSearchStateFieldPromise
+  trigger "User invokes 标注所选 or 全量标注 for photos without this model and prompt version."
+  precondition AnnotateAndroidPhotos.accessible statement "The content URI is currently accessible." refs AndroidMediaLocation.uri,AndroidMediaLocation.accessible
+  precondition AnnotateAndroidPhotos.authorized_endpoint statement "The configured endpoint is loopback or allowRemote is true." refs InferenceConfiguration.endpoint,InferenceConfiguration.allowRemote
+  reads AndroidMediaLocation.uri,AndroidMediaLocation.photoId,AndroidMediaLocation.accessible,AndroidAnnotationSelection.photoIds,InferenceConfiguration.endpoint,InferenceConfiguration.modelName,InferenceConfiguration.allowRemote,FaceObservation.photoId,FaceObservation.faceIndex,FaceObservation.boundingBox,FaceObservation.matchState,FaceObservation.matchedIdentityId,PetObservation.photoId,PetObservation.petIndex,PetObservation.boundingBox,PetObservation.matchState,PetObservation.matchedIdentityId,PhotoAnnotation.promptVersion
+  writes PhotoAnnotation.id,PhotoAnnotation.photoId,PhotoAnnotation.caption,PhotoAnnotation.tags,PhotoAnnotation.facets,PhotoAnnotation.visibleText,PhotoAnnotation.subjectMentions,PhotoAnnotation.recognizedSubjects,PhotoAnnotation.modelProvider,PhotoAnnotation.modelName,PhotoAnnotation.promptVersion,PhotoAnnotation.createdAt,AndroidSearchState.annotationCount,AndroidSearchState.enabled,AndroidSearchState.suggestions
+  ensure AnnotateAndroidPhotos.structured_facets statement "Validated daylight, sky, counted objects, people presentation, actions, scenes, weather, tags, visible text, caption template, and anonymous subject mentions are committed atomically." refs PhotoAnnotation.caption,PhotoAnnotation.tags,PhotoAnnotation.facets,PhotoAnnotation.visibleText,PhotoAnnotation.subjectMentions
+  ensure AnnotateAndroidPhotos.anonymous_overlay statement "The phone draws P1..Pn and PET1..PETn over local observation bounds on an in-memory copy; the prompt and schema contain only those markers and never contain identity labels, embeddings, or scores." refs FaceObservation.faceIndex,FaceObservation.boundingBox,PetObservation.petIndex,PetObservation.boundingBox,PhotoAnnotation.subjectMentions
+  ensure AnnotateAndroidPhotos.bounded_thumbnail statement "The original is decoded only into an in-memory JPEG thumbnail whose longest edge is at most 1024 pixels for the first request; the original bytes are never encoded or uploaded." refs AndroidMediaLocation.uri
+  ensure AnnotateAndroidPhotos.context_budget statement "Every VLM annotation request asks Ollama for an 8192-token context window; if Ollama reports a request-context overflow, the app retries that photo at most once with a fresh thumbnail whose longest edge is at most 768 pixels." refs InferenceConfiguration.modelName,AndroidMediaLocation.uri
+  ensure AnnotateAndroidPhotos.grammar_safe_schema statement "Every bounded free-text repetition in the JSON Schema sent to Ollama remains below the deployed llama.cpp grammar safety ceiling; newly generated visible text is limited to 512 characters while longer legacy annotations remain readable without migration." refs PhotoAnnotation.visibleText,InferenceConfiguration.modelName
+  ensure AnnotateAndroidPhotos.local_name_substitution statement "At read time, validated markers are replaced locally with current accepted person or pet names; unknown markers render as numbered unknown labels and add no registered name to search." refs PhotoAnnotation.caption,PhotoAnnotation.subjectMentions,PhotoAnnotation.recognizedSubjects,FaceObservation.matchedIdentityId,PetObservation.matchedIdentityId
+  ensure AnnotateAndroidPhotos.provenance statement "Provider, exact model, prompt version, and completion time are recorded." refs PhotoAnnotation.modelProvider,PhotoAnnotation.modelName,PhotoAnnotation.promptVersion,PhotoAnnotation.createdAt
+  ensure AnnotateAndroidPhotos.enables_search statement "The first successful annotation enables search and suggestions are rebuilt from current annotation metadata." refs AndroidSearchState.annotationCount,AndroidSearchState.enabled,AndroidSearchState.suggestions
+  ensure AnnotateAndroidPhotos.selected_scope_exact statement "标注所选 considers only currently accessible photo IDs in the latest explicit selection and cannot fall through to other catalog photos." refs AndroidAnnotationSelection.photoIds,AndroidMediaLocation.accessible,PhotoAnnotation.photoId
+  ensure AnnotateAndroidPhotos.full_scope_complete statement "全量标注 considers every currently accessible pending photo in one explicit run, including libraries larger than 20 photos; partial Android permission limits full scope to the user-authorized visible subset." refs AndroidMediaLocation.photoId,AndroidMediaLocation.accessible,PhotoAnnotation.photoId
+  ensure AnnotateAndroidPhotos.scope_visible statement "Progress and completion status identify 所选 or 全量 and report considered, succeeded, and failed counts." refs AndroidAnnotationSelection.photoIds,PhotoAnnotation.photoId
+  reject AnnotateAndroidPhotos.no_selected_photos statement "标注所选 with no completed non-empty selection sends no photo and directs the user to 选择照片 first." refs AndroidAnnotationSelection.photoIds
+  reject AnnotateAndroidPhotos.invalid_output statement "Malformed, missing, excessive, non-positive-count facet data, an unoffered marker, a marker-kind mismatch, or an identity-like VLM subject field commits nothing." refs PhotoAnnotation.facets,PhotoAnnotation.subjectMentions
+  reject AnnotateAndroidPhotos.context_overflow statement "A context overflow after the one bounded retry commits no annotation and remains a visible per-photo failure." refs PhotoAnnotation.id,AndroidMediaLocation.photoId
+  reject AnnotateAndroidPhotos.schema_initialization_failure statement "A structured-output schema or grammar initialization failure commits no annotation and remains a visible per-photo failure." refs PhotoAnnotation.id,InferenceConfiguration.modelName
+  reject AnnotateAndroidPhotos.model_failure statement "Network, endpoint, or model errors commit no partial annotation." refs InferenceConfiguration.endpoint,InferenceConfiguration.modelName
+  sideeffect AnnotateAndroidPhotos.explicit_transfer statement "Only after endpoint authorization, a resized in-memory image copy is sent to that endpoint; the original remains unchanged." refs AndroidMediaLocation.uri,InferenceConfiguration.endpoint,InferenceConfiguration.allowRemote
+  idempotency "Within either scope, the same model and prompt version is skipped unless the user explicitly requests re-annotation; changing scope does not duplicate current annotations."
+  forbid AnnotateAndroidPhotos.no_identity_guess statement "The VLM cannot receive or emit person or pet names or influence local matching; unknown subjects remain explicitly unknown, and no relationship, sensitive trait, or actual gender is inferred." refs PhotoAnnotation.facets,PhotoAnnotation.subjectMentions,PhotoAnnotation.recognizedSubjects,FaceObservation.matchedIdentityId,PetObservation.matchedIdentityId
+
+function SearchAndroidGalleryFunctionPromise action search:
+  label "搜索 Android 相册 Function Promise"
+  summary "Matches descriptions, structured facets, tags, and visible text in app-private SQLite and displays only currently accessible MediaStore items."
+  depends AndroidMediaLocationFieldPromise,PersonIdentityFieldPromise,FaceObservationFieldPromise,PetIdentityFieldPromise,PetObservationFieldPromise,PhotoAnnotationFieldPromise,AndroidSearchStateFieldPromise
+  trigger "User enters text or selects a facet in the Android app."
+  precondition SearchAndroidGallery.query statement "The normalized text query or selected facet is non-empty." refs PhotoAnnotation.caption,PhotoAnnotation.tags,PhotoAnnotation.facets,PhotoAnnotation.visibleText
+  precondition SearchAndroidGallery.annotation_exists statement "At least one current photo annotation exists and search is enabled." refs AndroidSearchState.annotationCount,AndroidSearchState.enabled
+  reads AndroidMediaLocation.uri,AndroidMediaLocation.photoId,AndroidMediaLocation.displayName,AndroidMediaLocation.accessible,PersonIdentity.id,PersonIdentity.name,FaceObservation.photoId,FaceObservation.matchState,FaceObservation.matchedIdentityId,PetIdentity.id,PetIdentity.name,PetObservation.photoId,PetObservation.matchState,PetObservation.matchedIdentityId,PhotoAnnotation.photoId,PhotoAnnotation.caption,PhotoAnnotation.tags,PhotoAnnotation.facets,PhotoAnnotation.visibleText,PhotoAnnotation.subjectMentions,PhotoAnnotation.id,AndroidSearchState.annotationCount,AndroidSearchState.enabled,AndroidSearchState.suggestions
+  writes -
+  ensure SearchAndroidGallery.latest statement "Results use the latest annotation per photo and include searchable provenance." refs PhotoAnnotation.id,PhotoAnnotation.photoId,PhotoAnnotation.modelName,PhotoAnnotation.promptVersion
+  ensure SearchAndroidGallery.accessible_only statement "Results contain only accessible=true content URIs." refs AndroidMediaLocation.uri,AndroidMediaLocation.accessible
+  ensure SearchAndroidGallery.annotation_derived_suggestions statement "Suggestion chips are empty before annotation and afterwards come only from latest accessible annotation metadata." refs AndroidSearchState.annotationCount,AndroidSearchState.suggestions
+  ensure SearchAndroidGallery.local_identity_names statement "Matched PersonIdentity and PetIdentity names are searchable and displayed dynamically from current local observations, while unknown subjects add no registered name." refs PersonIdentity.name,FaceObservation.matchState,FaceObservation.matchedIdentityId,PetIdentity.name,PetObservation.matchState,PetObservation.matchedIdentityId,PhotoAnnotation.recognizedSubjects
+  reject SearchAndroidGallery.empty statement "Whitespace-only search is rejected while the annotated gallery may list recent annotations." refs PhotoAnnotation.caption
+  reject SearchAndroidGallery.no_annotations statement "Search input, submission, and suggestions remain disabled and empty before the first annotation." refs AndroidSearchState.annotationCount,AndroidSearchState.enabled,AndroidSearchState.suggestions
+  sideeffect SearchAndroidGallery.read_only statement "Search writes neither the catalog nor MediaStore." refs AndroidMediaLocation.uri
+  idempotency "The same query against unchanged local state returns the same newest-first results."
+  forbid SearchAndroidGallery.no_hidden_uri statement "Never display a result that is no longer permission-accessible." refs AndroidMediaLocation.uri,AndroidMediaLocation.accessible
+
+function AgentSearchPhotosFunctionPromise action search:
+  label "Agent 搜索照片 Function Promise"
+  summary "Uses a minimal model planner and one local search skill to execute a bounded compound photo query."
+  depends AndroidMediaLocationFieldPromise,InferenceConfigurationFieldPromise,PersonIdentityFieldPromise,FaceObservationFieldPromise,PetIdentityFieldPromise,PetObservationFieldPromise,PhotoAnnotationFieldPromise,AndroidSearchStateFieldPromise
+  trigger "User submits a non-empty natural-language request on the Agent search screen."
+  precondition AgentSearchPhotos.annotation_exists statement "At least one current annotation exists and local search is enabled." refs AndroidSearchState.annotationCount,AndroidSearchState.enabled
+  precondition AgentSearchPhotos.authorized_endpoint statement "The configured planner endpoint is loopback or explicitly authorized." refs InferenceConfiguration.endpoint,InferenceConfiguration.allowRemote
+  reads InferenceConfiguration.endpoint,InferenceConfiguration.modelName,InferenceConfiguration.allowRemote,PersonIdentity.name,FaceObservation.matchState,PetIdentity.name,PetObservation.matchState,PhotoAnnotation.caption,PhotoAnnotation.tags,PhotoAnnotation.facets,PhotoAnnotation.visibleText,PhotoAnnotation.recognizedSubjects,AndroidSearchState.enabled
+  writes -
+  ensure AgentSearchPhotos.bounded_plan statement "The planner returns one to four non-empty search queries through a strict JSON schema." refs PhotoAnnotation.caption,PhotoAnnotation.tags,PhotoAnnotation.facets,PhotoAnnotation.recognizedSubjects
+  ensure AgentSearchPhotos.skill_invocation statement "Every planned query is executed through the single read-only local photo-search skill and results are deduplicated by photo identity." refs PhotoAnnotation.photoId
+  ensure AgentSearchPhotos.accessible_only statement "Agent results inherit the local search guarantee and contain only currently accessible items." refs AndroidMediaLocation.uri,AndroidMediaLocation.accessible
+  reject AgentSearchPhotos.empty_request statement "An empty natural-language request is rejected before planner invocation." refs PhotoAnnotation.caption
+  reject AgentSearchPhotos.invalid_plan statement "Malformed, empty, or over-broad planner output is rejected without catalog changes." refs PhotoAnnotation.caption
+  sideeffect AgentSearchPhotos.text_only_planning statement "Only the request text and locally registered person and pet labels are sent to the configured planner; embeddings, match scores, photo bytes, and indexed captions are not sent." refs PersonIdentity.name,PetIdentity.name,InferenceConfiguration.endpoint
+  idempotency "The same plan against unchanged catalog state returns the same locally ordered, deduplicated results."
+  forbid AgentSearchPhotos.no_mutation_tool statement "The Agent has no scan, annotation, delete, move, rename, or catalog-write tool." refs AndroidMediaLocation.uri,PhotoAnnotation.id
+
+verify PhotoIdentityVerification kind field:
+  label "照片身份验证"
+  claim "Duplicate bytes at multiple paths share one PhotoAsset while retaining all current paths."
+  verifies PhotoAssetFieldPromise,PhotoLocationFieldPromise
+  methods unit,integration
+  scenario "duplicate content at two paths":
+    covers PhotoAsset.id_is_content_hash,ScanLibrary.content_addressed
+    given "Two supported files contain identical bytes at different paths."
+    when "The common root is scanned."
+    then "One PhotoAsset and two present PhotoLocation records exist."
+    guard "Neither source file is changed."
+  evidence "Automated database assertions plus before-and-after source hashes."
+  fail "Content identity changes without byte changes or one location is lost."
+
+verify LocalAnnotationVerification kind function:
+  label "本地标注验证"
+  claim "Validated multimodal output is appended with exact provenance and becomes searchable."
+  verifies TagPhotoFunctionPromise,PhotoAnnotationFieldPromise
+  methods unit,integration
+  scenario "successful local annotation":
+    covers TagPhoto.validated_structured_output,TagPhoto.provenance_recorded,PhotoAnnotation.provenance_complete
+    given "A present photo and a deterministic local model response matching the schema."
+    when "Annotation runs for the configured model and prompt version."
+    then "One immutable annotation exists and its caption, tags, visible text, model, and prompt version are indexed."
+    guard "The original file hash is unchanged."
+  scenario "invalid model output":
+    covers TagPhoto.invalid_output
+    given "The model response omits required structured fields."
+    when "Annotation is attempted."
+    then "No annotation or partial search record is written."
+    guard "A later valid retry can succeed."
+  evidence "Model adapter tests and transactional database assertions."
+  fail "Invalid or unattributed metadata is committed."
+
+verify SearchVerification kind function:
+  label "照片搜索验证"
+  claim "Chinese and Latin queries can match latest captions, tags, or visible text and return current local paths only."
+  verifies SearchPhotosFunctionPromise
+  methods unit,integration
+  scenario "search generated tag":
+    covers SearchPhotos.latest_annotation,SearchPhotos.current_paths_only
+    given "A photo has a latest annotation containing the Chinese tag 海边 and a current local path."
+    when "The user searches for 海边."
+    then "The current path and annotation provenance are returned."
+    guard "An absent path for the same photo is not returned."
+  evidence "SQLite query tests covering Chinese substring and Latin token matching."
+  fail "A matching present photo is omitted or an absent path is returned."
+
+verify PrivacyBoundaryVerification kind cross-cutting:
+  label "隐私边界验证"
+  claim "The default inference endpoint is loopback and originals remain read-only."
+  verifies ScanLibraryFunctionPromise,TagPhotoFunctionPromise
+  methods unit,review
+  scenario "default local-only workflow":
+    covers ScanLibrary.no_source_write,TagPhoto.local_default,TagPhoto.no_implicit_remote
+    given "No provider-related environment variables are configured."
+    when "The user scans and annotates a photo."
+    then "Only the local catalog changes and inference targets a loopback Ollama URL."
+    guard "Non-loopback endpoints require an explicit user-provided URL."
+  evidence "Default configuration assertions and source hash checks."
+  fail "A default request can send bytes off-device or mutate a source file."
+
+verify LocalFaceIdentityVerification kind cross-cutting:
+  label "本地人物注册与匹配验证"
+  claim "One explicitly selected reference face creates an app-private embedding template, later photos match only above strict confidence and ambiguity gates, and VLM output never decides person identity."
+  verifies PersonIdentityFieldPromise,FaceTemplateFieldPromise,FaceObservationFieldPromise,RegisterPersonIdentityFunctionPromise,MatchAndroidFacesFunctionPromise
+  methods unit,integration,review
+  scenario "tap one reference face and register name":
+    covers PersonIdentity.no_implicit_identity,FaceTemplate.selected_face_only,FaceTemplate.no_reference_pixels,RegisterPersonIdentity.selected_embedding,RegisterPersonIdentity.local_only,RegisterPersonIdentity.no_reference_retention
+    given "The Photo Picker returns a readable image with two locally detected faces."
+    when "The user taps only the first face, enters 小明, and saves."
+    then "One 小明 identity and one normalized template for the tapped bounding box exist; no bitmap, crop, or image bytes are stored or uploaded."
+    guard "The untapped face creates no identity or template."
+  scenario "oversized frontal face survives detector scaling":
+    covers FaceObservation.one_physical_face_once,RegisterPersonIdentity.scale_robust_reference,MatchAndroidFaces.multiscale_coverage,MatchAndroidFaces.cross_scale_dedup,MatchAndroidFaces.pipeline_reindex
+    given "A clear frontal face fills most of a high-resolution reference photo and the same source can produce overlapping YuNet candidates at multiple bounded scales."
+    when "The bundled local face pipeline detects, maps, deduplicates, aligns, and embeds the photo."
+    then "Exactly one spatially ordered face observation represents that physical face, its original-space box remains large, and its finite normalized embedding is available for registration."
+    guard "Existing compatible face templates remain usable, stale zero-face index rows do not suppress reprocessing, and no source pixels are modified or retained."
+  scenario "same person clears threshold and ambiguity margin":
+    covers FaceObservation.explicit_unknown,MatchAndroidFaces.threshold_and_margin,MatchAndroidFaces.current_provenance,SearchAndroidGallery.local_identity_names
+    given "A scanned face has cosine similarity 0.82 to 小明 and 0.40 to every other identity with threshold 0.55 and margin 0.05."
+    when "The bundled local matcher indexes the photo."
+    then "The observation is matched to 小明 with model, score, threshold, bounds, and time, and an annotated accessible photo is searchable by 小明."
+    guard "No VLM response or person candidate contributes to the score."
+  scenario "low confidence and ambiguity stay unknown":
+    covers FaceObservation.explicit_unknown,MatchAndroidFaces.unknown_by_default,MatchAndroidFaces.no_vlm_person_decision
+    given "One face scores 0.54 for its best identity and another scores 0.72 versus 0.70 for two different identities."
+    when "Both observations are matched."
+    then "Both are stored as unknown with no matchedIdentityId and add no searchable person name."
+    guard "Lowering a threshold or choosing the top name implicitly is forbidden."
+  scenario "new registration rematches existing local embeddings":
+    covers RegisterPersonIdentity.rematch_existing,MatchAndroidFaces.local_database_only
+    given "An already scanned annotated photo contains an unknown stored face observation."
+    when "The user registers a matching reference face under 小红."
+    then "Stored observations are rematched locally and the existing photo becomes searchable by 小红 without rerunning the VLM."
+    guard "No original or reference photo pixels are persisted or sent over the network."
+  scenario "VLM cannot identify a person":
+    covers RecognitionProfile.android_vlm_no_identity,FaceObservation.no_vlm_identity,AnnotateAndroidPhotos.no_identity_guess
+    given "The VLM returns or attempts to return a person name or an unoffered subject marker."
+    when "The v5 Android annotation contract validates the response."
+    then "The identity output is rejected and only accepted local FaceObservation names appear in search."
+    guard "Neither person nor pet candidate names are present in the VLM request."
+  evidence "Promise gates, oversized-face multi-scale and cross-scale dedup regression tests, matcher and database migration tests, bundled-model checksum and license evidence, Android unit tests, debug build and lint, plus emulator acceptance without mutating a real phone."
+  fail "A clear close-up face is missed only because it is large, one face becomes duplicate observations across scales, stale zero-face rows suppress the new pipeline, registration can occur without a tapped face, reference pixels leave app memory, a low or ambiguous score receives a name, the VLM determines a person identity, model provenance is missing, or a matched name is not searchable."
+
+verify LocalPetIdentityVerification kind cross-cutting:
+  label "本地宠物注册与匹配验证"
+  claim "One explicitly selected detected cat or dog creates an app-private visual template, later same-species observations match only above conservative confidence and ambiguity gates, and VLM output never decides pet identity."
+  verifies PetIdentityFieldPromise,PetTemplateFieldPromise,PetObservationFieldPromise,RegisterPetIdentityFunctionPromise,MatchAndroidPetsFunctionPromise
+  methods unit,integration,review
+  scenario "tap one detected pet and register name":
+    covers PetIdentity.no_implicit_identity,PetTemplate.selected_pet_only,PetTemplate.no_reference_pixels,RegisterPetIdentity.selected_embedding,RegisterPetIdentity.local_only,RegisterPetIdentity.no_reference_retention
+    given "The Photo Picker returns a readable image with two locally detected dogs."
+    when "The user selects pet mode, taps only the first dog, enters 旺财, and saves."
+    then "One 旺财 pet identity and one normalized dog template for the tapped bounding box exist; no bitmap, crop, or image bytes are stored or uploaded."
+    guard "The untapped dog creates no identity or template."
+  scenario "same pet clears conservative threshold":
+    covers PetObservation.explicit_unknown,MatchAndroidPets.same_species_only,MatchAndroidPets.threshold_and_margin,SearchAndroidGallery.local_identity_names
+    given "A dog observation scores 0.94 to 旺财 and 0.70 to every other dog identity with threshold 0.90 and margin 0.04."
+    when "The bundled local matcher indexes the photo."
+    then "The observation is matched to 旺财 with species, model, score, threshold, bounds, and time, and the annotated accessible photo is searchable by 旺财."
+    guard "Cat templates and VLM output cannot contribute to the decision."
+  scenario "low confidence and ambiguity stay unknown":
+    covers PetObservation.explicit_unknown,MatchAndroidPets.unknown_by_default,MatchAndroidPets.no_vlm_pet_decision
+    given "One pet scores 0.89 for its best same-species identity and another scores 0.95 versus 0.93 for two dog identities."
+    when "Both observations are matched."
+    then "Both are stored as unknown with no matchedIdentityId and add no searchable pet name."
+    guard "The top candidate is never forced into a match."
+  scenario "new pet registration rematches stored observations":
+    covers RegisterPetIdentity.rematch_existing,MatchAndroidPets.local_database_only
+    given "An already scanned annotated photo contains an unknown stored dog observation."
+    when "The user registers a matching dog reference under 旺财."
+    then "Stored dog observations are rematched locally and the existing photo becomes searchable by 旺财 without rerunning the VLM."
+    guard "No original or reference pixels leave app memory."
+  evidence "Promise gates, pet matcher and database migration tests, bundled detector and embedder checksums and license evidence, Android model-load integration tests, debug build and lint, plus emulator acceptance without mutating a real phone."
+  fail "Pet registration occurs without an explicit tap, reference pixels are retained, species are crossed, a low or ambiguous score receives a name, the VLM decides pet identity, provenance is missing, or a matched pet name is not searchable."
+
+verify AnonymousSubjectAnnotationVerification kind cross-cutting:
+  label "匿名主体标注与本地替换验证"
+  claim "VLM sees only numbered overlays, returns only allowed marker-bound semantics, and current person or pet names are substituted and searched only on the phone."
+  verifies PhotoAnnotationFieldPromise,AnnotateAndroidPhotosFunctionPromise,SearchAndroidGalleryFunctionPromise
+  methods unit,integration,review
+  scenario "two people and one pet use anonymous markers":
+    covers PhotoAnnotation.anonymous_markers_only,AnnotateAndroidPhotos.anonymous_overlay,AnnotateAndroidPhotos.local_name_substitution,PhotoAnnotation.recognized_subjects_constrained
+    given "A photo has matched P1=小明, unknown P2, and matched PET1=旺财 local observations."
+    when "The phone overlays P1, P2, and PET1 and the VLM returns a valid caption template plus marker-bound actions."
+    then "The HTTP request contains no 小明 or 旺财, stored model output contains markers rather than names, and the UI renders 小明, 未知人物2, and 旺财 locally."
+    guard "Only 小明 and 旺财 become searchable registered names; the unknown observation stays unnamed."
+  scenario "unoffered marker or identity field is rejected":
+    covers AnnotateAndroidPhotos.invalid_output,AnnotateAndroidPhotos.no_identity_guess
+    given "Only P1 was overlaid but the model returns P2, a mismatched PET1 kind, or a real-name identity field."
+    when "The response is validated."
+    then "No annotation row is committed."
+    guard "The original photo and local match rows remain unchanged."
+  scenario "new template updates old annotation without VLM rerun":
+    covers AnnotateAndroidPhotos.local_name_substitution,SearchAndroidGallery.local_identity_names
+    given "An existing annotation template contains P1 and its current observation is unknown."
+    when "The user later registers a matching local person template."
+    then "The same stored annotation renders and searches the newly accepted name from current local rows without changing model output or rerunning VLM."
+    guard "The historical model output remains immutable."
+  evidence "Strict schema tests, request-capture tests proving name absence, local marker-substitution tests, database rematch tests, and emulator UI verification."
+  fail "A real identity label reaches or comes from VLM, an unoffered marker is accepted, unknown is force-matched, replacement is persisted as model truth, or rematching requires a VLM rerun."
+
+verify VisualSimilarityVerification kind cross-cutting:
+  label "整图与主体视觉相似验证"
+  claim "One 检查相似 entry explicitly selects incremental, custom recent, or full scope; the public on-device DINOv2 ViT-S/14 registers pipeline then refreshes only that scope, produces whole-photo and 4x4 spatial features, ranks burst, same-scene, composition, and subject relationships independently, and allows VLM-derived tags to explain but never decide similarity."
+  verifies SimilarityCheckRequestFieldPromise,PhotoVisualFeatureFieldPromise,GeneralSubjectObservationFieldPromise,SimilarPhotoResultFieldPromise,CheckAndroidVisualSimilarityFunctionPromise,IndexAndroidVisualSimilarityFunctionPromise,FindSimilarAndroidPhotosFunctionPromise
+  methods unit,integration,review
+  scenario "one check button enforces three explicit scopes":
+    covers SimilarityCheckRequest.explicit_mode,SimilarityCheckRequest.recent_complete,SimilarityCheckRequest.no_hidden_recent_fallback,CheckAndroidVisualSimilarity.one_button_three_modes,CheckAndroidVisualSimilarity.refresh_visibility,CheckAndroidVisualSimilarity.incremental_scope,CheckAndroidVisualSimilarity.recent_scope,CheckAndroidVisualSimilarity.full_scope,CheckAndroidVisualSimilarity.scope_report,CheckAndroidVisualSimilarity.invalid_recent,CheckAndroidVisualSimilarity.no_predelete
+    given "The catalog contains one current-feature photo, one newly visible unindexed photo, one old unindexed photo, one recently captured current-feature photo, and one accessible photo without capture time."
+    when "The user separately confirms incremental, a custom recent duration, and full checks from 检查相似."
+    then "Incremental selects only missing current features, recent recomputes only real capture times inside the exact cutoff and reports the unknown-time exclusion, and full recomputes every accessible photo with visible considered, success, and failure counts."
+    guard "Invalid recent input starts no work, partial access reopens reselection, and a failed forced replacement leaves its older feature readable."
+  scenario "real DINOv2 photo produces global and spatial features":
+    covers PhotoVisualFeature.normalized_global,PhotoVisualFeature.four_by_four_grid,PhotoVisualFeature.no_pixels,IndexAndroidVisualSimilarity.dinov2_global,IndexAndroidVisualSimilarity.four_by_four_patches,IndexAndroidVisualSimilarity.provenance,IndexAndroidVisualSimilarity.local_database_only
+    given "A permission-accessible real photo and the checksum-verified public DINOv2 ViT-S/14 registers checkpoint are present on the Android device."
+    when "The current visual pipeline indexes the photo from an orientation-corrected bounded thumbnail."
+    then "One normalized global vector and exactly sixteen normalized row-major spatial cells with exact checkpoint and pipeline provenance are stored, and no bitmap, crop, or original copy remains."
+    guard "Source MediaStore bytes and metadata remain unchanged and no network request occurs."
+  scenario "capture time distinguishes a burst group":
+    covers FindSimilarAndroidPhotos.global_similarity,FindSimilarAndroidPhotos.composition_similarity,FindSimilarAndroidPhotos.burst_evidence,FindSimilarAndroidPhotos.typed_relationship
+    given "Three photos taken within two seconds have high whole-scene and aligned-grid similarity, while a fourth timestamp-adjacent photo is visually unrelated."
+    when "The first photo opens 查看相似照片."
+    then "The two visually matching photos are classified and grouped as burst with visible capture deltas; the unrelated photo is not promoted by time alone."
+    guard "Changing only timestamps cannot make low-visual-similarity photos rank as burst."
+  scenario "same subjects with different layout separates composition":
+    covers FindSimilarAndroidPhotos.composition_similarity,FindSimilarAndroidPhotos.subject_evidence,FindSimilarAndroidPhotos.typed_relationship
+    given "Two photos contain the same locally observed person and pet but place them in different 4x4 regions, while a third preserves the query layout."
+    when "Similarity evidence is calculated."
+    then "All may have subject evidence, but only the spatially aligned photo receives high composition similarity and the composition-similar relationship."
+    guard "A high subject score cannot overwrite a low composition score."
+  scenario "general object crop contributes subject evidence":
+    covers GeneralSubjectObservation.valid_embedding,GeneralSubjectObservation.no_person_or_pet_duplication,IndexAndroidVisualSimilarity.general_subject_crops,IndexAndroidVisualSimilarity.reuse_identity_observations,FindSimilarAndroidPhotos.subject_evidence
+    given "Two accessible photos contain a detector-supported bicycle, existing person and dog observations, and other low-quality boxes."
+    when "The current pipeline indexes and compares them."
+    then "The bicycle crops contribute same-category DINOv2 subject evidence, face and dog evidence comes from existing observation tables, and low-quality or person/cat/dog general detections are not duplicated."
+    guard "No crop bitmap is retained or transmitted."
+  scenario "VLM tags explain but cannot rank":
+    covers SimilarPhotoResult.explanation_after_rank,SimilarPhotoResult.no_vlm_score,FindSimilarAndroidPhotos.vlm_explanation_only,FindSimilarAndroidPhotos.no_vlm_ranking
+    given "An unchanged visual feature set is compared before and after its local annotations are replaced with different valid tags and facets."
+    when "Similarity is requested in both states."
+    then "Candidate inclusion, numeric scores, relationship classes, and ordering are identical; only the human-readable overlap explanation may change."
+    guard "No caption, tag, facet, or VLM confidence enters any scoring function."
+  scenario "inaccessible and incompatible features are excluded":
+    covers FindSimilarAndroidPhotos.accessible_only,FindSimilarAndroidPhotos.incompatible_model,FindSimilarAndroidPhotos.missing_feature
+    given "One candidate lost MediaStore permission, one uses a stale model pipeline, and one has no visual feature."
+    when "The user opens current similarity results."
+    then "None is fabricated or compared; the UI offers indexing where appropriate and shows only current compatible accessible candidates."
+    guard "The read-only query does not mutate or delete stale derived rows."
+  evidence "Promise gates, explicit scope and duration unit tests, SQLite incremental, recent, and full candidate tests, deterministic scoring and classification tests, real DINOv2 model-output integration tests, source-hash preservation, isolated debug build and lint, plus emulator and data-preserving real-device UI acceptance."
+  fail "The check button omits a mode, recent input silently defaults or broadens scope, incremental recomputes current photos, recent includes missing capture times, full hides a count cap, a failed refresh pre-deletes a valid feature, a fake or non-DINO vector is accepted as current, the grid is missing or unordered, VLM metadata changes ranking, inaccessible photos appear, provenance is absent, crops are retained, or originals are mutated."
+
+verify PhotoViewerVerification kind cross-cutting:
+  label "APM 应用内照片查看验证"
+  claim "Every APM photo-result surface opens the exact accessible photo in a private native viewer at its complete original image resolution, with original-pixel zoom, read-only adjacent navigation, and bounded pan, without relying on an external image app."
+  verifies AndroidPhotoViewerFieldPromise,ViewAndroidPhotoFunctionPromise
+  methods unit,integration,review
+  scenario "all photo surfaces open the exact item inside APM":
+    covers AndroidPhotoViewer.accessible_sequence,AndroidPhotoViewer.no_external_handoff,ViewAndroidPhoto.in_app_destination,ViewAndroidPhoto.exact_initial_selection,ViewAndroidPhoto.no_external_view
+    given "The accessible wall contains photos A, B, and C, while B appears in the wall, text search, Agent search, and similar-photo results."
+    when "The user taps B from each surface."
+    then "Each route starts private PhotoViewerActivity at B with position 2 of 3 and no external chooser or image application appears."
+    guard "No entry point constructs or dispatches ACTION_VIEW for B's content URI."
+  scenario "original resolution and gestures stay truthful":
+    covers AndroidPhotoViewer.original_decode,AndroidPhotoViewer.zoom_bounds,ViewAndroidPhoto.aspect_fit,ViewAndroidPhoto.zoom_and_pan
+    given "A readable 3072 by 2048 original whose longest edge exceeds the former 2048 thumbnail bound."
+    when "It opens, is pinched to native-pixel scale, panned, reset, and then the next photo is selected."
+    then "The in-memory bitmap is exactly 3072 by 2048, the complete aspect-preserving original starts fit at scale 1, the maximum scale reaches at least one original pixel per display pixel and at least 5, pan stays bounded, and the next photo starts at scale 1 with zero pan."
+    guard "No loadThumbnail call, target-size request, sampled decode, crop, persisted derivative, or source-byte mutation is allowed."
+  scenario "navigation and read failure remain inside the viewer":
+    covers ViewAndroidPhoto.adjacent_navigation,ViewAndroidPhoto.inaccessible_or_unreadable,ViewAndroidPhoto.read_only,AndroidPhotoViewer.no_original_mutation
+    given "Three ordered accessible photos where the middle URI becomes unreadable after the viewer opens."
+    when "The user navigates from the first to the middle and then to the last photo."
+    then "Boundary controls and one-based position are exact, the middle page shows an in-app read error, and navigation to the last remains possible."
+    guard "No original, MediaStore row, annotation row, or external application is modified or opened."
+  evidence "Promise gates, pure JVM viewer navigation and native-pixel zoom-bound tests, source inspection proving every photo-card route targets PhotoViewerActivity and no viewer loadThumbnail remains, an API 35 assertion that a 3072 by 2048 MediaStore original decodes to exactly 3072 by 2048 with unchanged SHA-256, isolated Android build and lint, and emulator interaction covering open, fit, zoom, pan, reset, adjacent navigation, back, and empty AndroidRuntime errors."
+  fail "Any photo tap leaves APM, selects the wrong photo, omits an in-app read failure, downsamples, samples, targets a smaller size, or crops the original decode, stretches the image, prevents native-pixel inspection, permits unbounded pan, loses adjacent navigation, mutates an original, or crashes during interaction."
+
+verify PhotoWallVerification kind cross-cutting:
+  label "Android 按日照片墙验证"
+  claim "The native gallery separates its photo wall and heatmap into dedicated tabs, presents every distinct currently accessible photo under its real device-local capture day, and exposes vertically chronological GitHub-style annual daily, weekly, and monthly heatmaps with exact range filtering."
+  verifies AndroidPhotoWallFieldPromise,BrowseAndroidPhotoWallFunctionPromise
+  methods unit,integration,review
+  scenario "all accessible photos appear without an annotation or search cap":
+    covers AndroidPhotoWall.accessible_distinct,AndroidPhotoWall.no_annotation_gate,BrowseAndroidPhotoWall.all_accessible_photos,BrowseAndroidPhotoWall.inaccessible
+    given "The catalog contains more than one hundred distinct accessible photos, including unannotated photos and duplicate accessible locations, plus one inaccessible annotated photo."
+    when "The gallery photo-wall projection is loaded."
+    then "Every accessible photoId appears exactly once, an accessible URI is selected, unannotated photos remain visible, and the inaccessible photo is absent."
+    guard "The projection does not reuse the bounded annotation search query."
+  scenario "capture day is real and unknown time stays unknown":
+    covers AndroidPhotoWall.real_capture_day,BrowseAndroidPhotoWall.day_sections,BrowseAndroidPhotoWall.no_date_fallback
+    given "Photos straddle a midnight boundary in the device time zone and another photo has null dateTakenMillis but newer modified and annotation times."
+    when "Day groups are organized."
+    then "Each dated photo belongs to its device-local capture day in newest-first order and the null-timestamp photo appears only in the final unknown-time group."
+    guard "No modified, discovery, index, or annotation time is consulted as a fallback."
+  scenario "thumbnail and detail modes preserve the same wall":
+    covers AndroidPhotoWall.mode_preserves_membership,BrowseAndroidPhotoWall.thumbnail_mode,BrowseAndroidPhotoWall.detail_mode
+    given "The wall contains dated and unknown-time photos with a mix of annotated and unannotated rows."
+    when "The user switches between thumbnail and detail presentation."
+    then "The photoId sequence, group membership, selected range, displayed year, heatmap granularity, and daily counts are identical; only layout and optional detail content change."
+    guard "An unannotated detail card reports status without inventing a caption."
+  scenario "photo and heatmap tabs have exclusive content ownership":
+    covers AndroidPhotoWall.tab_ownership,BrowseAndroidPhotoWall.content_tabs,BrowseAndroidPhotoWall.range_filter
+    given "The catalog contains dated photos and the gallery initially opens the photos tab."
+    when "The user switches to heatmap, selects a populated range, and invokes the action to view those photos."
+    then "The photos tab initially contains photo controls and cards with no heatmap, the heatmap tab contains the annual controls and grid with no photo cards, and the action returns to photos with the exact range filter preserved."
+    guard "No screen composition simultaneously exposes the annual heatmap and photo cards as one continuous content surface."
+  scenario "GitHub-style annual daily heatmap includes every date":
+    covers AndroidPhotoWall.heatmap_exact_counts,AndroidPhotoWall.selected_range_exact,BrowseAndroidPhotoWall.annual_heatmaps,BrowseAndroidPhotoWall.range_filter
+    given "A displayed year contains capture days with zero, one, two, and four distinct photos across several months."
+    when "The user selects day granularity, vertically explores the calendar, taps the two-photo date, moves to photos, and clears the selection."
+    then "Every date in the year appears once with one Sunday-through-Saturday week per vertical row, later dates have greater vertical positions than earlier dates, month labels follow the vertical axis, GitHub green levels are monotonic from zero through four, complete accessible date and count descriptions are present, and the selected two-photo range transfers exactly to the photos tab."
+    guard "Padding dates outside the displayed year and zero-count dates cannot create a selected range."
+  scenario "annual weekly aggregation is exact":
+    covers AndroidPhotoWall.heatmap_exact_counts,AndroidPhotoWall.selected_range_exact,BrowseAndroidPhotoWall.annual_heatmaps,BrowseAndroidPhotoWall.range_filter
+    given "Photos span a year boundary and several Sunday-through-Saturday weeks inside the displayed year."
+    when "The user selects week granularity and taps a populated partial or full calendar week."
+    then "The view contains every 53 or 54 intersecting week as chronological vertical rows, clips boundary ranges to the displayed year, reports each exact sum and accessible range, and filters only the selected week range."
+    guard "No photo outside the displayed year or selected inclusive week range contributes to its count or filtered wall."
+  scenario "annual monthly aggregation is exact":
+    covers AndroidPhotoWall.heatmap_exact_counts,AndroidPhotoWall.selected_range_exact,BrowseAndroidPhotoWall.annual_heatmaps,BrowseAndroidPhotoWall.range_filter
+    given "Photos occur in January, August, and December with other months empty."
+    when "The user selects month granularity and taps populated August."
+    then "All twelve months appear once as chronological vertical rows, each cell reports the exact monthly sum and mode-relative heat level, and only August capture-day groups remain after moving to the photos tab until cleared."
+    guard "Empty months cannot create a selected range and changing year or granularity clears the prior range."
+  evidence "Promise gates, pure JVM day-group, annual calendar, exact daily, weekly, and monthly aggregation and discrete-level tests, SQLite integration covering more than one hundred accessible annotated and unannotated photos, isolated Android build and lint, and API 35 emulator visual, semantics, tab-isolation, vertical-position, granularity-switch, year-navigation, selection-transfer, and clear acceptance for all three GitHub-style heatmaps."
+  fail "The wall hides an accessible unannotated photo, caps at search limits, duplicates photoIds, substitutes a non-capture timestamp, places the heatmap inside the photos tab, displays photo cards inside the heatmap tab, lays annual chronology horizontally, changes order between modes, omits a calendar date, week, or month, reports an inexact aggregate, leaks a boundary date into another year, assigns a non-monotonic or continuous-only heat level, diverges from the GitHub square green grid and 少-to-多 guide, omits an accessible range count, filters an empty cell, loses selection when moving to photos, includes inaccessible photos, mutates an original, or fails lazy emulator rendering."
+
+verify AndroidNativeAppVerification kind cross-cutting:
+  label "Android Native App 验证"
+  claim "A buildable native Android app completes permission-scoped scan, day-grouped browsing, private in-app photo viewing, DINOv2 visual similarity, local registered identity matching, anonymous structured VLM annotation, and local search without modifying MediaStore."
+  verifies AndroidMediaLocationFieldPromise,AndroidPhotoWallFieldPromise,AndroidPhotoViewerFieldPromise,AndroidAnnotationSelectionFieldPromise,InferenceConfigurationFieldPromise,PersonIdentityFieldPromise,FaceTemplateFieldPromise,FaceObservationFieldPromise,PetIdentityFieldPromise,PetTemplateFieldPromise,PetObservationFieldPromise,SimilarityCheckRequestFieldPromise,PhotoVisualFeatureFieldPromise,GeneralSubjectObservationFieldPromise,SimilarPhotoResultFieldPromise,AndroidSearchStateFieldPromise,ConfigureAndroidModelFunctionPromise,RegisterPersonIdentityFunctionPromise,MatchAndroidFacesFunctionPromise,RegisterPetIdentityFunctionPromise,MatchAndroidPetsFunctionPromise,CheckAndroidVisualSimilarityFunctionPromise,IndexAndroidVisualSimilarityFunctionPromise,FindSimilarAndroidPhotosFunctionPromise,ScanAndroidGalleryFunctionPromise,BrowseAndroidPhotoWallFunctionPromise,ViewAndroidPhotoFunctionPromise,SelectAndroidPhotosForAnnotationFunctionPromise,AnnotateAndroidPhotosFunctionPromise,SearchAndroidGalleryFunctionPromise,AgentSearchPhotosFunctionPromise
+  methods unit,integration,review
+  scenario "scan annotate and search two dogs at night":
+    covers ScanAndroidGallery.content_hash,AnnotateAndroidPhotos.structured_facets,SearchAndroidGallery.accessible_only
+    given "A permission-visible photo and a deterministic VLM response describing two dogs outdoors at night."
+    when "The user scans, annotates, and searches 天黑 or 狗."
+    then "The result shows the current content URI, caption, 天黑, object 狗 count 2, scene, and exact model provenance."
+    guard "The source MediaStore bytes and metadata are unchanged."
+  scenario "remote endpoint without consent":
+    covers ConfigureAndroidModel.remote_without_consent,AnnotateAndroidPhotos.authorized_endpoint
+    given "The user enters a private-LAN or internet endpoint while remote permission is false."
+    when "Settings are saved or annotation is requested."
+    then "The operation is rejected before any photo bytes are read for upload."
+    guard "Loopback remains the default configuration."
+  scenario "invalid object count":
+    covers AnnotateAndroidPhotos.invalid_output
+    given "The model returns an object with count zero or omits a required facet."
+    when "The response is parsed."
+    then "No annotation or search document is committed."
+    guard "A later valid retry remains possible."
+  scenario "large source photo stays within bounded inference policy":
+    covers AnnotateAndroidPhotos.bounded_thumbnail,AnnotateAndroidPhotos.context_budget,AnnotateAndroidPhotos.grammar_safe_schema,AnnotateAndroidPhotos.context_overflow,AnnotateAndroidPhotos.schema_initialization_failure,AnnotateAndroidPhotos.explicit_transfer
+    given "A permission-visible high-resolution source photo whose 1600-pixel request would exceed a 4096-token Ollama context."
+    when "The user annotates it through the configured local-network VLM."
+    then "The first request contains only a JPEG thumbnail at most 1024 pixels on its longest edge, requests 8192 context tokens, and uses only grammar-safe bounded strings including at most 512 visible-text characters; a reported context overflow triggers at most one 768-pixel retry, and only a valid response is committed."
+    guard "The original MediaStore bytes and metadata remain unchanged, and no request contains the original-resolution image."
+  scenario "partial access can be reselected on every scan":
+    covers ScanAndroidGallery.partial_reselection
+    given "Android 14 or later grants selected-photo access but not full image access."
+    when "The user invokes scan repeatedly."
+    then "Each invocation launches the system reselection flow before scanning so newly selected photos can become visible."
+    guard "Full-library access scans directly without a redundant permission prompt."
+  scenario "selected annotation uses exact latest picker scope":
+    covers AndroidAnnotationSelection.explicit_picker_only,AndroidAnnotationSelection.replace_not_union,SelectAndroidPhotosForAnnotation.exact_scope,SelectAndroidPhotosForAnnotation.preserve_other_access,AnnotateAndroidPhotos.selected_scope_exact,AnnotateAndroidPhotos.no_selected_photos
+    given "The catalog has accessible photos A, B, and C; the user completes 选择照片 with A and C after a prior selection of B."
+    when "The user invokes 标注所选."
+    then "The current selection is exactly A and C, only pending A and C are considered, B remains catalog-accessible but is not sent, and the UI reports 所选 counts."
+    guard "Cancelling 选择照片 or invoking 标注所选 with no selection sends no photo and never falls back to all accessible photos."
+  scenario "full annotation covers all authorized pending photos":
+    covers AnnotateAndroidPhotos.full_scope_complete,AnnotateAndroidPhotos.scope_visible,ScanAndroidGallery.permission_scoped_visibility
+    given "Twenty-five photos are currently permission-accessible and pending for the configured model and prompt version."
+    when "The user invokes 全量标注 and keeps the current permission choice."
+    then "All twenty-five pending photos are considered once in that run, with progress and success or failure counts; no hidden twenty-photo cap remains."
+    guard "With partial Android access, inaccessible library photos are neither queried nor sent."
+  scenario "search starts empty and becomes annotation-derived":
+    covers AndroidSearchState.enabled_after_annotation,AndroidSearchState.no_default_suggestions,AnnotateAndroidPhotos.enables_search,SearchAndroidGallery.annotation_derived_suggestions,SearchAndroidGallery.no_annotations
+    given "The catalog has photos but no annotation."
+    when "The main screen opens and then the first annotation succeeds."
+    then "Initially search is disabled with no suggestion chips; afterwards it is enabled and chips are derived only from stored annotation facets and tags."
+    guard "No hard-coded example search term appears before annotation."
+  scenario "photo wall is independent from search and annotation state":
+    covers BrowseAndroidPhotoWall.all_accessible_photos,BrowseAndroidPhotoWall.day_sections,BrowseAndroidPhotoWall.thumbnail_mode,BrowseAndroidPhotoWall.detail_mode,BrowseAndroidPhotoWall.content_tabs,BrowseAndroidPhotoWall.annual_heatmaps,BrowseAndroidPhotoWall.range_filter
+    given "The permission-visible catalog contains dated and unknown-time photos with mixed annotation state."
+    when "The user browses days, switches thumbnail and detail modes, changes annual heatmap granularity, and selects a populated daily, weekly, or monthly range before running any text search."
+    then "The wall remains complete and correctly grouped, the two display modes preserve order, all three annual heatmaps show exact counts, and the selected range filters only by real capture day."
+    guard "Search limits, annotation presence, and non-capture timestamps cannot decide wall membership or grouping."
+  scenario "photo taps stay inside APM":
+    covers ViewAndroidPhoto.in_app_destination,ViewAndroidPhoto.exact_initial_selection,ViewAndroidPhoto.aspect_fit,ViewAndroidPhoto.adjacent_navigation
+    given "An accessible photo appears in the wall and a search result."
+    when "The user opens it from either surface, zooms it, and selects an adjacent photo."
+    then "The private APM viewer shows the exact tapped photo fit without distortion, supports bounded inspection and correct adjacent navigation, and remains inside the app."
+    guard "The URI is never handed to an external ACTION_VIEW application and the original stays read-only."
+  scenario "dedicated Material 3 settings screen":
+    covers ConfigureAndroidModel.dedicated_screen,ConfigureAndroidModel.local_identity_route
+    given "The user opens model settings from the main Material 3 app bar."
+    when "The settings destination is displayed and a valid configuration is saved."
+    then "A separate screen shows endpoint, model, consent, a route to local person-and-pet registration, privacy explanation, back navigation, and save feedback before returning."
+    guard "The gallery screen does not show a model settings dialog."
+  scenario "person and pet identity stay local":
+    covers RecognitionProfile.android_vlm_no_identity,AnnotateAndroidPhotos.anonymous_overlay,AnnotateAndroidPhotos.local_name_substitution,PhotoAnnotation.recognized_subjects_constrained,MatchAndroidFaces.threshold_and_margin,MatchAndroidPets.threshold_and_margin
+    given "The user locally registers person 小明 and dog 旺财."
+    when "A photo is locally matched, anonymously overlaid, and annotated by the VLM."
+    then "小明 and 旺财 can appear only from accepted local observations, while the VLM sees and returns only Pn and PETn markers."
+    guard "A name without an accepted same-kind local observation is omitted from recognized subjects."
+  scenario "minimal Agent invokes only search skill":
+    covers AgentSearchPhotos.bounded_plan,AgentSearchPhotos.skill_invocation,AgentSearchPhotos.accessible_only,AgentSearchPhotos.no_mutation_tool
+    given "Search is enabled and accessible annotations include night, dog, and known-subject metadata."
+    when "The user asks the Agent to find night photos containing 旺财."
+    then "The planner emits one to four local queries, the search skill executes them, and deduplicated accessible results are displayed with the plan."
+    guard "The Agent cannot modify the catalog or send photo bytes while planning."
+  evidence "Promise gates, Python and JVM policy tests, photo-wall and photo-viewer navigation and bounds tests, over-one-hundred-photo SQLite wall projection tests, request-capture assertions for thumbnail dimensions and num_ctx, annotation-selection database migration and exact-scope tests, an over-twenty-photo full-scope test, Android debug build, zero-issue lint, bundled local identity-model verification, validated repository Agent skill, Compose semantics assertions, API 35 emulator photo-wall and in-app viewer interaction acceptance, and real Mac mini VLM inference."
+  fail "The app cannot build, hides accessible photos behind annotation or search limits, misgroups a missing capture time, opens a photo outside APM, selects the wrong viewer item, downsamples or crops the original viewer image, prevents native-pixel inspection, mutates originals, uploads without consent, sends original-resolution inference bytes, retries context overflow more than once, annotates outside the latest explicit selection, silently broadens scope, accepts invalid facets or identity sources, gives the Agent mutation tools, names low-confidence identities, lets the VLM decide identity, returns inaccessible photos, keeps static search presets, enables search before annotation, fails partial reselection, uses a settings dialog, or materially diverges from Material Design 3 components and hierarchy."
