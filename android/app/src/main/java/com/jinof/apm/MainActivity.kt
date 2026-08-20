@@ -15,13 +15,13 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
@@ -30,6 +30,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -48,8 +49,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AddPhotoAlternate
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.CheckCircle
-import androidx.compose.material.icons.outlined.ChevronLeft
-import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Face
 import androidx.compose.material.icons.outlined.GridView
 import androidx.compose.material.icons.outlined.ImageSearch
@@ -71,11 +70,11 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -85,19 +84,22 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
@@ -112,6 +114,7 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.math.abs
 
 private enum class AnnotationScope(val label: String) {
     SELECTED("所选"),
@@ -121,11 +124,6 @@ private enum class AnnotationScope(val label: String) {
 private enum class PendingPhotoPermissionAction {
     ANNOTATE_ALL,
     CHECK_SIMILAR,
-}
-
-private enum class GalleryContentTab(val label: String) {
-    PHOTOS("照片"),
-    HEATMAP("热力图"),
 }
 
 private const val DEBUG_ANNOTATE_SELECTED_ACTION = "com.jinof.apm.debug.ANNOTATE_SELECTED"
@@ -141,6 +139,7 @@ class MainActivity : ComponentActivity() {
     private val executor = Executors.newSingleThreadExecutor()
     private val busy = AtomicBoolean(false)
     private var uiState by mutableStateOf(GalleryUiState())
+    private var selectedPhotoRange by mutableStateOf<PhotoHeatmapSelection?>(null)
     private var initialized = false
     private var pendingPermissionAction = PendingPhotoPermissionAction.ANNOTATE_ALL
     private var pendingSimilarityCheck: SimilarityCheckRequest? = null
@@ -181,6 +180,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        selectedPhotoRange = intent.photoHeatmapSelection()
         enableEdgeToEdge()
         database = ApmDatabase(applicationContext)
         settingsStore = SettingsStore(applicationContext)
@@ -211,6 +211,8 @@ class MainActivity : ComponentActivity() {
                     onAgent = ::openAgent,
                     onIdentity = ::openIdentity,
                     onSettings = ::openSettings,
+                    onHeatmap = ::openHeatmap,
+                    initialSelectedRange = selectedPhotoRange,
                     onPhoto = ::openPhoto,
                     onSimilar = ::openSimilar,
                 )
@@ -235,6 +237,12 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        selectedPhotoRange = intent.photoHeatmapSelection()
     }
 
     override fun onResume() {
@@ -636,6 +644,10 @@ class MainActivity : ComponentActivity() {
         startActivity(Intent(this, SettingsActivity::class.java))
     }
 
+    private fun openHeatmap() {
+        startActivity(Intent(this, PhotoHeatmapActivity::class.java))
+    }
+
     private fun openAgent() {
         startActivity(Intent(this, AgentSearchActivity::class.java))
     }
@@ -674,19 +686,15 @@ private fun GalleryScreen(
     onAgent: () -> Unit,
     onIdentity: () -> Unit,
     onSettings: () -> Unit,
+    onHeatmap: () -> Unit,
+    initialSelectedRange: PhotoHeatmapSelection?,
     onPhoto: (String, String) -> Unit,
     onSimilar: (String, String, String) -> Unit,
 ) {
     val zoneId = ZoneId.systemDefault()
-    val initialYear = remember(state.galleryPhotos, zoneId) {
-        PhotoWallOrganizer.initialYear(state.galleryPhotos, zoneId)
-    }
-    var contentTab by remember { mutableStateOf(GalleryContentTab.PHOTOS) }
     var displayMode by remember { mutableStateOf(PhotoWallDisplayMode.THUMBNAILS) }
-    var displayedYear by remember(initialYear) { mutableStateOf(initialYear) }
-    var heatmapGranularity by remember { mutableStateOf(PhotoHeatmapGranularity.DAY) }
-    var selectedRange by remember(state.galleryPhotos) {
-        mutableStateOf<PhotoHeatmapSelection?>(null)
+    var selectedRange by remember(state.galleryPhotos, initialSelectedRange) {
+        mutableStateOf(initialSelectedRange)
     }
     val dayGroups = remember(state.galleryPhotos, selectedRange, zoneId) {
         PhotoWallOrganizer.groupByDay(state.galleryPhotos, zoneId)
@@ -694,10 +702,9 @@ private fun GalleryScreen(
                 selectedRange?.let { range -> groups.filter { range.contains(it.date) } } ?: groups
             }
     }
-    val heatmap = remember(displayedYear, state.galleryPhotos, zoneId) {
-        PhotoWallOrganizer.heatmap(displayedYear, state.galleryPhotos, zoneId)
-    }
     val searchActive = state.activeSearchQuery != null
+    val density = LocalDensity.current
+    var showStartupStory by rememberSaveable { mutableStateOf(true) }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -713,37 +720,31 @@ private fun GalleryScreen(
                         )
                     }
                 },
-                actions = {
-                    IconButton(
-                        onClick = onIdentity,
-                        enabled = !state.busy,
-                        modifier = Modifier.testTag("open_identity"),
-                    ) {
-                        Icon(Icons.Outlined.Face, contentDescription = "管理本地人物与宠物识别")
-                    }
-                    IconButton(
-                        onClick = onAgent,
-                        enabled = state.search.enabled && !state.busy,
-                        modifier = Modifier.testTag("open_agent"),
-                    ) {
-                        Icon(Icons.Outlined.SmartToy, contentDescription = "打开 Agent 搜索")
-                    }
-                    IconButton(
-                        onClick = onSettings,
-                        modifier = Modifier.testTag("open_settings"),
-                    ) {
-                        Icon(Icons.Outlined.Settings, contentDescription = "打开模型设置")
-                    }
-                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background,
                 ),
             )
         },
+        bottomBar = {
+            GalleryBottomDock(
+                busy = state.busy,
+                searchEnabled = state.search.enabled,
+                onHeatmap = onHeatmap,
+                onSettings = onSettings,
+                onIdentity = onIdentity,
+                onAgent = onAgent,
+            )
+        },
     ) { scaffoldPadding ->
+        Box(Modifier.fillMaxSize()) {
         LazyVerticalGrid(
             columns = GridCells.Fixed(3),
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .semantics {
+                    contentDescription = "照片墙，向右滑动打开年度照片热力图"
+                }
+                .testTag("photo_wall_gesture_surface"),
             contentPadding = PaddingValues(
                 start = 20.dp,
                 end = 20.dp,
@@ -753,9 +754,6 @@ private fun GalleryScreen(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            item(span = { GridItemSpan(maxLineSpan) }) {
-                HeroCard(state)
-            }
             item(span = { GridItemSpan(maxLineSpan) }) {
                 AnnotationActions(
                     busy = state.busy,
@@ -828,77 +826,43 @@ private fun GalleryScreen(
                 }
             } else {
                 item(span = { GridItemSpan(maxLineSpan) }) {
-                    GalleryContentTabs(
-                        selectedTab = contentTab,
-                        onSelectTab = { contentTab = it },
+                    PhotoWallControls(
+                        photoCount = state.galleryPhotos.size,
+                        displayMode = displayMode,
+                        selectedRange = selectedRange,
+                        onDisplayMode = { displayMode = it },
+                        onClearRange = { selectedRange = null },
                     )
                 }
-                when (contentTab) {
-                    GalleryContentTab.PHOTOS -> {
-                        item(span = { GridItemSpan(maxLineSpan) }) {
-                            PhotoWallControls(
-                                photoCount = state.galleryPhotos.size,
-                                displayMode = displayMode,
-                                selectedRange = selectedRange,
-                                onDisplayMode = { displayMode = it },
-                                onClearRange = { selectedRange = null },
+                dayGroups.forEach { group ->
+                    item(
+                        key = "day-${group.date ?: "unknown"}",
+                        span = { GridItemSpan(maxLineSpan) },
+                    ) {
+                        PhotoDayHeader(group)
+                    }
+                    if (displayMode == PhotoWallDisplayMode.THUMBNAILS) {
+                        gridItems(
+                            items = group.photos,
+                            key = { "wall-thumb-${it.photoId}" },
+                        ) { photo ->
+                            PhotoWallThumbnail(
+                                photo = photo,
+                                onClick = { onPhoto(photo.photoId, photo.uri) },
                             )
                         }
-                        dayGroups.forEach { group ->
-                            item(
-                                key = "day-${group.date ?: "unknown"}",
-                                span = { GridItemSpan(maxLineSpan) },
-                            ) {
-                                PhotoDayHeader(group)
-                            }
-                            if (displayMode == PhotoWallDisplayMode.THUMBNAILS) {
-                                gridItems(
-                                    items = group.photos,
-                                    key = { "wall-thumb-${it.photoId}" },
-                                ) { photo ->
-                                    PhotoWallThumbnail(
-                                        photo = photo,
-                                        onClick = { onPhoto(photo.photoId, photo.uri) },
-                                    )
-                                }
-                            } else {
-                                gridItems(
-                                    items = group.photos,
-                                    key = { "wall-detail-${it.photoId}" },
-                                    span = { GridItemSpan(maxLineSpan) },
-                                ) { photo ->
-                                    PhotoWallDetailCard(
-                                        photo = photo,
-                                        onClick = { onPhoto(photo.photoId, photo.uri) },
-                                        onSimilar = {
-                                            onSimilar(photo.photoId, photo.uri, photo.displayName)
-                                        },
-                                    )
-                                }
-                            }
-                        }
-                    }
-                    GalleryContentTab.HEATMAP -> {
-                        item(span = { GridItemSpan(maxLineSpan) }) {
-                            HeatmapTabContent(
-                                heatmap = heatmap,
-                                heatmapGranularity = heatmapGranularity,
-                                selectedRange = selectedRange,
-                                onHeatmapGranularity = { granularity ->
-                                    heatmapGranularity = granularity
-                                    selectedRange = null
+                    } else {
+                        gridItems(
+                            items = group.photos,
+                            key = { "wall-detail-${it.photoId}" },
+                            span = { GridItemSpan(maxLineSpan) },
+                        ) { photo ->
+                            PhotoWallDetailCard(
+                                photo = photo,
+                                onClick = { onPhoto(photo.photoId, photo.uri) },
+                                onSimilar = {
+                                    onSimilar(photo.photoId, photo.uri, photo.displayName)
                                 },
-                                onPreviousYear = {
-                                    displayedYear -= 1
-                                    selectedRange = null
-                                },
-                                onNextYear = {
-                                    displayedYear += 1
-                                    selectedRange = null
-                                },
-                                onSelectRange = { selectedRange = it },
-                                onClearRange = { selectedRange = null },
-                                onViewPhotos = { contentTab = GalleryContentTab.PHOTOS },
                             )
                         }
                     }
@@ -908,52 +872,129 @@ private fun GalleryScreen(
                 PrivacyFooter()
             }
         }
+        Box(
+            modifier = Modifier
+                .align(Alignment.CenterStart)
+                .fillMaxHeight()
+                .width(32.dp)
+                .pointerInput(onHeatmap) {
+                    val thresholdPx = with(density) { 24.dp.toPx() }
+                    awaitEachGesture {
+                        val down = awaitFirstDown(
+                            requireUnconsumed = false,
+                            pass = PointerEventPass.Initial,
+                        )
+                        var distanceX = 0f
+                        var distanceY = 0f
+                        var triggered = false
+                        while (true) {
+                            val event = awaitPointerEvent(PointerEventPass.Initial)
+                            val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                            if (!change.pressed) break
+                            distanceX += change.position.x - change.previousPosition.x
+                            distanceY += change.position.y - change.previousPosition.y
+                            if (!triggered &&
+                                distanceX >= thresholdPx &&
+                                distanceX > abs(distanceY)
+                            ) {
+                                triggered = true
+                                onHeatmap()
+                            }
+                        }
+                    }
+                }
+                .semantics {
+                    contentDescription = "从左边缘向右滑动打开年度照片热力图"
+                }
+                .testTag("photo_wall_gesture_edge"),
+        )
+        }
+    }
+    if (showStartupStory) {
+        StartupStoryDialog(onDismiss = { showStartupStory = false })
     }
 }
 
 @Composable
-private fun HeroCard(state: GalleryUiState) {
-    ElevatedCard(
-        modifier = Modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.elevatedCardColors(
-            containerColor = MaterialTheme.colorScheme.primaryContainer,
-        ),
-        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 1.dp),
-    ) {
-        Column(Modifier.padding(24.dp)) {
-            Surface(
-                shape = RoundedCornerShape(18.dp),
-                color = MaterialTheme.colorScheme.primary,
-            ) {
-                Icon(
-                    Icons.Outlined.AutoAwesome,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onPrimary,
-                    modifier = Modifier.padding(12.dp).size(28.dp),
-                )
-            }
-            Spacer(Modifier.height(18.dp))
-            Text(
-                "让照片，自己说出故事",
-                style = MaterialTheme.typography.headlineSmall,
-                color = MaterialTheme.colorScheme.onPrimaryContainer,
-            )
-            Spacer(Modifier.height(8.dp))
-            Text(
-                "VLM 在授权范围内理解画面，描述与标签只存放在你的设备。",
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.78f),
-            )
-            Spacer(Modifier.height(20.dp))
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                item { MetricPill("${state.accessibleCount}", "可访问") }
-                item { MetricPill("${state.search.annotationCount}", "已标注") }
-                item { MetricPill("${state.identityCount}", "身份") }
-                item { MetricPill("${state.visualIndexedCount}", "相似索引") }
-            }
-        }
+private fun GalleryBottomDock(
+    busy: Boolean,
+    searchEnabled: Boolean,
+    onHeatmap: () -> Unit,
+    onSettings: () -> Unit,
+    onIdentity: () -> Unit,
+    onAgent: () -> Unit,
+) {
+    NavigationBar(modifier = Modifier.testTag("bottom_dock")) {
+        NavigationBarItem(
+            selected = false,
+            onClick = onHeatmap,
+            icon = {
+                Icon(Icons.Outlined.GridView, contentDescription = "年度热力图")
+            },
+            label = { Text("热力图") },
+            modifier = Modifier.testTag("dock_heatmap"),
+        )
+        NavigationBarItem(
+            selected = false,
+            onClick = onIdentity,
+            enabled = !busy,
+            icon = {
+                Icon(Icons.Outlined.Face, contentDescription = "人物与宠物")
+            },
+            label = { Text("人") },
+            modifier = Modifier.testTag("dock_identity"),
+        )
+        NavigationBarItem(
+            selected = false,
+            onClick = onAgent,
+            enabled = searchEnabled && !busy,
+            icon = {
+                Icon(Icons.Outlined.SmartToy, contentDescription = "Agent 搜索")
+            },
+            label = { Text("Agent") },
+            modifier = Modifier.testTag("dock_agent"),
+        )
+        NavigationBarItem(
+            selected = false,
+            onClick = onSettings,
+            icon = {
+                Icon(Icons.Outlined.Settings, contentDescription = "模型设置")
+            },
+            label = { Text("设置") },
+            modifier = Modifier.testTag("dock_settings"),
+        )
     }
+}
+
+@Composable
+private fun StartupStoryDialog(onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        modifier = Modifier.testTag("startup_story_dialog"),
+        icon = {
+            Icon(Icons.Outlined.AutoAwesome, contentDescription = null)
+        },
+        title = { Text("让照片，自己说出故事") },
+        text = {
+            Text("VLM 在授权范围内理解画面，描述与标签只存放在你的设备。")
+        },
+        confirmButton = {
+            Button(
+                onClick = onDismiss,
+                modifier = Modifier.testTag("startup_story_continue"),
+            ) {
+                Text("开始探索")
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onDismiss,
+                modifier = Modifier.testTag("startup_story_skip"),
+            ) {
+                Text("稍后再看")
+            }
+        },
+    )
 }
 
 @Composable
@@ -1111,23 +1152,6 @@ private fun SimilarityCheckDialog(
 }
 
 @Composable
-private fun MetricPill(value: String, label: String) {
-    Surface(
-        shape = RoundedCornerShape(50),
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(value, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-            Spacer(Modifier.width(6.dp))
-            Text(label, style = MaterialTheme.typography.bodyMedium)
-        }
-    }
-}
-
-@Composable
 private fun AnnotationActions(
     busy: Boolean,
     selectedCount: Int,
@@ -1235,26 +1259,6 @@ private fun SearchPanel(
     }
 }
 
-@Composable
-private fun GalleryContentTabs(
-    selectedTab: GalleryContentTab,
-    onSelectTab: (GalleryContentTab) -> Unit,
-) {
-    TabRow(
-        selectedTabIndex = selectedTab.ordinal,
-        modifier = Modifier.fillMaxWidth().testTag("gallery_content_tabs"),
-        containerColor = MaterialTheme.colorScheme.surface,
-    ) {
-        GalleryContentTab.entries.forEach { tab ->
-            Tab(
-                selected = selectedTab == tab,
-                onClick = { onSelectTab(tab) },
-                text = { Text(tab.label) },
-                modifier = Modifier.testTag("gallery_tab_${tab.name.lowercase()}"),
-            )
-        }
-    }
-}
 
 @Composable
 private fun PhotoWallControls(
@@ -1317,502 +1321,6 @@ private fun PhotoWallControls(
     }
 }
 
-@Composable
-private fun HeatmapTabContent(
-    heatmap: PhotoHeatmapYear,
-    heatmapGranularity: PhotoHeatmapGranularity,
-    selectedRange: PhotoHeatmapSelection?,
-    onHeatmapGranularity: (PhotoHeatmapGranularity) -> Unit,
-    onPreviousYear: () -> Unit,
-    onNextYear: () -> Unit,
-    onSelectRange: (PhotoHeatmapSelection) -> Unit,
-    onClearRange: () -> Unit,
-    onViewPhotos: () -> Unit,
-) {
-    Column(
-        modifier = Modifier.fillMaxWidth().testTag("heatmap_tab_content"),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        SectionTitle("照片热力图", "年度 · ${heatmapGranularity.label}")
-        AnnualPhotoCountHeatmap(
-            heatmap = heatmap,
-            granularity = heatmapGranularity,
-            selectedRange = selectedRange,
-            onGranularity = onHeatmapGranularity,
-            onPreviousYear = onPreviousYear,
-            onNextYear = onNextYear,
-            onSelectRange = onSelectRange,
-        )
-        if (selectedRange != null) {
-            Text(
-                "已选 ${heatmapSelectionLabel(selectedRange)} · ${selectedRange.count} 张照片",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("selected_photo_range_summary"),
-            )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                TextButton(
-                    onClick = onClearRange,
-                    modifier = Modifier.testTag("clear_photo_range"),
-                ) {
-                    Text("清除选择")
-                }
-                FilledTonalButton(
-                    onClick = onViewPhotos,
-                    modifier = Modifier.testTag("view_selected_photos"),
-                ) {
-                    Text("去照片中查看")
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun AnnualPhotoCountHeatmap(
-    heatmap: PhotoHeatmapYear,
-    granularity: PhotoHeatmapGranularity,
-    selectedRange: PhotoHeatmapSelection?,
-    onGranularity: (PhotoHeatmapGranularity) -> Unit,
-    onPreviousYear: () -> Unit,
-    onNextYear: () -> Unit,
-    onSelectRange: (PhotoHeatmapSelection) -> Unit,
-) {
-    val today = remember { LocalDate.now() }
-    ElevatedCard(
-        modifier = Modifier.fillMaxWidth().testTag("photo_wall_heatmap"),
-        shape = MaterialTheme.shapes.large,
-        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 1.dp),
-    ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                IconButton(onClick = onPreviousYear, modifier = Modifier.testTag("heatmap_previous_year")) {
-                    Icon(Icons.Outlined.ChevronLeft, contentDescription = "上一年")
-                }
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        "${heatmap.year}年",
-                        style = MaterialTheme.typography.titleMedium,
-                        modifier = Modifier.testTag("heatmap_year_label"),
-                    )
-                    Text(
-                        "全年 ${heatmap.totalCount} 张 · ${heatmapUnitLabel(granularity)}最多 ${heatmap.maxCount(granularity)} 张",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                IconButton(onClick = onNextYear, modifier = Modifier.testTag("heatmap_next_year")) {
-                    Icon(Icons.Outlined.ChevronRight, contentDescription = "下一年")
-                }
-            }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
-            ) {
-                PhotoHeatmapGranularity.entries.forEach { option ->
-                    FilterChip(
-                        selected = granularity == option,
-                        onClick = { onGranularity(option) },
-                        label = { Text(option.label) },
-                        modifier = Modifier.testTag("heatmap_granularity_${option.name.lowercase()}"),
-                    )
-                }
-            }
-            Text(
-                "时间从上到下排列",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            when (granularity) {
-                PhotoHeatmapGranularity.DAY -> GitHubAnnualDayHeatmap(
-                    heatmap = heatmap,
-                    selectedRange = selectedRange,
-                    today = today,
-                    onSelectRange = onSelectRange,
-                )
-                PhotoHeatmapGranularity.WEEK -> GitHubAnnualWeekHeatmap(
-                    heatmap = heatmap,
-                    selectedRange = selectedRange,
-                    onSelectRange = onSelectRange,
-                )
-                PhotoHeatmapGranularity.MONTH -> GitHubAnnualMonthHeatmap(
-                    heatmap = heatmap,
-                    selectedRange = selectedRange,
-                    onSelectRange = onSelectRange,
-                )
-            }
-            GitHubHeatmapGuide()
-        }
-    }
-}
-
-@Composable
-private fun GitHubAnnualDayHeatmap(
-    heatmap: PhotoHeatmapYear,
-    selectedRange: PhotoHeatmapSelection?,
-    today: LocalDate,
-    onSelectRange: (PhotoHeatmapSelection) -> Unit,
-) {
-    val cellSize = 18.dp
-    val gap = 4.dp
-    val monthByWeek = heatmap.monthLabels.associateBy(PhotoHeatmapMonthLabel::startWeekIndex)
-    Column(
-        modifier = Modifier.fillMaxWidth().testTag("heatmap_day_vertical"),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(gap),
-    ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
-            Spacer(Modifier.width(32.dp))
-            listOf("日", "一", "二", "三", "四", "五", "六").forEach { weekday ->
-                Box(
-                    modifier = Modifier.size(cellSize),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        weekday,
-                        style = MaterialTheme.typography.labelSmall,
-                        fontSize = 9.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-        }
-        heatmap.dayCells.chunked(7).forEachIndexed { weekIndex, week ->
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(gap),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Box(
-                    modifier = Modifier.width(32.dp).height(cellSize),
-                    contentAlignment = Alignment.CenterEnd,
-                ) {
-                    monthByWeek[weekIndex]?.let { label ->
-                        Text(
-                            "${label.month.monthValue}月",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontSize = 9.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
-                week.forEach { cell ->
-                    val selected = selectedRange?.let { selection ->
-                        selection.granularity == PhotoHeatmapGranularity.DAY &&
-                            selection.startDate == cell.date
-                    } == true
-                    val isToday = cell.date == today
-                    var modifier = Modifier.size(cellSize)
-                    if (cell.inYear) {
-                        val description = buildString {
-                            append(cell.date.format(DateTimeFormatter.ofPattern("yyyy年M月d日")))
-                            append("，${cell.count}张照片，热度${cell.level}级")
-                            if (isToday) append("，今天")
-                            if (selected) append("，已选择")
-                        }
-                        modifier = modifier
-                            .testTag("heatmap_day_${cell.date}")
-                            .then(
-                                if (cell.count > 0) {
-                                    Modifier.clickable {
-                                        onSelectRange(
-                                            PhotoHeatmapSelection(
-                                                granularity = PhotoHeatmapGranularity.DAY,
-                                                startDate = cell.date,
-                                                endDate = cell.date,
-                                                count = cell.count,
-                                            ),
-                                        )
-                                    }
-                                } else {
-                                    Modifier
-                                },
-                            )
-                            .semantics {
-                                contentDescription = description
-                                this.selected = selected
-                            }
-                    }
-                    Surface(
-                        modifier = modifier,
-                        color = if (cell.inYear) githubHeatmapColor(cell.level) else Color.Transparent,
-                        border = if (cell.inYear) githubHeatmapBorder(selected, isToday) else null,
-                        shape = RoundedCornerShape(3.dp),
-                    ) {}
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun GitHubAnnualWeekHeatmap(
-    heatmap: PhotoHeatmapYear,
-    selectedRange: PhotoHeatmapSelection?,
-    onSelectRange: (PhotoHeatmapSelection) -> Unit,
-) {
-    val cellSize = 18.dp
-    val monthByWeek = heatmap.monthLabels.associateBy(PhotoHeatmapMonthLabel::startWeekIndex)
-    Column(
-        modifier = Modifier.fillMaxWidth().testTag("heatmap_week_vertical"),
-        verticalArrangement = Arrangement.spacedBy(5.dp),
-    ) {
-        heatmap.weekCells.forEachIndexed { weekIndex, cell ->
-            val selected = selectedRange?.let { selection ->
-                selection.granularity == PhotoHeatmapGranularity.WEEK &&
-                    selection.startDate == cell.startDate &&
-                    selection.endDate == cell.endDate
-            } == true
-            val description = buildString {
-                append(heatmapRangeLabel(cell.startDate, cell.endDate))
-                append("，${cell.count}张照片，热度${cell.level}级")
-                if (selected) append("，已选择")
-            }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Box(
-                    modifier = Modifier.width(32.dp),
-                    contentAlignment = Alignment.CenterEnd,
-                ) {
-                    monthByWeek[weekIndex]?.let { label ->
-                        Text(
-                            "${label.month.monthValue}月",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontSize = 9.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
-                Spacer(Modifier.width(8.dp))
-                Surface(
-                    modifier = Modifier
-                        .size(cellSize)
-                        .testTag("heatmap_week_${cell.startDate}")
-                        .then(
-                            if (cell.count > 0) {
-                                Modifier.clickable {
-                                    onSelectRange(
-                                        PhotoHeatmapSelection(
-                                            granularity = PhotoHeatmapGranularity.WEEK,
-                                            startDate = cell.startDate,
-                                            endDate = cell.endDate,
-                                            count = cell.count,
-                                        ),
-                                    )
-                                }
-                            } else {
-                                Modifier
-                            },
-                        )
-                        .semantics {
-                            contentDescription = description
-                            this.selected = selected
-                        },
-                    color = githubHeatmapColor(cell.level),
-                    border = githubHeatmapBorder(selected, false),
-                    shape = RoundedCornerShape(3.dp),
-                ) {}
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    heatmapRangeLabel(cell.startDate, cell.endDate),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(Modifier.weight(1f))
-                Text(
-                    "${cell.count} 张",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun GitHubAnnualMonthHeatmap(
-    heatmap: PhotoHeatmapYear,
-    selectedRange: PhotoHeatmapSelection?,
-    onSelectRange: (PhotoHeatmapSelection) -> Unit,
-) {
-    Column(
-        modifier = Modifier.fillMaxWidth().testTag("heatmap_month_vertical"),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        heatmap.monthCells.forEachIndexed { index, cell ->
-            val selected = selectedRange?.let { selection ->
-                selection.granularity == PhotoHeatmapGranularity.MONTH &&
-                    selection.startDate == cell.startDate
-            } == true
-            val description = buildString {
-                append(cell.startDate.format(DateTimeFormatter.ofPattern("yyyy年M月")))
-                append("，${cell.count}张照片，热度${cell.level}级")
-                if (selected) append("，已选择")
-            }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    "${index + 1}月",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.width(40.dp),
-                )
-                Surface(
-                    modifier = Modifier
-                        .size(22.dp)
-                        .testTag("heatmap_month_${(index + 1).toString().padStart(2, '0')}")
-                        .then(
-                            if (cell.count > 0) {
-                                Modifier.clickable {
-                                    onSelectRange(
-                                        PhotoHeatmapSelection(
-                                            granularity = PhotoHeatmapGranularity.MONTH,
-                                            startDate = cell.startDate,
-                                            endDate = cell.endDate,
-                                            count = cell.count,
-                                        ),
-                                    )
-                                }
-                            } else {
-                                Modifier
-                            },
-                        )
-                        .semantics {
-                            contentDescription = description
-                            this.selected = selected
-                        },
-                    color = githubHeatmapColor(cell.level),
-                    border = githubHeatmapBorder(selected, false),
-                    shape = RoundedCornerShape(3.dp),
-                ) {}
-                Spacer(Modifier.width(10.dp))
-                Text(
-                    heatmapSelectionLabel(
-                        PhotoHeatmapSelection(
-                            granularity = PhotoHeatmapGranularity.MONTH,
-                            startDate = cell.startDate,
-                            endDate = cell.endDate,
-                            count = cell.count,
-                        ),
-                    ),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(Modifier.weight(1f))
-                Text(
-                    "${cell.count} 张",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun GitHubHeatmapGuide() {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(top = 4.dp, end = 20.dp, bottom = 4.dp)
-            .testTag("heatmap_guide"),
-        horizontalArrangement = Arrangement.End,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text("少", style = MaterialTheme.typography.labelSmall)
-        Spacer(Modifier.width(5.dp))
-        (0..PhotoWallOrganizer.MAX_HEAT_LEVEL).forEach { level ->
-            Surface(
-                modifier = Modifier
-                    .padding(horizontal = 2.dp)
-                    .size(11.dp)
-                    .semantics {
-                        contentDescription = if (level == 0) "热度0级，无照片" else "热度${level}级"
-                    }
-                    .testTag("heatmap_guide_level_$level"),
-                color = githubHeatmapColor(level),
-                border = githubHeatmapBorder(false, false),
-                shape = RoundedCornerShape(2.dp),
-            ) {}
-        }
-        Spacer(Modifier.width(5.dp))
-        Text("多", style = MaterialTheme.typography.labelSmall)
-    }
-}
-
-@Composable
-private fun githubHeatmapColor(level: Int): Color {
-    val dark = isSystemInDarkTheme()
-    return if (dark) {
-        when (level) {
-            0 -> Color(0xFF161B22)
-            1 -> Color(0xFF0E4429)
-            2 -> Color(0xFF006D32)
-            3 -> Color(0xFF26A641)
-            else -> Color(0xFF39D353)
-        }
-    } else {
-        when (level) {
-            0 -> Color(0xFFEBEDF0)
-            1 -> Color(0xFF9BE9A8)
-            2 -> Color(0xFF40C463)
-            3 -> Color(0xFF30A14E)
-            else -> Color(0xFF216E39)
-        }
-    }
-}
-
-@Composable
-private fun githubHeatmapBorder(selected: Boolean, today: Boolean): BorderStroke = when {
-    selected -> BorderStroke(
-        2.dp,
-        if (isSystemInDarkTheme()) Color(0xFF58A6FF) else Color(0xFF0969DA),
-    )
-    today -> BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface)
-    isSystemInDarkTheme() -> BorderStroke(1.dp, Color(0x1AFFFFFF))
-    else -> BorderStroke(1.dp, Color(0x0F1B1F23))
-}
-
-private fun heatmapUnitLabel(granularity: PhotoHeatmapGranularity): String = when (granularity) {
-    PhotoHeatmapGranularity.DAY -> "单日"
-    PhotoHeatmapGranularity.WEEK -> "单周"
-    PhotoHeatmapGranularity.MONTH -> "单月"
-}
-
-private fun heatmapSelectionLabel(selection: PhotoHeatmapSelection): String = when (selection.granularity) {
-    PhotoHeatmapGranularity.DAY ->
-        selection.startDate.format(DateTimeFormatter.ofPattern("yyyy年M月d日", Locale.CHINA))
-    PhotoHeatmapGranularity.WEEK -> heatmapRangeLabel(selection.startDate, selection.endDate)
-    PhotoHeatmapGranularity.MONTH ->
-        selection.startDate.format(DateTimeFormatter.ofPattern("yyyy年M月", Locale.CHINA))
-}
-
-private fun heatmapRangeLabel(startDate: LocalDate, endDate: LocalDate): String = when {
-    startDate == endDate -> startDate.format(DateTimeFormatter.ofPattern("yyyy年M月d日", Locale.CHINA))
-    startDate.year == endDate.year && startDate.month == endDate.month ->
-        "${startDate.format(DateTimeFormatter.ofPattern("yyyy年M月d日", Locale.CHINA))}–${endDate.dayOfMonth}日"
-    startDate.year == endDate.year ->
-        "${startDate.format(DateTimeFormatter.ofPattern("yyyy年M月d日", Locale.CHINA))}–${endDate.format(DateTimeFormatter.ofPattern("M月d日", Locale.CHINA))}"
-    else ->
-        "${startDate.format(DateTimeFormatter.ofPattern("yyyy年M月d日", Locale.CHINA))}–${endDate.format(DateTimeFormatter.ofPattern("yyyy年M月d日", Locale.CHINA))}"
-}
 
 @Composable
 private fun PhotoDayHeader(group: PhotoDayGroup) {

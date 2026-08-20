@@ -8,7 +8,6 @@ import android.graphics.Bitmap
 import android.graphics.Color
 import android.provider.MediaStore
 import androidx.compose.ui.test.assertContentDescriptionEquals
-import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
@@ -18,6 +17,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeDown
+import androidx.compose.ui.test.swipeRight
 import androidx.compose.ui.test.swipeUp
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -57,15 +57,35 @@ class PhotoWallHeatmapActivityTest {
                 Intent(context, MainActivity::class.java)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK),
             )
-            scrollUntilVisible("gallery_content_tabs")
-            scrollUntilVisible("photo_wall_controls")
-            composeRule.onNodeWithTag("photo_wall_controls").assertExists()
+            composeRule.onNodeWithTag("startup_story_dialog").assertExists()
+            composeRule.onNodeWithTag("startup_story_continue").performClick()
+            composeRule.onNodeWithTag("startup_story_dialog").assertDoesNotExist()
             composeRule.onNodeWithTag("photo_wall_heatmap").assertDoesNotExist()
-            scrollBackUntilVisible("gallery_tab_heatmap")
-            composeRule.onNodeWithTag("gallery_tab_heatmap")
-                .performSemanticsAction(SemanticsActions.OnClick) { it() }
-                .assertIsSelected()
-            scrollUntilVisible("heatmap_previous_year")
+            composeRule.onNodeWithTag("bottom_dock").assertExists()
+            composeRule.onNodeWithTag("dock_heatmap").assertExists()
+            composeRule.onNodeWithTag("dock_settings").assertExists()
+            composeRule.onNodeWithTag("dock_identity").assertExists()
+            composeRule.onNodeWithTag("dock_agent").assertExists()
+            composeRule.onNodeWithTag("open_identity").assertDoesNotExist()
+            composeRule.onNodeWithTag("open_agent").assertDoesNotExist()
+            composeRule.onNodeWithTag("open_settings").assertDoesNotExist()
+            composeRule.onNodeWithTag("open_heatmap_page").assertDoesNotExist()
+            assertDockOrder("dock_heatmap", "dock_identity", "dock_agent", "dock_settings")
+            composeRule.onNodeWithTag("photo_wall_gesture_edge")
+                .assertContentDescriptionEquals("从左边缘向右滑动打开年度照片热力图")
+                .performTouchInput {
+                    swipeRight(startX = 2f, endX = 220f)
+                }
+            composeRule.onNodeWithTag("photo_heatmap_page").assertExists()
+            composeRule.onNodeWithTag("heatmap_back").performClick()
+            composeRule.onNodeWithTag("dock_heatmap").performClick()
+            composeRule.onNodeWithTag("photo_heatmap_page").assertExists()
+            composeRule.onNodeWithTag("heatmap_side_controls").assertExists()
+            assertTrue(composeRule.onAllNodes(hasScrollAction()).fetchSemanticsNodes().isEmpty())
+            assertHeatmapFillsContent()
+            assertInHeatmapViewport("heatmap_side_controls")
+            assertInHeatmapViewport("heatmap_previous_year")
+            assertInHeatmapViewport("heatmap_granularity_month")
             composeRule.onNodeWithTag("photo_wall_controls").assertDoesNotExist()
             composeRule.onNodeWithTag("photo_wall_thumbnail_${photos.first().photoId}").assertDoesNotExist()
 
@@ -79,9 +99,12 @@ class PhotoWallHeatmapActivityTest {
 
             composeRule.onNodeWithTag("heatmap_day_2040-01-01").assertExists()
             composeRule.onNodeWithTag("heatmap_day_2040-12-31").assertExists()
-            scrollUntilVisible("heatmap_day_2040-01-01")
+            composeRule.onNodeWithTag("heatmap_day_vertical").assertExists()
+            composeRule.onNodeWithTag("heatmap_day_horizontal").assertDoesNotExist()
+            assertInHeatmapViewport("heatmap_day_2040-01-01")
+            assertInHeatmapViewport("heatmap_day_2040-12-31")
             assertVerticallyOrdered("heatmap_day_2040-01-01", "heatmap_day_2040-01-08")
-            scrollUntilVisible("heatmap_day_2040-08-14")
+            composeRule.onNodeWithTag("heatmap_day_2040-08-14").assertExists()
             composeRule.onNodeWithTag("heatmap_day_2040-08-14")
                 .assertContentDescriptionEquals("2040年8月14日，4张照片，热度4级")
             composeRule.onNodeWithTag("heatmap_day_2040-08-15")
@@ -95,38 +118,44 @@ class PhotoWallHeatmapActivityTest {
                 .assertTextEquals("已选 2040年8月15日 · 2 张照片")
             composeRule.onNodeWithTag("view_selected_photos").performClick()
             composeRule.onNodeWithTag("photo_wall_heatmap").assertDoesNotExist()
-            scrollBackUntilVisible("selected_photo_range_summary")
+            composeRule.onNodeWithTag("bottom_dock").assertExists()
             composeRule.onNodeWithTag("selected_photo_range_summary")
                 .assertTextEquals("只看 2040年8月15日 · 2 张照片")
 
-            scrollBackUntilVisible("gallery_tab_heatmap")
-            composeRule.onNodeWithTag("gallery_tab_heatmap")
-                .performSemanticsAction(SemanticsActions.OnClick) { it() }
-                .assertIsSelected()
-            scrollUntilVisible("heatmap_granularity_week")
+            composeRule.onNodeWithTag("dock_heatmap").performClick()
+            composeRule.onNodeWithTag("photo_heatmap_page").assertExists()
+            assertTrue(composeRule.onAllNodes(hasScrollAction()).fetchSemanticsNodes().isEmpty())
+            composeRule.onNodeWithTag("heatmap_granularity_week").assertExists()
             composeRule.onNodeWithTag("heatmap_granularity_week")
                 .performSemanticsAction(SemanticsActions.OnClick) { it() }
-            scrollUntilVisible("heatmap_week_2040-08-12")
+            composeRule.onNodeWithTag("heatmap_week_2040-08-12").assertExists()
+            composeRule.onNodeWithTag("heatmap_week_2040-08-19").assertExists()
+            composeRule.onNodeWithTag("heatmap_week_vertical").assertExists()
+            composeRule.onNodeWithTag("heatmap_week_grid").assertDoesNotExist()
+            assertInHeatmapViewport("heatmap_week_2040-08-12")
+            assertInHeatmapViewport("heatmap_week_2040-08-19")
             assertVerticallyOrdered("heatmap_week_2040-08-12", "heatmap_week_2040-08-19")
             composeRule.onNodeWithTag("heatmap_week_2040-08-12")
                 .assertContentDescriptionEquals("2040年8月12日–18日，7张照片，热度4级")
                 .performClick()
             captureScreenshot("photo-wall-github-annual-week-vertical.png")
-            scrollUntilVisible("selected_photo_range_summary")
             composeRule.onNodeWithTag("selected_photo_range_summary")
                 .assertTextEquals("已选 2040年8月12日–18日 · 7 张照片")
-            scrollBackUntilVisible("heatmap_granularity_month")
+            composeRule.onNodeWithTag("heatmap_granularity_month").assertExists()
             composeRule.onNodeWithTag("heatmap_granularity_month")
                 .performSemanticsAction(SemanticsActions.OnClick) { it() }
-            scrollUntilVisible("heatmap_month_01")
-            assertVerticallyOrdered("heatmap_month_01", "heatmap_month_02")
+            composeRule.onNodeWithTag("heatmap_month_01").assertExists()
             composeRule.onNodeWithTag("heatmap_month_12").assertExists()
-            scrollUntilVisible("heatmap_month_08")
+            composeRule.onNodeWithTag("heatmap_month_vertical").assertExists()
+            composeRule.onNodeWithTag("heatmap_month_grid").assertDoesNotExist()
+            assertInHeatmapViewport("heatmap_month_01")
+            assertInHeatmapViewport("heatmap_month_12")
+            assertVerticallyOrdered("heatmap_month_01", "heatmap_month_02")
+            composeRule.onNodeWithTag("heatmap_month_08").assertExists()
             composeRule.onNodeWithTag("heatmap_month_08")
                 .assertContentDescriptionEquals("2040年8月，7张照片，热度4级")
                 .performClick()
             captureScreenshot("photo-wall-github-annual-month-vertical.png")
-            scrollUntilVisible("selected_photo_range_summary")
             composeRule.onNodeWithTag("selected_photo_range_summary")
                 .assertTextEquals("已选 2040年8月 · 7 张照片")
             composeRule.onNodeWithTag("view_selected_photos").performClick()
@@ -139,12 +168,6 @@ class PhotoWallHeatmapActivityTest {
                 context.contentResolver.delete(android.net.Uri.parse(photo.uri), null, null)
             }
         }
-    }
-
-    private fun assertVerticallyOrdered(earlierTag: String, laterTag: String) {
-        val earlierTop = composeRule.onNodeWithTag(earlierTag).fetchSemanticsNode().boundsInRoot.top
-        val laterTop = composeRule.onNodeWithTag(laterTag).fetchSemanticsNode().boundsInRoot.top
-        assertTrue("Expected $laterTag below $earlierTag, but $laterTop <= $earlierTop", laterTop > earlierTop)
     }
 
     private fun scrollUntilVisible(tag: String) {
@@ -181,6 +204,34 @@ class PhotoWallHeatmapActivityTest {
         .onAllNodesWithTag(tag)
         .fetchSemanticsNodes()
         .any { node -> node.boundsInRoot.width > 24f && node.boundsInRoot.height > 24f }
+
+    private fun assertVerticallyOrdered(earlierTag: String, laterTag: String) {
+        val earlierTop = composeRule.onNodeWithTag(earlierTag).fetchSemanticsNode().boundsInRoot.top
+        val laterTop = composeRule.onNodeWithTag(laterTag).fetchSemanticsNode().boundsInRoot.top
+        assertTrue("Expected $laterTag below $earlierTag, but $laterTop <= $earlierTop", laterTop > earlierTop)
+    }
+
+    private fun assertDockOrder(vararg tags: String) {
+        val leftEdges = tags.map { tag ->
+            composeRule.onNodeWithTag(tag).fetchSemanticsNode().boundsInRoot.left
+        }
+        assertTrue("Bottom Dock order changed: $leftEdges", leftEdges.zipWithNext().all { (left, right) -> left < right })
+    }
+
+    private fun assertInHeatmapViewport(tag: String) {
+        val pageBounds = composeRule.onNodeWithTag("photo_heatmap_page").fetchSemanticsNode().boundsInRoot
+        val nodeBounds = composeRule.onNodeWithTag(tag).fetchSemanticsNode().boundsInRoot
+        assertTrue("$tag has no laid-out bounds", nodeBounds.width > 0f && nodeBounds.height > 0f)
+        assertTrue("$tag is above the one-screen viewport", nodeBounds.top >= pageBounds.top)
+        assertTrue("$tag is below the one-screen viewport", nodeBounds.bottom <= pageBounds.bottom)
+    }
+
+    private fun assertHeatmapFillsContent() {
+        val contentBounds = composeRule.onNodeWithTag("photo_heatmap_content").fetchSemanticsNode().boundsInRoot
+        val heatmapBounds = composeRule.onNodeWithTag("photo_wall_heatmap").fetchSemanticsNode().boundsInRoot
+        assertTrue("borderless heatmap should use the content width", heatmapBounds.width >= contentBounds.width * 0.98f)
+        assertTrue("enlarged heatmap should occupy substantial height", heatmapBounds.height > 300f)
+    }
 
     private fun createHeatmapPhotos(context: Context): List<ScannedPhoto> {
         val days = listOf(14, 14, 14, 14, 15, 15, 16)

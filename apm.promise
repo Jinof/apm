@@ -1,11 +1,11 @@
 meta:
   title "AI Photo Manager System Promise"
   domain photo_management
-  version v18
+  version v24
   status active
   owner product
-  summary "Local-first photo discovery with separate photo and heatmap tabs, a day-grouped photo wall, vertically chronological GitHub-style annual daily, weekly, and monthly heatmaps, a full-original-resolution in-app viewer, user-triggered DINOv2 visual-similarity checks, on-device identity recognition, anonymous multimodal annotation, and search without modifying original files."
-  source "human prompts 2026-08-10 through 2026-08-17, including local face and pet identity, anonymous VLM markers, selected-versus-full annotation, bounded-context inference, DINOv2 whole-photo similarity and explicit check scopes, separate photo and heatmap tabs with vertically chronological annual daily, weekly, and monthly heatmaps, plus read-only full-original-resolution in-app photo viewing"
+  summary "Local-first photo discovery with a startup story prompt and a compact photo-wall home, separate photo-wall and heatmap pages, a bottom Dock for heatmap, people, Agent search, and rightmost settings, right-swipe navigation, one-screen vertically chronological GitHub-style annual daily, weekly, and monthly heatmaps fused with full-screen time controls and no standalone frame, a full-original-resolution in-app viewer, user-triggered DINOv2 visual-similarity checks, on-device identity recognition, anonymous multimodal annotation, and search without modifying original files."
+  source "human prompts 2026-08-10 through 2026-08-20, including local face and pet identity, anonymous VLM markers, selected-versus-full annotation, bounded-context inference, DINOv2 whole-photo similarity and explicit check scopes, separate photo-wall and one-screen vertically chronological heatmap pages with vertical side controls for annual daily, weekly, and monthly views, plus read-only full-original-resolution in-app photo viewing"
 
 resource User kind actor:
   label "用户"
@@ -99,7 +99,13 @@ resource SimilarPhotoResult kind ui:
 
 resource AndroidPhotoWall kind ui:
   label "按日照片墙"
-  summary "All currently accessible Android photos split between a photo tab with real capture-day groups and a separate heatmap tab with vertically chronological GitHub-style annual daily, weekly, and monthly heatmaps."
+  summary "All currently accessible Android photos appear on a dedicated photo-wall page with real capture-day groups; the annual heatmap is a separate page backed by the same projection."
+  maps AndroidPhotoWallFieldPromise relation constrains
+  maps BrowseAndroidPhotoWallFunctionPromise relation supports
+
+resource AndroidPhotoHeatmap kind ui:
+  label "年度照片热力图"
+  summary "A dedicated one-screen vertically chronological GitHub-style annual daily, weekly, and monthly heatmap page fused with vertical year and granularity controls, filling the available content area without a standalone card, with exact range selection and a return action to the filtered photo wall."
   maps AndroidPhotoWallFieldPromise relation constrains
   maps BrowseAndroidPhotoWallFunctionPromise relation supports
 
@@ -314,8 +320,8 @@ intent AndroidNativeAppIntent priority must:
 
 intent BrowseAndroidPhotoWallIntent priority must:
   label "按日浏览照片墙"
-  statement "The user can switch between a dedicated photo tab and a dedicated heatmap tab, browse every currently accessible photo exactly once under its real local capture day, and inspect vertically chronological GitHub-style annual heatmaps aggregated by every day, week, or month."
-  rationale "Separating browsing from vertically scrolling annual density views keeps both the photo wall and long-range day, week, and month patterns legible without requiring every photo to be annotated."
+  statement "The user can use the bottom Dock for heatmap, settings, people, and Agent search, open a dedicated photo-wall page or right-swipe from the photo wall into a dedicated heatmap page, browse every currently accessible photo exactly once under its real local capture day, and inspect one-screen vertically chronological GitHub-style annual heatmaps aggregated by every day, week, or month."
+  rationale "Separating browsing from compact vertically chronological annual density views keeps both the photo wall and long-range day, week, and month patterns legible without requiring every photo to be annotated."
   status active
   source "human prompts 2026-08-16 and 2026-08-17"
   parent AndroidNativeAppIntent relation refines
@@ -369,7 +375,7 @@ intent ExplicitAndroidInferenceIntent priority must:
 
 intent Material3AndroidExperienceIntent priority must:
   label "Material 3 Android 体验"
-  statement "The Android app presents a coherent Material Design 3 hierarchy, uses a dedicated model-settings screen, and exposes search only after searchable annotations exist."
+  statement "The Android app presents a coherent Material Design 3 hierarchy, shows the story introduction at startup instead of reserving a large permanent hero block, uses a dedicated model-settings screen, places settings at the right edge of the bottom Dock, and exposes search only after searchable annotations exist."
   rationale "The primary experience should be calm, legible, state-aware, and consistent with current native Android interaction patterns."
   status active
   source "human prompt 2026-08-13"
@@ -515,23 +521,22 @@ field AndroidMediaLocationFieldPromise for AndroidMediaLocation:
 
 field AndroidPhotoWallFieldPromise for AndroidPhotoWall:
   label "Android 按日照片墙字段 Promise"
-  summary "Defines one read-only UI projection over all distinct currently accessible photos, separate photo and heatmap tabs, real local capture-day groups, display mode, and vertically chronological GitHub-style annual heatmaps at daily, weekly, and monthly granularity."
+  summary "Defines one read-only UI projection over all distinct currently accessible photos, a dedicated photo-wall page, real local capture-day groups, display mode, and independent one-screen vertically chronological GitHub-style annual heatmap page state at daily, weekly, and monthly granularity with vertical side controls."
   field photoIds type json required true nullable false default "[]" semantic "Every distinct currently accessible content photoId exactly once, independent of annotation state." mutable true system true readers browse writers browse
   field dayGroups type json required true nullable false default "[]" semantic "Descending local-date groups followed by one optional unknown-capture-time group; order inside each group is descending dateTakenMillis then stable photoId." mutable true system true readers browse writers browse
   field displayMode type string required true nullable false default thumbnails semantic "User-selected thumbnails or details presentation; it changes layout only." mutable true system false readers browse writers browse
-  field contentTab type string required true nullable false default photos semantic "User-selected top-level gallery content tab: photos owns photo display controls and the day-grouped wall, while heatmap owns year and granularity controls plus the annual heatmap." mutable true system false readers browse writers browse
   field displayedYear type integer required true nullable false default null semantic "Calendar year shown by the heatmap, initially the latest captured-photo year or the current year when none is dated." mutable true system false readers browse writers browse
   field heatmapGranularity type string required true nullable false default day semantic "User-selected annual aggregation unit: day, week, or month; changing it changes only heatmap aggregation and selection scope." mutable true system false readers browse writers browse
   field selectedRange type json required false nullable true default null semantic "Optional inclusive device-local capture-date range selected from one non-empty heatmap cell; it is one date for day mode, the in-year part of a Sunday-through-Saturday calendar week for week mode, or one calendar month for month mode; null shows every day group." mutable true system false readers browse writers browse
   field dailyCounts type json required true nullable false default "{}" semantic "Map from real local capture date to the count of distinct currently accessible photoIds captured that day." mutable true system true readers browse writers browse
   invariant AndroidPhotoWall.accessible_distinct statement "photoIds contains every and only distinct currently accessible AndroidMediaLocation.photoId exactly once, including unannotated photos and libraries larger than search limits." refs AndroidPhotoWall.photoIds,AndroidMediaLocation.photoId,AndroidMediaLocation.accessible
   invariant AndroidPhotoWall.real_capture_day statement "A dated photo day is derived only by converting dateTakenMillis through the device time zone; null dateTakenMillis belongs only to the unknown group and never uses modified, discovered, indexed, or annotation time as a fallback." refs AndroidPhotoWall.dayGroups,AndroidMediaLocation.dateTakenMillis
-  invariant AndroidPhotoWall.mode_preserves_membership statement "Switching displayMode, contentTab, or heatmapGranularity preserves photoIds, day membership, descending order, displayedYear, and dailyCounts exactly; changing heatmap granularity clears only selectedRange, while changing contentTab preserves selectedRange so the photo tab can show the chosen heatmap range." refs AndroidPhotoWall.displayMode,AndroidPhotoWall.contentTab,AndroidPhotoWall.heatmapGranularity,AndroidPhotoWall.photoIds,AndroidPhotoWall.dayGroups,AndroidPhotoWall.displayedYear,AndroidPhotoWall.selectedRange,AndroidPhotoWall.dailyCounts
-  invariant AndroidPhotoWall.tab_ownership statement "The photos tab contains photo display controls, optional selected-range summary, and photo cards but no annual heatmap; the heatmap tab contains annual year, granularity, grid, guide, and selected-range controls but no photo cards." refs AndroidPhotoWall.contentTab,AndroidPhotoWall.displayMode,AndroidPhotoWall.displayedYear,AndroidPhotoWall.heatmapGranularity,AndroidPhotoWall.selectedRange
+  invariant AndroidPhotoWall.mode_preserves_membership statement "Switching displayMode or heatmapGranularity across the dedicated photo-wall and heatmap pages preserves photoIds, day membership, descending order, displayedYear, and dailyCounts exactly; changing heatmap granularity clears only selectedRange, while returning from heatmap preserves the selected range for the photo wall." refs AndroidPhotoWall.displayMode,AndroidPhotoWall.heatmapGranularity,AndroidPhotoWall.photoIds,AndroidPhotoWall.dayGroups,AndroidPhotoWall.displayedYear,AndroidPhotoWall.selectedRange,AndroidPhotoWall.dailyCounts
+  invariant AndroidPhotoWall.page_ownership statement "The photo-wall page shows the story introduction only at startup, keeps the home content compact, and contains a bottom Dock ordered as heatmap, people, Agent search, settings at the right edge, plus photo display controls, optional selected-range summary, a right-swipe route, and photo cards but no annual heatmap; the independent one-screen heatmap page fuses vertical year and granularity side controls with a borderless full-area grid, guide, and selected-range controls but no photo cards." refs AndroidPhotoWall.displayMode,AndroidPhotoWall.displayedYear,AndroidPhotoWall.heatmapGranularity,AndroidPhotoWall.selectedRange
   invariant AndroidPhotoWall.heatmap_exact_counts statement "For displayedYear, day mode exposes every calendar date, week mode exposes every intersecting Sunday-through-Saturday week clipped to that year, and month mode exposes all twelve calendar months; every cell count is the exact sum of distinct dailyCounts in its inclusive range and each mode independently maps zero through its annual maximum to monotonic discrete levels zero through four, reserving zero for empty cells." refs AndroidPhotoWall.displayedYear,AndroidPhotoWall.heatmapGranularity,AndroidPhotoWall.dailyCounts
   invariant AndroidPhotoWall.selected_range_exact statement "selectedRange is null or equals one non-empty cell range for the current displayedYear and heatmapGranularity, and when present the wall shows exactly the dated groups inside that inclusive range without relabeling photos." refs AndroidPhotoWall.displayedYear,AndroidPhotoWall.heatmapGranularity,AndroidPhotoWall.selectedRange,AndroidPhotoWall.dayGroups,AndroidPhotoWall.dailyCounts
   forbid AndroidPhotoWall.no_annotation_gate statement "A photo cannot disappear from the wall solely because it lacks a VLM annotation, face or pet match, visual feature, or search text." refs AndroidPhotoWall.photoIds
-  forbid AndroidPhotoWall.no_original_mutation statement "Browsing, switching content tabs, toggling modes or granularity, navigating years, and selecting a daily, weekly, or monthly heatmap range never writes to MediaStore or changes an original photo." refs AndroidPhotoWall.contentTab,AndroidPhotoWall.displayMode,AndroidPhotoWall.displayedYear,AndroidPhotoWall.heatmapGranularity,AndroidPhotoWall.selectedRange,AndroidMediaLocation.uri
+  forbid AndroidPhotoWall.no_original_mutation statement "Browsing either dedicated page, toggling modes or granularity, navigating years, and selecting a daily, weekly, or monthly heatmap range never writes to MediaStore or changes an original photo." refs AndroidPhotoWall.displayMode,AndroidPhotoWall.displayedYear,AndroidPhotoWall.heatmapGranularity,AndroidPhotoWall.selectedRange,AndroidMediaLocation.uri
 
 field AndroidPhotoViewerFieldPromise for AndroidPhotoViewer:
   label "应用内照片查看器字段 Promise"
@@ -828,22 +833,22 @@ function ScanAndroidGalleryFunctionPromise action scan:
 
 function BrowseAndroidPhotoWallFunctionPromise action browse:
   label "浏览 Android 按日照片墙 Function Promise"
-  summary "Loads every distinct currently accessible photo into a lazy day-grouped photo tab and renders a separate vertically scrolling heatmap tab with GitHub-style annual daily, weekly, and monthly views from exact daily counts."
+  summary "Shows a startup-only story introduction, then loads every distinct currently accessible photo into a compact lazy day-grouped photo-wall page with a bottom Dock ordered heatmap, people, Agent search, settings-rightmost, and renders a separate one-screen vertically chronological heatmap page whose borderless full-area grid is fused with vertical year/granularity side controls and GitHub-style annual daily, weekly, and monthly views from exact daily counts."
   depends AndroidMediaLocationFieldPromise,AndroidPhotoWallFieldPromise,PhotoAnnotationFieldPromise
-  trigger "The gallery screen opens, accessible catalog state changes, the photo or heatmap content tab changes, the display mode or heatmap granularity changes, the displayed year changes, or the user selects or clears a heatmap range."
+  trigger "The photo-wall or dedicated heatmap page opens, the user right-swipes on the photo wall or taps its heatmap action, accessible catalog state changes, the display mode or heatmap granularity changes, the displayed year changes, or the user selects or clears a heatmap range."
   precondition BrowseAndroidPhotoWall.catalog_available statement "The app-private catalog may be empty, but any projected row must have one currently accessible MediaStore location." refs AndroidMediaLocation.photoId,AndroidMediaLocation.accessible
   reads AndroidMediaLocation.photoId,AndroidMediaLocation.uri,AndroidMediaLocation.displayName,AndroidMediaLocation.dateTakenMillis,AndroidMediaLocation.accessible,PhotoAnnotation.photoId,PhotoAnnotation.caption,PhotoAnnotation.tags,PhotoAnnotation.facets,PhotoAnnotation.createdAt
-  writes AndroidPhotoWall.photoIds,AndroidPhotoWall.dayGroups,AndroidPhotoWall.displayMode,AndroidPhotoWall.contentTab,AndroidPhotoWall.displayedYear,AndroidPhotoWall.heatmapGranularity,AndroidPhotoWall.selectedRange,AndroidPhotoWall.dailyCounts
+  writes AndroidPhotoWall.photoIds,AndroidPhotoWall.dayGroups,AndroidPhotoWall.displayMode,AndroidPhotoWall.displayedYear,AndroidPhotoWall.heatmapGranularity,AndroidPhotoWall.selectedRange,AndroidPhotoWall.dailyCounts
   ensure BrowseAndroidPhotoWall.all_accessible_photos statement "The wall query has no search-result limit, includes annotated and unannotated photos, chooses one currently accessible URI per distinct photoId, and excludes inaccessible locations." refs AndroidPhotoWall.photoIds,AndroidMediaLocation.photoId,AndroidMediaLocation.uri,AndroidMediaLocation.accessible
   ensure BrowseAndroidPhotoWall.day_sections statement "Photos are grouped by device-local date derived only from dateTakenMillis, dated groups and photos are newest first, and null capture times appear once in a final unknown-time group." refs AndroidPhotoWall.dayGroups,AndroidMediaLocation.dateTakenMillis
   ensure BrowseAndroidPhotoWall.thumbnail_mode statement "Thumbnail mode renders a lazy three-column square grid with one tappable thumbnail per projected photo." refs AndroidPhotoWall.displayMode,AndroidPhotoWall.photoIds
   ensure BrowseAndroidPhotoWall.detail_mode statement "Detail mode renders the same photos in the same order as full-width cards and shows annotation content only when a latest annotation exists." refs AndroidPhotoWall.displayMode,AndroidPhotoWall.photoIds,PhotoAnnotation.caption
-  ensure BrowseAndroidPhotoWall.content_tabs statement "A two-item native tab row exposes photos and heatmap as mutually exclusive content destinations: photos shows no annual heatmap, heatmap shows no photo cards, and a selected-range action from heatmap switches to photos without changing the exact range." refs AndroidPhotoWall.contentTab,AndroidPhotoWall.selectedRange,AndroidPhotoWall.dayGroups
-  ensure BrowseAndroidPhotoWall.annual_heatmaps statement "Previous and next controls navigate natural calendar years, and a day, week, or month selector switches three GitHub-style views whose chronology moves down the screen without a nested horizontal year scroller: day mode renders one Sunday-through-Saturday week per row with weekday columns and month labels along the vertical axis; week mode renders every 53 or 54 intersecting calendar week as one chronological row; month mode renders all twelve calendar months as chronological rows. All modes use GitHub's square green five-level visual grammar, a 少-to-多 guide, selected-range emphasis, exact counts, and complete accessible range descriptions." refs AndroidPhotoWall.contentTab,AndroidPhotoWall.displayedYear,AndroidPhotoWall.heatmapGranularity,AndroidPhotoWall.selectedRange,AndroidPhotoWall.dailyCounts
-  ensure BrowseAndroidPhotoWall.range_filter statement "Tapping a non-empty daily, weekly, or monthly cell selects exactly the real capture-day groups in that inclusive cell range, shows the exact selected range and count in the heatmap tab, offers a visible action to view the selection in the photos tab, and a clear action restores all groups." refs AndroidPhotoWall.contentTab,AndroidPhotoWall.displayedYear,AndroidPhotoWall.heatmapGranularity,AndroidPhotoWall.selectedRange,AndroidPhotoWall.dayGroups,AndroidPhotoWall.dailyCounts
+  ensure BrowseAndroidPhotoWall.dedicated_pages statement "The photo wall and annual heatmap are separate native pages: the photo-wall page shows no annual heatmap, exposes a bottom Dock heatmap action and a right-swipe route, the heatmap page shows no photo cards, and a selected-range action from heatmap opens the photo-wall page without changing the exact range." refs AndroidPhotoWall.selectedRange,AndroidPhotoWall.dayGroups
+  ensure BrowseAndroidPhotoWall.annual_heatmaps statement "The dedicated heatmap page fits the complete annual grid in one screen without a page scroll; its vertically stacked side controls are part of the same borderless full-area composition and navigate natural calendar years or switch day, week, and month views. Day mode renders every Sunday-through-Saturday week as one compact row in chronological vertical order; week mode renders every 53 or 54 intersecting calendar week as one compact chronological vertical row; month mode renders all twelve calendar months as chronological vertical rows. The grid expands through the available content area instead of sitting in a standalone card. All modes use GitHub's square green five-level visual grammar, a 少-to-多 guide, selected-range emphasis, exact counts, and complete accessible range descriptions." refs AndroidPhotoWall.displayedYear,AndroidPhotoWall.heatmapGranularity,AndroidPhotoWall.selectedRange,AndroidPhotoWall.dailyCounts
+  ensure BrowseAndroidPhotoWall.range_filter statement "Tapping a non-empty daily, weekly, or monthly cell selects exactly the real capture-day groups in that inclusive cell range, shows the exact selected range and count on the heatmap page, offers a visible action to view the selection on the photo-wall page, and a clear action restores all groups." refs AndroidPhotoWall.displayedYear,AndroidPhotoWall.heatmapGranularity,AndroidPhotoWall.selectedRange,AndroidPhotoWall.dayGroups,AndroidPhotoWall.dailyCounts
   reject BrowseAndroidPhotoWall.inaccessible statement "A photo without a currently accessible MediaStore location is absent even if an annotation remains." refs AndroidMediaLocation.accessible,PhotoAnnotation.photoId
-  sideeffect BrowseAndroidPhotoWall.read_only statement "Browsing reads the catalog and thumbnails only; tab, display, aggregation, and selection state remain app-local and do not mutate MediaStore or annotation history." refs AndroidMediaLocation.uri,AndroidPhotoWall.contentTab,AndroidPhotoWall.displayMode,AndroidPhotoWall.displayedYear,AndroidPhotoWall.heatmapGranularity,AndroidPhotoWall.selectedRange
-  idempotency "The same accessible catalog, device time zone, content tab, display mode, displayed year, heatmap granularity, and selected range produce the same membership, groups, counts, levels, and stable order."
+  sideeffect BrowseAndroidPhotoWall.read_only statement "Browsing reads the catalog and thumbnails only; page, display, aggregation, and selection state remain app-local and do not mutate MediaStore or annotation history." refs AndroidMediaLocation.uri,AndroidPhotoWall.displayMode,AndroidPhotoWall.displayedYear,AndroidPhotoWall.heatmapGranularity,AndroidPhotoWall.selectedRange
+  idempotency "The same accessible catalog, device time zone, page, display mode, displayed year, heatmap granularity, and selected range produce the same membership, groups, counts, levels, and stable order."
   forbid BrowseAndroidPhotoWall.no_date_fallback statement "Modified time, discovery time, index time, and annotation time cannot stand in for a missing capture timestamp." refs AndroidMediaLocation.dateTakenMillis,PhotoAnnotation.createdAt
 
 function ViewAndroidPhotoFunctionPromise action view:
@@ -1334,7 +1339,7 @@ verify PhotoViewerVerification kind cross-cutting:
 
 verify PhotoWallVerification kind cross-cutting:
   label "Android 按日照片墙验证"
-  claim "The native gallery separates its photo wall and heatmap into dedicated tabs, presents every distinct currently accessible photo under its real device-local capture day, and exposes vertically chronological GitHub-style annual daily, weekly, and monthly heatmaps with exact range filtering."
+  claim "The native gallery separates its photo wall and heatmap into dedicated pages, presents every distinct currently accessible photo under its real device-local capture day, and exposes one-screen vertically chronological GitHub-style annual daily, weekly, and monthly heatmaps with vertical side controls and exact range filtering."
   verifies AndroidPhotoWallFieldPromise,BrowseAndroidPhotoWallFunctionPromise
   methods unit,integration,review
   scenario "all accessible photos appear without an annotation or search cap":
@@ -1355,32 +1360,50 @@ verify PhotoWallVerification kind cross-cutting:
     when "The user switches between thumbnail and detail presentation."
     then "The photoId sequence, group membership, selected range, displayed year, heatmap granularity, and daily counts are identical; only layout and optional detail content change."
     guard "An unannotated detail card reports status without inventing a caption."
-  scenario "photo and heatmap tabs have exclusive content ownership":
-    covers AndroidPhotoWall.tab_ownership,BrowseAndroidPhotoWall.content_tabs,BrowseAndroidPhotoWall.range_filter
-    given "The catalog contains dated photos and the gallery initially opens the photos tab."
+  scenario "photo wall and heatmap pages have exclusive content ownership":
+    covers AndroidPhotoWall.page_ownership,BrowseAndroidPhotoWall.dedicated_pages,BrowseAndroidPhotoWall.range_filter
+    given "The catalog contains dated photos and the gallery initially opens the dedicated photo-wall page."
     when "The user switches to heatmap, selects a populated range, and invokes the action to view those photos."
-    then "The photos tab initially contains photo controls and cards with no heatmap, the heatmap tab contains the annual controls and grid with no photo cards, and the action returns to photos with the exact range filter preserved."
+    then "The photo-wall page initially contains photo controls and cards with no heatmap, the independent heatmap page fuses vertical side controls with a borderless full-area one-screen vertically chronological annual grid with no photo cards, and the action returns to the photo-wall page with the exact range filter preserved."
     guard "No screen composition simultaneously exposes the annual heatmap and photo cards as one continuous content surface."
+  scenario "right swipe opens the independent annual heatmap page":
+    covers AndroidPhotoWall.page_ownership,BrowseAndroidPhotoWall.dedicated_pages
+    given "The photo wall is visible with at least one accessible photo and the annual heatmap action is available."
+    when "The user swipes from left to right across the photo-wall surface."
+    then "APM opens PhotoHeatmapActivity as a separate page, the heatmap page contains no photo cards, and its back action returns to the photo wall."
+    guard "A short leftward or vertical photo-wall gesture does not open the heatmap page."
+  scenario "bottom Dock owns global destinations":
+    covers AndroidPhotoWall.page_ownership,BrowseAndroidPhotoWall.dedicated_pages
+    given "The main photo-wall page is visible."
+    when "The user inspects the bottom Dock."
+    then "The Dock exposes heatmap, people, Agent search, and settings in that order with settings at the far right, while the top app bar and photo-wall body do not duplicate those four destinations."
+    guard "Each Dock action keeps its existing destination and does not mutate the photo catalog."
+  scenario "story introduction is startup-only":
+    covers AndroidPhotoWall.page_ownership
+    given "The main activity is launched."
+    when "The startup composition is shown and the user dismisses the introduction."
+    then "The compact startup prompt says 让照片，自己说出故事, the large permanent hero block is absent from the photo-wall home, and the rest of the home remains available below the bottom Dock."
+    guard "Returning from a child page does not reinsert the large story block into the home content."
   scenario "GitHub-style annual daily heatmap includes every date":
     covers AndroidPhotoWall.heatmap_exact_counts,AndroidPhotoWall.selected_range_exact,BrowseAndroidPhotoWall.annual_heatmaps,BrowseAndroidPhotoWall.range_filter
     given "A displayed year contains capture days with zero, one, two, and four distinct photos across several months."
-    when "The user selects day granularity, vertically explores the calendar, taps the two-photo date, moves to photos, and clears the selection."
-    then "Every date in the year appears once with one Sunday-through-Saturday week per vertical row, later dates have greater vertical positions than earlier dates, month labels follow the vertical axis, GitHub green levels are monotonic from zero through four, complete accessible date and count descriptions are present, and the selected two-photo range transfers exactly to the photos tab."
+    when "The user selects day granularity from the vertical side controls, sees the complete annual grid without scrolling, taps the two-photo date, moves to photos, and clears the selection."
+    then "Every date in the year appears once in compact Sunday-through-Saturday rows, with each week below the previous week in chronological order; GitHub green levels are monotonic from zero through four, complete accessible date and count descriptions are present, and the selected two-photo range transfers exactly to the photo-wall page."
     guard "Padding dates outside the displayed year and zero-count dates cannot create a selected range."
   scenario "annual weekly aggregation is exact":
     covers AndroidPhotoWall.heatmap_exact_counts,AndroidPhotoWall.selected_range_exact,BrowseAndroidPhotoWall.annual_heatmaps,BrowseAndroidPhotoWall.range_filter
     given "Photos span a year boundary and several Sunday-through-Saturday weeks inside the displayed year."
     when "The user selects week granularity and taps a populated partial or full calendar week."
-    then "The view contains every 53 or 54 intersecting week as chronological vertical rows, clips boundary ranges to the displayed year, reports each exact sum and accessible range, and filters only the selected week range."
+    then "The one-screen view contains every 53 or 54 intersecting week as compact chronological vertical rows, clips boundary ranges to the displayed year, reports each exact sum and accessible range, and filters only the selected week range."
     guard "No photo outside the displayed year or selected inclusive week range contributes to its count or filtered wall."
   scenario "annual monthly aggregation is exact":
     covers AndroidPhotoWall.heatmap_exact_counts,AndroidPhotoWall.selected_range_exact,BrowseAndroidPhotoWall.annual_heatmaps,BrowseAndroidPhotoWall.range_filter
     given "Photos occur in January, August, and December with other months empty."
     when "The user selects month granularity and taps populated August."
-    then "All twelve months appear once as chronological vertical rows, each cell reports the exact monthly sum and mode-relative heat level, and only August capture-day groups remain after moving to the photos tab until cleared."
+    then "All twelve months appear once as compact chronological vertical rows, each cell reports the exact monthly sum and mode-relative heat level, and only August capture-day groups remain after moving to the photo-wall page until cleared."
     guard "Empty months cannot create a selected range and changing year or granularity clears the prior range."
-  evidence "Promise gates, pure JVM day-group, annual calendar, exact daily, weekly, and monthly aggregation and discrete-level tests, SQLite integration covering more than one hundred accessible annotated and unannotated photos, isolated Android build and lint, and API 35 emulator visual, semantics, tab-isolation, vertical-position, granularity-switch, year-navigation, selection-transfer, and clear acceptance for all three GitHub-style heatmaps."
-  fail "The wall hides an accessible unannotated photo, caps at search limits, duplicates photoIds, substitutes a non-capture timestamp, places the heatmap inside the photos tab, displays photo cards inside the heatmap tab, lays annual chronology horizontally, changes order between modes, omits a calendar date, week, or month, reports an inexact aggregate, leaks a boundary date into another year, assigns a non-monotonic or continuous-only heat level, diverges from the GitHub square green grid and 少-to-多 guide, omits an accessible range count, filters an empty cell, loses selection when moving to photos, includes inaccessible photos, mutates an original, or fails lazy emulator rendering."
+  evidence "Promise gates, pure JVM day-group, annual calendar, exact daily, weekly, and monthly aggregation and discrete-level tests, SQLite integration covering more than one hundred accessible annotated and unannotated photos, isolated Android build and lint, and API 35 emulator visual, semantics, startup-only story prompt, compact-home, bottom-Dock ownership/order, right-swipe navigation, page-isolation, one-screen/no-scroll, borderless full-area composition, vertical-order, side-control, granularity-switch, year-navigation, selection-transfer, and clear acceptance for all three GitHub-style heatmaps."
+  fail "The wall hides an accessible unannotated photo, permanently reserves a large story hero block, omits or misorders a bottom-Dock destination, puts settings anywhere except the far right, omits or duplicates a bottom-Dock destination, fails the right-swipe route, places the heatmap inside the photo-wall page, displays photo cards inside the heatmap page, wraps the grid in a standalone frame, leaves the heatmap confined to a small inset instead of the available area, requires scrolling to see an annual grid or side control, lays a heatmap chronology horizontally, changes order between modes, omits a calendar date, week, or month, reports an inexact aggregate, leaks a boundary date into another year, assigns a non-monotonic or continuous-only heat level, diverges from the GitHub square green grid and 少-to-多 guide, omits an accessible range count, filters an empty cell, loses selection when moving to the photo-wall page, includes inaccessible photos, mutates an original, or fails lazy emulator rendering."
 
 verify AndroidNativeAppVerification kind cross-cutting:
   label "Android Native App 验证"
@@ -1436,7 +1459,7 @@ verify AndroidNativeAppVerification kind cross-cutting:
     then "Initially search is disabled with no suggestion chips; afterwards it is enabled and chips are derived only from stored annotation facets and tags."
     guard "No hard-coded example search term appears before annotation."
   scenario "photo wall is independent from search and annotation state":
-    covers BrowseAndroidPhotoWall.all_accessible_photos,BrowseAndroidPhotoWall.day_sections,BrowseAndroidPhotoWall.thumbnail_mode,BrowseAndroidPhotoWall.detail_mode,BrowseAndroidPhotoWall.content_tabs,BrowseAndroidPhotoWall.annual_heatmaps,BrowseAndroidPhotoWall.range_filter
+    covers BrowseAndroidPhotoWall.all_accessible_photos,BrowseAndroidPhotoWall.day_sections,BrowseAndroidPhotoWall.thumbnail_mode,BrowseAndroidPhotoWall.detail_mode,BrowseAndroidPhotoWall.dedicated_pages,BrowseAndroidPhotoWall.annual_heatmaps,BrowseAndroidPhotoWall.range_filter
     given "The permission-visible catalog contains dated and unknown-time photos with mixed annotation state."
     when "The user browses days, switches thumbnail and detail modes, changes annual heatmap granularity, and selects a populated daily, weekly, or monthly range before running any text search."
     then "The wall remains complete and correctly grouped, the two display modes preserve order, all three annual heatmaps show exact counts, and the selected range filters only by real capture day."
