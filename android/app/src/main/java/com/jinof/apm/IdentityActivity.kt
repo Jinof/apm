@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -28,7 +29,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.AddAPhoto
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Face
@@ -69,7 +69,7 @@ import androidx.compose.ui.unit.dp
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
-private data class ReferenceSubject(
+internal data class ReferenceSubject(
     val box: FaceBox,
     val face: FaceSample? = null,
     val pet: PetSample? = null,
@@ -79,7 +79,7 @@ private data class ReferenceSubject(
     }
 }
 
-private data class IdentityUiState(
+internal data class IdentityUiState(
     val kind: LocalIdentityKind = LocalIdentityKind.PERSON,
     val uri: String? = null,
     val bitmap: Bitmap? = null,
@@ -92,48 +92,60 @@ private data class IdentityUiState(
 )
 
 class IdentityActivity : ComponentActivity() {
+    private lateinit var controller: IdentityController
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
+        controller = IdentityController(this)
+        setContent {
+            ApmTheme {
+                IdentityScreen(
+                    state = controller.state,
+                    onKindChange = controller::changeKind,
+                    onPick = controller::pickReference,
+                    onSelectSubject = controller::selectSubject,
+                    onNameChange = controller::changeName,
+                    onRegister = controller::registerSelectedSubject,
+                    onDelete = controller::deleteIdentity,
+                )
+            }
+        }
+        controller.refreshIdentities()
+    }
+
+    override fun onDestroy() {
+        controller.close()
+        super.onDestroy()
+    }
+}
+
+internal class IdentityController(private val activity: ComponentActivity) {
     private lateinit var database: ApmDatabase
     private val executor = Executors.newSingleThreadExecutor()
     private val busy = AtomicBoolean(false)
     private var faceEngine: LocalFaceEngine? = null
     private var petEngine: LocalPetEngine? = null
-    private var state by mutableStateOf(IdentityUiState())
+    internal var state by mutableStateOf(IdentityUiState())
+        private set
 
-    private val picker = registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+    private val picker = activity.registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri != null) analyzeReference(uri)
     }
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
-        database = ApmDatabase(applicationContext)
-        setContent {
-            ApmTheme {
-                IdentityScreen(
-                    state = state,
-                    onBack = { finish() },
-                    onKindChange = ::changeKind,
-                    onPick = ::pickReference,
-                    onSelectSubject = { index -> state = state.copy(selectedSubject = index) },
-                    onNameChange = { value -> state = state.copy(name = value.take(40)) },
-                    onRegister = ::registerSelectedSubject,
-                    onDelete = ::deleteIdentity,
-                )
-            }
-        }
-        refreshIdentities()
+    init {
+        database = ApmDatabase(activity.applicationContext)
     }
 
-    override fun onDestroy() {
+    internal fun close() {
         executor.shutdownNow()
         faceEngine?.close()
         petEngine?.close()
         state.bitmap?.recycle()
         database.close()
-        super.onDestroy()
     }
 
-    private fun changeKind(kind: LocalIdentityKind) {
+    internal fun changeKind(kind: LocalIdentityKind) {
         if (busy.get() || state.kind == kind) return
         state.bitmap?.recycle()
         state = IdentityUiState(
@@ -147,9 +159,17 @@ class IdentityActivity : ComponentActivity() {
         )
     }
 
-    private fun pickReference() {
+    internal fun pickReference() {
         if (busy.get()) return
         picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+    }
+
+    internal fun selectSubject(index: Int) {
+        state = state.copy(selectedSubject = index)
+    }
+
+    internal fun changeName(value: String) {
+        state = state.copy(name = value.take(40))
     }
 
     private fun analyzeReference(uri: Uri) {
@@ -174,7 +194,7 @@ class IdentityActivity : ComponentActivity() {
                     bitmap = petEngine().loadBitmap(uri)
                     subjects = petEngine().analyze(bitmap).map { ReferenceSubject(it.box, pet = it) }
                 }
-                runOnUiThread {
+                activity.runOnUiThread {
                     state.bitmap?.recycle()
                     busy.set(false)
                     state = state.copy(
@@ -201,7 +221,7 @@ class IdentityActivity : ComponentActivity() {
         }
     }
 
-    private fun registerSelectedSubject() {
+    internal fun registerSelectedSubject() {
         val subject = state.selectedSubject?.let(state.subjects::getOrNull) ?: return
         val name = state.name.trim()
         val uriText = state.uri ?: return
@@ -219,9 +239,9 @@ class IdentityActivity : ComponentActivity() {
                         sourcePhotoId = database.knownLocation(uriText)?.photoId,
                     )
                     val rematched = database.rematchFaceObservations(LocalFaceEngine.EMBEDDING_MODEL_NAME)
-                    val report = FaceIndexer(applicationContext, database, faceEngine()).use { indexer ->
+                    val report = FaceIndexer(activity.applicationContext, database, faceEngine()).use { indexer ->
                         indexer.indexPending { processed, total, photoName ->
-                            runOnUiThread {
+                            activity.runOnUiThread {
                                 state = state.copy(status = "本地人物识别 $processed / $total · $photoName")
                             }
                         }
@@ -236,9 +256,9 @@ class IdentityActivity : ComponentActivity() {
                         sourcePhotoId = database.knownLocation(uriText)?.photoId,
                     )
                     val rematched = database.rematchPetObservations(LocalPetEngine.EMBEDDING_MODEL_NAME)
-                    val report = PetIndexer(applicationContext, database, petEngine()).use { indexer ->
+                    val report = PetIndexer(activity.applicationContext, database, petEngine()).use { indexer ->
                         indexer.indexPending { processed, total, photoName ->
-                            runOnUiThread {
+                            activity.runOnUiThread {
                                 state = state.copy(status = "本地宠物识别 $processed / $total · $photoName")
                             }
                         }
@@ -246,7 +266,7 @@ class IdentityActivity : ComponentActivity() {
                     "${identity.name} 已有 ${identity.templateCount} 个${speciesName(identity.species)}参考模板 · 扫描 ${report.photos} 张、匹配 ${report.matchedPets} 只宠物 · 历史匹配 $rematched 只"
                 }
                 val identities = database.localIdentitySummaries()
-                runOnUiThread {
+                activity.runOnUiThread {
                     busy.set(false)
                     state = state.copy(name = "", identities = identities, busy = false, status = status)
                 }
@@ -256,7 +276,7 @@ class IdentityActivity : ComponentActivity() {
         }
     }
 
-    private fun deleteIdentity(identity: LocalIdentitySummary) {
+    internal fun deleteIdentity(identity: LocalIdentitySummary) {
         if (!busy.compareAndSet(false, true)) return
         state = state.copy(busy = true, status = "正在删除 ${identity.name} 的本地模板并重新计算匹配…")
         executor.execute {
@@ -268,7 +288,7 @@ class IdentityActivity : ComponentActivity() {
                         database.deletePetIdentity(identity.id, LocalPetEngine.EMBEDDING_MODEL_NAME)
                 }
                 val identities = database.localIdentitySummaries()
-                runOnUiThread {
+                activity.runOnUiThread {
                     busy.set(false)
                     state = state.copy(
                         identities = identities,
@@ -282,34 +302,34 @@ class IdentityActivity : ComponentActivity() {
         }
     }
 
-    private fun refreshIdentities() {
+    internal fun refreshIdentities() {
         executor.execute {
             val identities = database.localIdentitySummaries()
-            runOnUiThread { state = state.copy(identities = identities) }
+            activity.runOnUiThread { state = state.copy(identities = identities) }
         }
     }
 
-    private fun faceEngine(): LocalFaceEngine = faceEngine ?: LocalFaceEngine(applicationContext).also {
+    private fun faceEngine(): LocalFaceEngine = faceEngine ?: LocalFaceEngine(activity.applicationContext).also {
         faceEngine = it
     }
 
-    private fun petEngine(): LocalPetEngine = petEngine ?: LocalPetEngine(applicationContext).also {
+    private fun petEngine(): LocalPetEngine = petEngine ?: LocalPetEngine(activity.applicationContext).also {
         petEngine = it
     }
 
     private fun finishWork(message: String) {
-        runOnUiThread {
+        activity.runOnUiThread {
             busy.set(false)
             state = state.copy(busy = false, status = message)
         }
     }
+
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun IdentityScreen(
+internal fun IdentityScreen(
     state: IdentityUiState,
-    onBack: () -> Unit,
     onKindChange: (LocalIdentityKind) -> Unit,
     onPick: () -> Unit,
     onSelectSubject: (Int) -> Unit,
@@ -319,13 +339,9 @@ private fun IdentityScreen(
 ) {
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             TopAppBar(
-                navigationIcon = {
-                    IconButton(onClick = onBack, modifier = Modifier.testTag("identity_back")) {
-                        Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "返回相册")
-                    }
-                },
                 title = {
                     Column {
                         Text("本地身份识别", style = MaterialTheme.typography.titleLarge)

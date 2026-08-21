@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -19,7 +20,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Search
@@ -29,7 +29,6 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -51,7 +50,7 @@ import androidx.compose.ui.unit.dp
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
-private data class AgentUiState(
+internal data class AgentUiState(
     val request: String = "",
     val enabled: Boolean = false,
     val busy: Boolean = false,
@@ -60,46 +59,67 @@ private data class AgentUiState(
 )
 
 class AgentSearchActivity : ComponentActivity() {
-    private lateinit var database: ApmDatabase
-    private lateinit var settingsStore: SettingsStore
-    private val executor = Executors.newSingleThreadExecutor()
-    private val busy = AtomicBoolean(false)
-    private var state by mutableStateOf(AgentUiState())
+    private lateinit var controller: AgentSearchController
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        database = ApmDatabase(applicationContext)
-        settingsStore = SettingsStore(applicationContext)
+        controller = AgentSearchController(this)
         setContent {
             ApmTheme {
                 AgentSearchScreen(
-                    state = state,
-                    onBack = { finish() },
-                    onRequestChange = { state = state.copy(request = it) },
-                    onRun = ::runAgent,
+                    state = controller.state,
+                    onRequestChange = controller::changeRequest,
+                    onRun = controller::runAgent,
                     onPhoto = ::openPhoto,
                 )
             }
         }
-        refreshAvailability()
+        controller.refreshAvailability()
     }
 
     override fun onResume() {
         super.onResume()
-        if (::database.isInitialized && !busy.get()) refreshAvailability()
+        if (::controller.isInitialized) controller.refreshAvailability()
     }
 
     override fun onDestroy() {
-        executor.shutdownNow()
-        database.close()
+        controller.close()
         super.onDestroy()
     }
 
-    private fun refreshAvailability() {
+    private fun openPhoto(photo: PhotoCard) {
+        startActivity(PhotoViewerActivity.intent(this, photo.photoId, photo.uri))
+    }
+}
+
+internal class AgentSearchController(private val activity: ComponentActivity) {
+    private lateinit var database: ApmDatabase
+    private lateinit var settingsStore: SettingsStore
+    private val executor = Executors.newSingleThreadExecutor()
+    private val busy = AtomicBoolean(false)
+    internal var state by mutableStateOf(AgentUiState())
+        private set
+
+    init {
+        database = ApmDatabase(activity.applicationContext)
+        settingsStore = SettingsStore(activity.applicationContext)
+    }
+
+    internal fun close() {
+        executor.shutdownNow()
+        database.close()
+    }
+
+    internal fun changeRequest(request: String) {
+        state = state.copy(request = request)
+    }
+
+    internal fun refreshAvailability() {
+        if (busy.get()) return
         executor.execute {
             val enabled = database.annotationCount() > 0
-            runOnUiThread {
+            activity.runOnUiThread {
                 state = state.copy(
                     enabled = enabled,
                     status = if (enabled) {
@@ -112,7 +132,7 @@ class AgentSearchActivity : ComponentActivity() {
         }
     }
 
-    private fun runAgent() {
+    internal fun runAgent() {
         val request = state.request.trim()
         if (!state.enabled || request.isEmpty() || !busy.compareAndSet(false, true)) return
         state = state.copy(busy = true, status = "Agent 正在规划本地搜索…", result = null)
@@ -127,7 +147,7 @@ class AgentSearchActivity : ComponentActivity() {
                     ),
                 )
                 val result = SearchAgent(planner, DatabasePhotoSearchSkill(database)).run(request)
-                runOnUiThread {
+                activity.runOnUiThread {
                     busy.set(false)
                     state = state.copy(
                         busy = false,
@@ -136,7 +156,7 @@ class AgentSearchActivity : ComponentActivity() {
                     )
                 }
             } catch (error: Exception) {
-                runOnUiThread {
+                activity.runOnUiThread {
                     busy.set(false)
                     state = state.copy(
                         busy = false,
@@ -147,29 +167,21 @@ class AgentSearchActivity : ComponentActivity() {
         }
     }
 
-    private fun openPhoto(photo: PhotoCard) {
-        startActivity(PhotoViewerActivity.intent(this, photo.photoId, photo.uri))
-    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun AgentSearchScreen(
+internal fun AgentSearchScreen(
     state: AgentUiState,
-    onBack: () -> Unit,
     onRequestChange: (String) -> Unit,
     onRun: () -> Unit,
     onPhoto: (PhotoCard) -> Unit,
 ) {
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             TopAppBar(
-                navigationIcon = {
-                    IconButton(onClick = onBack, modifier = Modifier.testTag("agent_back")) {
-                        Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "返回相册")
-                    }
-                },
                 title = {
                     Column {
                         Text("Agent 搜索", style = MaterialTheme.typography.titleLarge)

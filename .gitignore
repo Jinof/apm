@@ -7,6 +7,7 @@ __pycache__/
 dist/
 build/
 *.egg-info/
+.DS_Store
 
 # Android / Gradle
 .gradle/

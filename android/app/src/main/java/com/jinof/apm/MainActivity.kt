@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -49,14 +50,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AddPhotoAlternate
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.CheckCircle
-import androidx.compose.material.icons.outlined.Face
 import androidx.compose.material.icons.outlined.GridView
 import androidx.compose.material.icons.outlined.ImageSearch
 import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.Search
-import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Shield
-import androidx.compose.material.icons.outlined.SmartToy
 import androidx.compose.material.icons.outlined.ViewAgenda
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
@@ -70,8 +68,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -136,10 +132,13 @@ class MainActivity : ComponentActivity() {
     private lateinit var database: ApmDatabase
     private lateinit var settingsStore: SettingsStore
     private lateinit var scanner: MediaStoreScanner
+    private lateinit var identityController: IdentityController
+    private lateinit var agentController: AgentSearchController
     private val executor = Executors.newSingleThreadExecutor()
     private val busy = AtomicBoolean(false)
     private var uiState by mutableStateOf(GalleryUiState())
     private var selectedPhotoRange by mutableStateOf<PhotoHeatmapSelection?>(null)
+    private var requestedDockDestination by mutableStateOf(DockDestination.ALBUM)
     private var initialized = false
     private var pendingPermissionAction = PendingPhotoPermissionAction.ANNOTATE_ALL
     private var pendingSimilarityCheck: SimilarityCheckRequest? = null
@@ -181,41 +180,89 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         selectedPhotoRange = intent.photoHeatmapSelection()
+        requestedDockDestination = intent.dockDestination()
         enableEdgeToEdge()
         database = ApmDatabase(applicationContext)
         settingsStore = SettingsStore(applicationContext)
         scanner = MediaStoreScanner(applicationContext, database)
+        identityController = IdentityController(this)
+        agentController = AgentSearchController(this)
         initialized = true
         setContent {
             ApmTheme {
-                GalleryScreen(
-                    state = uiState,
-                    onQueryChange = { query ->
-                        val activeSearchQuery = uiState.activeSearchQuery
-                            ?.takeIf { it == query.trim() }
-                        uiState = uiState.copy(
-                            query = query,
-                            activeSearchQuery = activeSearchQuery,
-                            results = if (activeSearchQuery == null) emptyList() else uiState.results,
+                AppDockPager(
+                    requestedDestination = requestedDockDestination,
+                    busy = uiState.busy || identityController.state.busy || agentController.state.busy,
+                    searchEnabled = uiState.search.enabled,
+                    onDestinationSettled = { destination ->
+                        requestedDockDestination = destination
+                        when (destination) {
+                            DockDestination.PEOPLE -> identityController.refreshIdentities()
+                            DockDestination.AGENT -> agentController.refreshAvailability()
+                            else -> Unit
+                        }
+                    },
+                ) { destination, navigate ->
+                    when (destination) {
+                        DockDestination.ALBUM -> GalleryScreen(
+                            state = uiState,
+                            onQueryChange = { query ->
+                                val activeSearchQuery = uiState.activeSearchQuery
+                                    ?.takeIf { it == query.trim() }
+                                uiState = uiState.copy(
+                                    query = query,
+                                    activeSearchQuery = activeSearchQuery,
+                                    results = if (activeSearchQuery == null) emptyList() else uiState.results,
+                                )
+                            },
+                            onSearch = ::submitSearch,
+                            onSuggestion = { suggestion ->
+                                uiState = uiState.copy(query = suggestion)
+                                submitSearch()
+                            },
+                            onSelectPhotos = ::selectPhotosForAnnotation,
+                            onAnnotateSelected = { startAnnotation(AnnotationScope.SELECTED) },
+                            onAnnotateAll = ::onAnnotateAllRequested,
+                            onCheckSimilar = ::onSimilarityCheckRequested,
+                            onHeatmap = { navigate(DockDestination.HEATMAP) },
+                            initialSelectedRange = selectedPhotoRange,
+                            startupStoryEnabled = requestedDockDestination == DockDestination.ALBUM,
+                            onPhoto = ::openPhoto,
+                            onSimilar = ::openSimilar,
                         )
-                    },
-                    onSearch = ::submitSearch,
-                    onSuggestion = { suggestion ->
-                        uiState = uiState.copy(query = suggestion)
-                        submitSearch()
-                    },
-                    onSelectPhotos = ::selectPhotosForAnnotation,
-                    onAnnotateSelected = { startAnnotation(AnnotationScope.SELECTED) },
-                    onAnnotateAll = ::onAnnotateAllRequested,
-                    onCheckSimilar = ::onSimilarityCheckRequested,
-                    onAgent = ::openAgent,
-                    onIdentity = ::openIdentity,
-                    onSettings = ::openSettings,
-                    onHeatmap = ::openHeatmap,
-                    initialSelectedRange = selectedPhotoRange,
-                    onPhoto = ::openPhoto,
-                    onSimilar = ::openSimilar,
-                )
+
+                        DockDestination.HEATMAP -> PhotoHeatmapPage(
+                            photos = uiState.galleryPhotos,
+                            onViewPhotos = { selection ->
+                                selectedPhotoRange = selection
+                                navigate(DockDestination.ALBUM)
+                            },
+                        )
+
+                        DockDestination.PEOPLE -> IdentityScreen(
+                            state = identityController.state,
+                            onKindChange = identityController::changeKind,
+                            onPick = identityController::pickReference,
+                            onSelectSubject = identityController::selectSubject,
+                            onNameChange = identityController::changeName,
+                            onRegister = identityController::registerSelectedSubject,
+                            onDelete = identityController::deleteIdentity,
+                        )
+
+                        DockDestination.AGENT -> AgentSearchScreen(
+                            state = agentController.state,
+                            onRequestChange = agentController::changeRequest,
+                            onRun = agentController::runAgent,
+                            onPhoto = { photo ->
+                                startActivity(PhotoViewerActivity.intent(this, photo.photoId, photo.uri))
+                            },
+                        )
+
+                        DockDestination.SETTINGS -> ModelSettingsScreen(
+                            onNavigate = navigate,
+                        )
+                    }
+                }
             }
         }
         refreshLibraryState("准备就绪。先选择照片，再让 VLM 建立可搜索标注。")
@@ -243,15 +290,21 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         selectedPhotoRange = intent.photoHeatmapSelection()
+        requestedDockDestination = intent.dockDestination()
     }
 
     override fun onResume() {
         super.onResume()
-        if (initialized && !busy.get()) refreshLibraryState(null)
+        if (initialized && !busy.get()) {
+            refreshLibraryState(null)
+            agentController.refreshAvailability()
+        }
     }
 
     override fun onDestroy() {
         executor.shutdownNow()
+        identityController.close()
+        agentController.close()
         database.close()
         super.onDestroy()
     }
@@ -374,7 +427,7 @@ class MainActivity : ComponentActivity() {
             EndpointPolicy.validate(settingsStore.load())
         } catch (error: Exception) {
             updateStatus("模型配置无效：${error.message}")
-            openSettings()
+            requestedDockDestination = DockDestination.SETTINGS
             return null
         }
         return config
@@ -640,22 +693,6 @@ class MainActivity : ComponentActivity() {
         runOnUiThread { uiState = uiState.copy(status = message) }
     }
 
-    private fun openSettings() {
-        startActivity(Intent(this, SettingsActivity::class.java))
-    }
-
-    private fun openHeatmap() {
-        startActivity(Intent(this, PhotoHeatmapActivity::class.java))
-    }
-
-    private fun openAgent() {
-        startActivity(Intent(this, AgentSearchActivity::class.java))
-    }
-
-    private fun openIdentity() {
-        startActivity(Intent(this, IdentityActivity::class.java))
-    }
-
     private fun openPhoto(photoId: String, uri: String) {
         startActivity(PhotoViewerActivity.intent(this, photoId, uri))
     }
@@ -683,11 +720,9 @@ private fun GalleryScreen(
     onAnnotateSelected: () -> Unit,
     onAnnotateAll: () -> Unit,
     onCheckSimilar: (SimilarityCheckRequest) -> Unit,
-    onAgent: () -> Unit,
-    onIdentity: () -> Unit,
-    onSettings: () -> Unit,
     onHeatmap: () -> Unit,
     initialSelectedRange: PhotoHeatmapSelection?,
+    startupStoryEnabled: Boolean,
     onPhoto: (String, String) -> Unit,
     onSimilar: (String, String, String) -> Unit,
 ) {
@@ -708,6 +743,7 @@ private fun GalleryScreen(
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             TopAppBar(
                 title = {
@@ -723,16 +759,6 @@ private fun GalleryScreen(
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background,
                 ),
-            )
-        },
-        bottomBar = {
-            GalleryBottomDock(
-                busy = state.busy,
-                searchEnabled = state.search.enabled,
-                onHeatmap = onHeatmap,
-                onSettings = onSettings,
-                onIdentity = onIdentity,
-                onAgent = onAgent,
             )
         },
     ) { scaffoldPadding ->
@@ -886,21 +912,21 @@ private fun GalleryScreen(
                         )
                         var distanceX = 0f
                         var distanceY = 0f
-                        var triggered = false
+                        var shouldOpenHeatmap = false
                         while (true) {
                             val event = awaitPointerEvent(PointerEventPass.Initial)
                             val change = event.changes.firstOrNull { it.id == down.id } ?: break
                             if (!change.pressed) break
                             distanceX += change.position.x - change.previousPosition.x
                             distanceY += change.position.y - change.previousPosition.y
-                            if (!triggered &&
+                            if (!shouldOpenHeatmap &&
                                 distanceX >= thresholdPx &&
                                 distanceX > abs(distanceY)
                             ) {
-                                triggered = true
-                                onHeatmap()
+                                shouldOpenHeatmap = true
                             }
                         }
+                        if (shouldOpenHeatmap) onHeatmap()
                     }
                 }
                 .semantics {
@@ -910,59 +936,8 @@ private fun GalleryScreen(
         )
         }
     }
-    if (showStartupStory) {
+        if (startupStoryEnabled && showStartupStory) {
         StartupStoryDialog(onDismiss = { showStartupStory = false })
-    }
-}
-
-@Composable
-private fun GalleryBottomDock(
-    busy: Boolean,
-    searchEnabled: Boolean,
-    onHeatmap: () -> Unit,
-    onSettings: () -> Unit,
-    onIdentity: () -> Unit,
-    onAgent: () -> Unit,
-) {
-    NavigationBar(modifier = Modifier.testTag("bottom_dock")) {
-        NavigationBarItem(
-            selected = false,
-            onClick = onHeatmap,
-            icon = {
-                Icon(Icons.Outlined.GridView, contentDescription = "年度热力图")
-            },
-            label = { Text("热力图") },
-            modifier = Modifier.testTag("dock_heatmap"),
-        )
-        NavigationBarItem(
-            selected = false,
-            onClick = onIdentity,
-            enabled = !busy,
-            icon = {
-                Icon(Icons.Outlined.Face, contentDescription = "人物与宠物")
-            },
-            label = { Text("人") },
-            modifier = Modifier.testTag("dock_identity"),
-        )
-        NavigationBarItem(
-            selected = false,
-            onClick = onAgent,
-            enabled = searchEnabled && !busy,
-            icon = {
-                Icon(Icons.Outlined.SmartToy, contentDescription = "Agent 搜索")
-            },
-            label = { Text("Agent") },
-            modifier = Modifier.testTag("dock_agent"),
-        )
-        NavigationBarItem(
-            selected = false,
-            onClick = onSettings,
-            icon = {
-                Icon(Icons.Outlined.Settings, contentDescription = "模型设置")
-            },
-            label = { Text("设置") },
-            modifier = Modifier.testTag("dock_settings"),
-        )
     }
 }
 

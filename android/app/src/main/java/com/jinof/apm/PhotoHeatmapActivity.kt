@@ -10,10 +10,11 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -23,7 +24,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.ChevronLeft
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material3.CircularProgressIndicator
@@ -46,7 +46,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
@@ -54,6 +53,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import java.time.LocalDate
+import java.time.YearMonth
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -102,7 +102,6 @@ class PhotoHeatmapActivity : ComponentActivity() {
             ApmTheme {
                 PhotoHeatmapPage(
                     photos = photos,
-                    onBack = ::finish,
                     onViewPhotos = { selection ->
                         startActivity(
                             Intent(this, MainActivity::class.java)
@@ -136,24 +135,20 @@ class PhotoHeatmapActivity : ComponentActivity() {
             }
         }
     }
+
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun PhotoHeatmapPage(
+internal fun PhotoHeatmapPage(
     photos: List<GalleryPhotoCard>?,
-    onBack: () -> Unit,
     onViewPhotos: (PhotoHeatmapSelection) -> Unit,
 ) {
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             TopAppBar(
-                navigationIcon = {
-                    IconButton(onClick = onBack, modifier = Modifier.testTag("heatmap_back")) {
-                        Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "返回照片墙")
-                    }
-                },
                 title = {
                     Column {
                         Text("照片热力图", style = MaterialTheme.typography.titleLarge)
@@ -185,20 +180,19 @@ private fun PhotoHeatmapPage(
             val heatmap = remember(displayedYear, photos, zoneId) {
                 PhotoWallOrganizer.heatmap(displayedYear, photos, zoneId)
             }
-            Row(
+            Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(
-                        start = 12.dp,
-                        end = 12.dp,
-                        top = padding.calculateTopPadding() + 10.dp,
-                        bottom = padding.calculateBottomPadding() + 12.dp,
+                        start = 6.dp,
+                        end = 6.dp,
+                        top = padding.calculateTopPadding() + 4.dp,
+                        bottom = padding.calculateBottomPadding() + 4.dp,
                     )
                     .testTag("photo_heatmap_page"),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalAlignment = Alignment.Top,
+                verticalArrangement = Arrangement.spacedBy(3.dp),
             ) {
-                PhotoHeatmapSideControls(
+                PhotoHeatmapTimeControls(
                     year = displayedYear,
                     granularity = granularity,
                     onGranularity = {
@@ -215,7 +209,7 @@ private fun PhotoHeatmapPage(
                     },
                 )
                 PhotoHeatmapContent(
-                    modifier = Modifier.weight(1f).fillMaxHeight(),
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
                     heatmap = heatmap,
                     heatmapGranularity = granularity,
                     selectedRange = selectedRange,
@@ -229,23 +223,25 @@ private fun PhotoHeatmapPage(
 }
 
 @Composable
-private fun PhotoHeatmapSideControls(
+private fun PhotoHeatmapTimeControls(
     year: Int,
     granularity: PhotoHeatmapGranularity,
     onGranularity: (PhotoHeatmapGranularity) -> Unit,
     onPreviousYear: () -> Unit,
     onNextYear: () -> Unit,
 ) {
-    Column(
+    Row(
         modifier = Modifier
-            .width(84.dp)
-            .fillMaxHeight()
-            .testTag("heatmap_side_controls"),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(4.dp),
+            .fillMaxWidth()
+            .height(40.dp)
+            .testTag("heatmap_time_controls"),
+        horizontalArrangement = Arrangement.spacedBy(3.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text("年度", style = MaterialTheme.typography.labelMedium)
-        IconButton(onClick = onPreviousYear, modifier = Modifier.testTag("heatmap_previous_year")) {
+        IconButton(
+            onClick = onPreviousYear,
+            modifier = Modifier.size(36.dp).testTag("heatmap_previous_year"),
+        ) {
             Icon(Icons.Outlined.ChevronLeft, contentDescription = "上一年")
         }
         Text(
@@ -253,11 +249,13 @@ private fun PhotoHeatmapSideControls(
             style = MaterialTheme.typography.labelMedium,
             modifier = Modifier.testTag("heatmap_year_label"),
         )
-        IconButton(onClick = onNextYear, modifier = Modifier.testTag("heatmap_next_year")) {
+        IconButton(
+            onClick = onNextYear,
+            modifier = Modifier.size(36.dp).testTag("heatmap_next_year"),
+        ) {
             Icon(Icons.Outlined.ChevronRight, contentDescription = "下一年")
         }
-        Spacer(Modifier.height(8.dp))
-        Text("粒度", style = MaterialTheme.typography.labelMedium)
+        Spacer(Modifier.weight(1f))
         PhotoHeatmapGranularity.entries.forEach { option ->
             FilterChip(
                 selected = granularity == option,
@@ -271,25 +269,11 @@ private fun PhotoHeatmapSideControls(
                         },
                     )
                 },
-                modifier = Modifier.testTag("heatmap_granularity_${option.name.lowercase()}"),
+                modifier = Modifier
+                    .height(32.dp)
+                    .testTag("heatmap_granularity_${option.name.lowercase()}"),
             )
         }
-    }
-}
-
-@Composable
-private fun PhotoHeatmapSectionTitle(title: String, supporting: String) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
-        Text(title, style = MaterialTheme.typography.titleMedium)
-        Text(
-            supporting,
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.primary,
-        )
     }
 }
 
@@ -305,9 +289,8 @@ internal fun PhotoHeatmapContent(
 ) {
     Column(
         modifier = modifier.fillMaxSize().testTag("photo_heatmap_content"),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
-        PhotoHeatmapSectionTitle("照片热力图", "年度 · ${heatmapGranularity.label}")
         AnnualPhotoCountHeatmap(
             modifier = Modifier.weight(1f).fillMaxWidth(),
             heatmap = heatmap,
@@ -316,27 +299,29 @@ internal fun PhotoHeatmapContent(
             onSelectRange = onSelectRange,
         )
         if (selectedRange != null) {
-            Text(
-                "已选 ${heatmapSelectionLabel(selectedRange)} · ${selectedRange.count} 张照片",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("selected_photo_range_summary"),
-            )
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
+                horizontalArrangement = Arrangement.spacedBy(3.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                Text(
+                    "已选 ${heatmapSelectionLabel(selectedRange)} · ${selectedRange.count} 张照片",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("selected_photo_range_summary"),
+                )
                 TextButton(
                     onClick = onClearRange,
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp),
                     modifier = Modifier.testTag("clear_photo_range"),
                 ) {
                     Text("清除选择")
                 }
                 FilledTonalButton(
                     onClick = { onViewPhotos(selectedRange) },
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp),
                     modifier = Modifier.testTag("view_selected_photos"),
                 ) {
                     Text("去照片中查看")
@@ -357,7 +342,7 @@ private fun AnnualPhotoCountHeatmap(
     val today = remember { LocalDate.now() }
     Column(
         modifier = modifier.fillMaxSize().testTag("photo_wall_heatmap"),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -370,36 +355,38 @@ private fun AnnualPhotoCountHeatmap(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Text(
-                "${heatmapUnitLabel(granularity)}最多 ${heatmap.maxCount(granularity)} 张 · " +
-                    when (granularity) {
-                        PhotoHeatmapGranularity.DAY -> "每周一行"
-                        PhotoHeatmapGranularity.WEEK -> "每周一行"
-                        PhotoHeatmapGranularity.MONTH -> "每月一行"
-                    },
+                "${heatmapUnitLabel(granularity)}最多 ${heatmap.maxCount(granularity)} 张 · 四季纵排 · 月份横排",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        when (granularity) {
-            PhotoHeatmapGranularity.DAY -> GitHubAnnualDayHeatmap(
-                modifier = Modifier.weight(1f).fillMaxWidth(),
-                heatmap = heatmap,
-                selectedRange = selectedRange,
-                today = today,
-                onSelectRange = onSelectRange,
-            )
-            PhotoHeatmapGranularity.WEEK -> GitHubAnnualWeekHeatmap(
-                modifier = Modifier.weight(1f).fillMaxWidth(),
-                heatmap = heatmap,
-                selectedRange = selectedRange,
-                onSelectRange = onSelectRange,
-            )
-            PhotoHeatmapGranularity.MONTH -> GitHubAnnualMonthHeatmap(
-                modifier = Modifier.weight(1f).fillMaxWidth(),
-                heatmap = heatmap,
-                selectedRange = selectedRange,
-                onSelectRange = onSelectRange,
-            )
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .testTag("heatmap_quarters_vertical"),
+        ) {
+            when (granularity) {
+                PhotoHeatmapGranularity.DAY -> GitHubAnnualDayHeatmap(
+                    modifier = Modifier.fillMaxSize(),
+                    heatmap = heatmap,
+                    selectedRange = selectedRange,
+                    today = today,
+                    onSelectRange = onSelectRange,
+                )
+                PhotoHeatmapGranularity.WEEK -> GitHubAnnualWeekHeatmap(
+                    modifier = Modifier.fillMaxSize(),
+                    heatmap = heatmap,
+                    selectedRange = selectedRange,
+                    onSelectRange = onSelectRange,
+                )
+                PhotoHeatmapGranularity.MONTH -> GitHubAnnualMonthHeatmap(
+                    modifier = Modifier.fillMaxSize(),
+                    heatmap = heatmap,
+                    selectedRange = selectedRange,
+                    onSelectRange = onSelectRange,
+                )
+            }
         }
         GitHubHeatmapGuide()
     }
@@ -413,92 +400,110 @@ private fun GitHubAnnualDayHeatmap(
     today: LocalDate,
     onSelectRange: (PhotoHeatmapSelection) -> Unit,
 ) {
-    val cellSize = ((LocalConfiguration.current.screenHeightDp - 260).dp / 53f)
-        .coerceIn(6.dp, 14.dp)
+    QuarterlyHeatmapLayout(modifier = modifier, mode = "day") { monthNumber, monthModifier ->
+        GitHubMonthDayHeatmap(
+            modifier = monthModifier,
+            monthNumber = monthNumber,
+            heatmap = heatmap,
+            selectedRange = selectedRange,
+            today = today,
+            onSelectRange = onSelectRange,
+        )
+    }
+}
+
+@Composable
+private fun GitHubMonthDayHeatmap(
+    modifier: Modifier = Modifier,
+    monthNumber: Int,
+    heatmap: PhotoHeatmapYear,
+    selectedRange: PhotoHeatmapSelection?,
+    today: LocalDate,
+    onSelectRange: (PhotoHeatmapSelection) -> Unit,
+) {
+    val month = remember(heatmap.year, monthNumber) { YearMonth.of(heatmap.year, monthNumber) }
+    val cellsByDate = remember(heatmap.dayCells) { heatmap.dayCells.associateBy { it.date } }
+    val leadingBlanks = month.atDay(1).dayOfWeek.value % 7
+    val slots = List(42) { slot ->
+        val day = slot - leadingBlanks + 1
+        if (day in 1..month.lengthOfMonth()) cellsByDate[month.atDay(day)] else null
+    }
     val gap = 1.dp
-    val monthByWeek = heatmap.monthLabels.associateBy(PhotoHeatmapMonthLabel::startWeekIndex)
-    Column(
-        modifier = modifier.fillMaxSize().testTag("heatmap_day_vertical"),
-        verticalArrangement = Arrangement.SpaceEvenly,
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(gap),
+    BoxWithConstraints(modifier = modifier.fillMaxSize()) {
+        val cellSize = minOf(
+            (maxWidth - gap * 6) / 7f,
+            (maxHeight - 12.dp - gap * 7) / 7f,
+        ).coerceAtLeast(3.dp)
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
         ) {
-            Spacer(Modifier.width(20.dp))
-            listOf("日", "一", "二", "三", "四", "五", "六").forEach { weekday ->
-                Box(
-                    modifier = Modifier.size(cellSize),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        weekday,
-                        style = MaterialTheme.typography.labelSmall,
-                        fontSize = 7.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-        }
-        heatmap.dayCells.chunked(7).forEachIndexed { weekIndex, week ->
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(gap),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Box(
-                    modifier = Modifier.width(20.dp).height(cellSize),
-                    contentAlignment = Alignment.CenterEnd,
-                ) {
-                    monthByWeek[weekIndex]?.let { label ->
+            Text(
+                "${monthNumber}月",
+                style = MaterialTheme.typography.labelSmall,
+                fontSize = 7.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
+                listOf("日", "一", "二", "三", "四", "五", "六").forEach { weekday ->
+                    Box(modifier = Modifier.size(cellSize), contentAlignment = Alignment.Center) {
                         Text(
-                            "${label.month.monthValue}月",
+                            weekday,
                             style = MaterialTheme.typography.labelSmall,
                             fontSize = 6.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                 }
-                week.forEach { cell ->
-                    val selected = selectedRange?.let { selection ->
-                        selection.granularity == PhotoHeatmapGranularity.DAY &&
-                            selection.startDate == cell.date
-                    } == true
-                    val isToday = cell.date == today
-                    val description = buildString {
-                        append(cell.date.format(DateTimeFormatter.ofPattern("yyyy年M月d日")))
-                        append("，${cell.count}张照片，热度${cell.level}级")
-                        if (isToday) append("，今天")
-                        if (selected) append("，已选择")
+            }
+            slots.chunked(7).forEach { week ->
+                Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
+                    week.forEach { cell ->
+                        if (cell == null) {
+                            Spacer(Modifier.size(cellSize))
+                        } else {
+                            val selected = selectedRange?.let { selection ->
+                                selection.granularity == PhotoHeatmapGranularity.DAY &&
+                                    selection.startDate == cell.date
+                            } == true
+                            val isToday = cell.date == today
+                            val description = buildString {
+                                append(cell.date.format(DateTimeFormatter.ofPattern("yyyy年M月d日")))
+                                append("，${cell.count}张照片，热度${cell.level}级")
+                                if (isToday) append("，今天")
+                                if (selected) append("，已选择")
+                            }
+                            Surface(
+                                modifier = Modifier
+                                    .size(cellSize)
+                                    .testTag("heatmap_day_${cell.date}")
+                                    .then(
+                                        if (cell.count > 0) {
+                                            Modifier.clickable {
+                                                onSelectRange(
+                                                    PhotoHeatmapSelection(
+                                                        granularity = PhotoHeatmapGranularity.DAY,
+                                                        startDate = cell.date,
+                                                        endDate = cell.date,
+                                                        count = cell.count,
+                                                    ),
+                                                )
+                                            }
+                                        } else {
+                                            Modifier
+                                        },
+                                    )
+                                    .semantics {
+                                        contentDescription = description
+                                        this.selected = selected
+                                    },
+                                color = githubHeatmapColor(cell.level),
+                                border = githubHeatmapBorder(selected, isToday),
+                                shape = RoundedCornerShape(2.dp),
+                            ) {}
+                        }
                     }
-                    Surface(
-                        modifier = Modifier
-                            .size(cellSize)
-                            .testTag("heatmap_day_${cell.date}")
-                            .then(
-                                if (cell.inYear && cell.count > 0) {
-                                    Modifier.clickable {
-                                        onSelectRange(
-                                            PhotoHeatmapSelection(
-                                                granularity = PhotoHeatmapGranularity.DAY,
-                                                startDate = cell.date,
-                                                endDate = cell.date,
-                                                count = cell.count,
-                                            ),
-                                        )
-                                    }
-                                } else {
-                                    Modifier
-                                },
-                            )
-                            .semantics {
-                                contentDescription = description
-                                this.selected = selected
-                            },
-                        color = if (cell.inYear) githubHeatmapColor(cell.level) else Color.Transparent,
-                        border = if (cell.inYear) githubHeatmapBorder(selected, isToday) else null,
-                        shape = RoundedCornerShape(2.dp),
-                    ) {}
                 }
             }
         }
@@ -512,70 +517,89 @@ private fun GitHubAnnualWeekHeatmap(
     selectedRange: PhotoHeatmapSelection?,
     onSelectRange: (PhotoHeatmapSelection) -> Unit,
 ) {
-    val cellSize = ((LocalConfiguration.current.screenHeightDp - 250).dp / heatmap.weekCells.size.toFloat())
-        .coerceIn(7.dp, 14.dp)
-    val monthByWeek = heatmap.monthLabels.associateBy(PhotoHeatmapMonthLabel::startWeekIndex)
-    Column(
-        modifier = modifier.fillMaxSize().testTag("heatmap_week_vertical"),
-        verticalArrangement = Arrangement.SpaceEvenly,
-    ) {
-        heatmap.weekCells.forEachIndexed { weekIndex, cell ->
-            val selected = selectedRange?.let { selection ->
-                selection.granularity == PhotoHeatmapGranularity.WEEK &&
-                    selection.startDate == cell.startDate &&
-                    selection.endDate == cell.endDate
-            } == true
-            val description = buildString {
-                append(heatmapRangeLabel(cell.startDate, cell.endDate))
-                append("，${cell.count}张照片，热度${cell.level}级")
-                if (selected) append("，已选择")
-            }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Box(
-                    modifier = Modifier.width(20.dp).height(cellSize),
-                    contentAlignment = Alignment.CenterEnd,
-                ) {
-                    monthByWeek[weekIndex]?.let { label ->
-                        Text(
-                            "${label.month.monthValue}月",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontSize = 6.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+    QuarterlyHeatmapLayout(modifier = modifier, mode = "week") { monthNumber, monthModifier ->
+        GitHubMonthWeekHeatmap(
+            modifier = monthModifier,
+            monthNumber = monthNumber,
+            heatmap = heatmap,
+            selectedRange = selectedRange,
+            onSelectRange = onSelectRange,
+        )
+    }
+}
+
+@Composable
+private fun GitHubMonthWeekHeatmap(
+    modifier: Modifier = Modifier,
+    monthNumber: Int,
+    heatmap: PhotoHeatmapYear,
+    selectedRange: PhotoHeatmapSelection?,
+    onSelectRange: (PhotoHeatmapSelection) -> Unit,
+) {
+    val cells = remember(heatmap.weekCells, monthNumber) {
+        heatmap.weekCells.filter { it.startDate.monthValue == monthNumber }
+    }
+    val gap = 2.dp
+    BoxWithConstraints(modifier = modifier.fillMaxSize()) {
+        val rowCount = maxOf(1, (cells.size + 1) / 2)
+        val cellSize = minOf(
+            (maxWidth - gap) / 2f,
+            (maxHeight - 14.dp - gap * (rowCount - 1)) / rowCount.toFloat(),
+        ).coerceIn(6.dp, 40.dp)
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            Text(
+                "${monthNumber}月",
+                style = MaterialTheme.typography.labelSmall,
+                fontSize = 7.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            cells.chunked(2).forEach { rowCells ->
+                Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
+                    rowCells.forEach { cell ->
+                        val selected = selectedRange?.let { selection ->
+                            selection.granularity == PhotoHeatmapGranularity.WEEK &&
+                                selection.startDate == cell.startDate &&
+                                selection.endDate == cell.endDate
+                        } == true
+                        val description = buildString {
+                            append(heatmapRangeLabel(cell.startDate, cell.endDate))
+                            append("，${cell.count}张照片，热度${cell.level}级")
+                            if (selected) append("，已选择")
+                        }
+                        Surface(
+                            modifier = Modifier
+                                .size(cellSize)
+                                .testTag("heatmap_week_${cell.startDate}")
+                                .then(
+                                    if (cell.count > 0) {
+                                        Modifier.clickable {
+                                            onSelectRange(
+                                                PhotoHeatmapSelection(
+                                                    granularity = PhotoHeatmapGranularity.WEEK,
+                                                    startDate = cell.startDate,
+                                                    endDate = cell.endDate,
+                                                    count = cell.count,
+                                                ),
+                                            )
+                                        }
+                                    } else {
+                                        Modifier
+                                    },
+                                )
+                                .semantics {
+                                    contentDescription = description
+                                    this.selected = selected
+                                },
+                            color = githubHeatmapColor(cell.level),
+                            border = githubHeatmapBorder(selected, false),
+                            shape = RoundedCornerShape(3.dp),
+                        ) {}
                     }
                 }
-                Surface(
-                    modifier = Modifier
-                        .size(cellSize)
-                        .testTag("heatmap_week_${cell.startDate}")
-                        .then(
-                            if (cell.count > 0) {
-                                Modifier.clickable {
-                                    onSelectRange(
-                                        PhotoHeatmapSelection(
-                                            granularity = PhotoHeatmapGranularity.WEEK,
-                                            startDate = cell.startDate,
-                                            endDate = cell.endDate,
-                                            count = cell.count,
-                                        ),
-                                    )
-                                }
-                            } else {
-                                Modifier
-                            },
-                        )
-                        .semantics {
-                            contentDescription = description
-                            this.selected = selected
-                        },
-                    color = githubHeatmapColor(cell.level),
-                    border = githubHeatmapBorder(selected, false),
-                    shape = RoundedCornerShape(2.dp),
-                ) {}
             }
         }
     }
@@ -588,66 +612,123 @@ private fun GitHubAnnualMonthHeatmap(
     selectedRange: PhotoHeatmapSelection?,
     onSelectRange: (PhotoHeatmapSelection) -> Unit,
 ) {
-    val cellHeight = ((LocalConfiguration.current.screenHeightDp - 220).dp / 12f)
-        .coerceIn(24.dp, 42.dp)
+    QuarterlyHeatmapLayout(modifier = modifier, mode = "month") { monthNumber, monthModifier ->
+        GitHubMonthCell(
+            modifier = monthModifier,
+            monthNumber = monthNumber,
+            cell = heatmap.monthCells[monthNumber - 1],
+            selectedRange = selectedRange,
+            onSelectRange = onSelectRange,
+        )
+    }
+}
+
+@Composable
+private fun GitHubMonthCell(
+    modifier: Modifier = Modifier,
+    monthNumber: Int,
+    cell: PhotoHeatmapPeriodCell,
+    selectedRange: PhotoHeatmapSelection?,
+    onSelectRange: (PhotoHeatmapSelection) -> Unit,
+) {
+    val selected = selectedRange?.let { selection ->
+        selection.granularity == PhotoHeatmapGranularity.MONTH &&
+            selection.startDate == cell.startDate
+    } == true
+    val description = buildString {
+        append(cell.startDate.format(DateTimeFormatter.ofPattern("yyyy年M月")))
+        append("，${cell.count}张照片，热度${cell.level}级")
+        if (selected) append("，已选择")
+    }
+    BoxWithConstraints(modifier = modifier.fillMaxSize()) {
+        val cellSize = minOf(maxWidth - 8.dp, maxHeight - 18.dp).coerceAtLeast(12.dp)
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            Text(
+                "${monthNumber}月 · ${cell.count}张",
+                style = MaterialTheme.typography.labelSmall,
+                fontSize = 7.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Surface(
+                modifier = Modifier
+                    .size(cellSize)
+                    .testTag("heatmap_month_${monthNumber.toString().padStart(2, '0')}")
+                    .then(
+                        if (cell.count > 0) {
+                            Modifier.clickable {
+                                onSelectRange(
+                                    PhotoHeatmapSelection(
+                                        granularity = PhotoHeatmapGranularity.MONTH,
+                                        startDate = cell.startDate,
+                                        endDate = cell.endDate,
+                                        count = cell.count,
+                                    ),
+                                )
+                            }
+                        } else {
+                            Modifier
+                        },
+                    )
+                    .semantics {
+                        contentDescription = description
+                        this.selected = selected
+                    },
+                color = githubHeatmapColor(cell.level),
+                border = githubHeatmapBorder(selected, false),
+                shape = RoundedCornerShape(4.dp),
+            ) {}
+        }
+    }
+}
+
+@Composable
+private fun QuarterlyHeatmapLayout(
+    modifier: Modifier,
+    mode: String,
+    monthContent: @Composable (monthNumber: Int, modifier: Modifier) -> Unit,
+) {
     Column(
-        modifier = modifier.fillMaxSize().testTag("heatmap_month_vertical"),
-        verticalArrangement = Arrangement.SpaceEvenly,
+        modifier = modifier.fillMaxSize().testTag("heatmap_${mode}_quarters"),
+        verticalArrangement = Arrangement.spacedBy(3.dp),
     ) {
-        heatmap.monthCells.forEachIndexed { index, cell ->
-            val selected = selectedRange?.let { selection ->
-                selection.granularity == PhotoHeatmapGranularity.MONTH &&
-                    selection.startDate == cell.startDate
-            } == true
-            val description = buildString {
-                append(cell.startDate.format(DateTimeFormatter.ofPattern("yyyy年M月")))
-                append("，${cell.count}张照片，热度${cell.level}级")
-                if (selected) append("，已选择")
-            }
+        repeat(4) { quarterIndex ->
             Row(
-                modifier = Modifier.fillMaxWidth().height(cellHeight),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .testTag("heatmap_${mode}_quarter_${quarterIndex + 1}"),
+                horizontalArrangement = Arrangement.spacedBy(3.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
-                    "${index + 1}月",
-                    style = MaterialTheme.typography.labelSmall,
-                    modifier = Modifier.width(32.dp),
-                )
-                Surface(
-                    modifier = Modifier
-                        .width(30.dp)
-                        .fillMaxHeight()
-                        .testTag("heatmap_month_${(index + 1).toString().padStart(2, '0')}")
-                        .then(
-                            if (cell.count > 0) {
-                                Modifier.clickable {
-                                    onSelectRange(
-                                        PhotoHeatmapSelection(
-                                            granularity = PhotoHeatmapGranularity.MONTH,
-                                            startDate = cell.startDate,
-                                            endDate = cell.endDate,
-                                            count = cell.count,
-                                        ),
-                                    )
-                                }
-                            } else {
-                                Modifier
-                            },
-                        )
-                        .semantics {
-                            contentDescription = description
-                            this.selected = selected
-                        },
-                    color = githubHeatmapColor(cell.level),
-                    border = githubHeatmapBorder(selected, false),
-                    shape = RoundedCornerShape(3.dp),
-                ) {}
-                Text(
-                    "${cell.count} 张",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                Box(
+                    modifier = Modifier.width(14.dp).fillMaxHeight(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        "Q${quarterIndex + 1}",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontSize = 7.sp,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+                repeat(3) { monthOffset ->
+                    val monthNumber = quarterIndex * 3 + monthOffset + 1
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .testTag(
+                                "heatmap_${mode}_month_panel_" +
+                                    monthNumber.toString().padStart(2, '0'),
+                            ),
+                    ) {
+                        monthContent(monthNumber, Modifier.fillMaxSize())
+                    }
+                }
             }
         }
     }

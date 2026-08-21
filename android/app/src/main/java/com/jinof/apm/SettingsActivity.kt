@@ -1,6 +1,5 @@
 package com.jinof.apm
 
-import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -11,6 +10,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -19,7 +19,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.CloudQueue
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Person
@@ -30,7 +29,6 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -61,15 +59,25 @@ class SettingsActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             ApmTheme {
-                ModelSettingsScreen(onBack = { finish() })
+                ModelSettingsScreen(
+                    onNavigate = ::navigateDock,
+                )
             }
+        }
+    }
+
+    private fun navigateDock(destination: DockDestination) {
+        if (destination != DockDestination.SETTINGS) {
+            openDockDestination(destination)
         }
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ModelSettingsScreen(onBack: () -> Unit) {
+internal fun ModelSettingsScreen(
+    onNavigate: (DockDestination) -> Unit,
+) {
     val context = LocalContext.current
     val store = remember { SettingsStore(context.applicationContext) }
     val initial = remember { store.load() }
@@ -82,14 +90,10 @@ private fun ModelSettingsScreen(onBack: () -> Unit) {
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         snackbarHost = { SnackbarHost(snackbar) },
         topBar = {
             TopAppBar(
-                navigationIcon = {
-                    IconButton(onClick = onBack, modifier = Modifier.testTag("settings_back")) {
-                        Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "返回相册")
-                    }
-                },
                 title = {
                     Column {
                         Text("模型设置", style = MaterialTheme.typography.titleLarge)
@@ -192,9 +196,7 @@ private fun ModelSettingsScreen(onBack: () -> Unit) {
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Button(
-                        onClick = {
-                            context.startActivity(Intent(context, IdentityActivity::class.java))
-                        },
+                        onClick = { onNavigate(DockDestination.PEOPLE) },
                         modifier = Modifier.fillMaxWidth().height(52.dp).testTag("open_identity_settings"),
                     ) {
                         Icon(Icons.Outlined.Person, contentDescription = null)
