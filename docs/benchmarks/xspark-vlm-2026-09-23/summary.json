@@ -1,0 +1,1170 @@
+[
+  {
+    "profile": "qwen38_27b_fp8_eager",
+    "label": "Qwen3.8-27B FP8 / 当前 eager",
+    "measured_requests": 3,
+    "valid_requests": 3,
+    "startup_seconds": null,
+    "startup_error": null,
+    "first_request_seconds": 74.96947539690882,
+    "seconds_median": 75.3867,
+    "seconds_min": 75.1822,
+    "seconds_max": 75.3958,
+    "ttft_seconds_median": 0.8765,
+    "decode_tps_median": 7.5315,
+    "completion_tokens_median": 561,
+    "content_characters_median": 1450,
+    "prompt_tokens_median": 911,
+    "apm_quality": [
+      {
+        "core_counts_correct": 8,
+        "core_total": 8,
+        "core": {
+          "apple": {
+            "correct": true,
+            "count": 3,
+            "expected_count": 3
+          },
+          "banana": {
+            "correct": true,
+            "count": 2,
+            "expected_count": 2
+          },
+          "mug": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "notebook": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "phone": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "spoon": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "bowl": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "menu": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          }
+        },
+        "ocr_correct": 4,
+        "ocr_total": 4,
+        "ocr": {
+          "海边咖啡": true,
+          "LATTE28": true,
+          "CAKE18": true,
+          "APM2026": true
+        },
+        "unsupported_people_count": 0
+      },
+      {
+        "core_counts_correct": 8,
+        "core_total": 8,
+        "core": {
+          "apple": {
+            "correct": true,
+            "count": 3,
+            "expected_count": 3
+          },
+          "banana": {
+            "correct": true,
+            "count": 2,
+            "expected_count": 2
+          },
+          "mug": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "notebook": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "phone": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "spoon": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "bowl": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "menu": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          }
+        },
+        "ocr_correct": 4,
+        "ocr_total": 4,
+        "ocr": {
+          "海边咖啡": true,
+          "LATTE28": true,
+          "CAKE18": true,
+          "APM2026": true
+        },
+        "unsupported_people_count": 0
+      },
+      {
+        "core_counts_correct": 8,
+        "core_total": 8,
+        "core": {
+          "apple": {
+            "correct": true,
+            "count": 3,
+            "expected_count": 3
+          },
+          "banana": {
+            "correct": true,
+            "count": 2,
+            "expected_count": 2
+          },
+          "mug": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "notebook": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "phone": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "spoon": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "bowl": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "menu": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          }
+        },
+        "ocr_correct": 4,
+        "ocr_total": 4,
+        "ocr": {
+          "海边咖啡": true,
+          "LATTE28": true,
+          "CAKE18": true,
+          "APM2026": true
+        },
+        "unsupported_people_count": 0
+      }
+    ],
+    "qa_automatic_correct": 22,
+    "qa_reviewed_correct": 23,
+    "qa_total": 23,
+    "qa_errors": {}
+  },
+  {
+    "profile": "qwen38_27b_fp8_graph",
+    "label": "Qwen3.8-27B FP8 / CUDA Graph",
+    "measured_requests": 3,
+    "valid_requests": 3,
+    "startup_seconds": 255.30460331006907,
+    "startup_error": null,
+    "first_request_seconds": 72.23629375908058,
+    "seconds_median": 70.5583,
+    "seconds_min": 70.5296,
+    "seconds_max": 70.6143,
+    "ttft_seconds_median": 0.8732,
+    "decode_tps_median": 8.0506,
+    "completion_tokens_median": 561,
+    "content_characters_median": 1450,
+    "prompt_tokens_median": 911,
+    "apm_quality": [
+      {
+        "core_counts_correct": 8,
+        "core_total": 8,
+        "core": {
+          "apple": {
+            "correct": true,
+            "count": 3,
+            "expected_count": 3
+          },
+          "banana": {
+            "correct": true,
+            "count": 2,
+            "expected_count": 2
+          },
+          "mug": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "notebook": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "phone": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "spoon": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "bowl": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "menu": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          }
+        },
+        "ocr_correct": 4,
+        "ocr_total": 4,
+        "ocr": {
+          "海边咖啡": true,
+          "LATTE28": true,
+          "CAKE18": true,
+          "APM2026": true
+        },
+        "unsupported_people_count": 0
+      },
+      {
+        "core_counts_correct": 8,
+        "core_total": 8,
+        "core": {
+          "apple": {
+            "correct": true,
+            "count": 3,
+            "expected_count": 3
+          },
+          "banana": {
+            "correct": true,
+            "count": 2,
+            "expected_count": 2
+          },
+          "mug": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "notebook": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "phone": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "spoon": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "bowl": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "menu": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          }
+        },
+        "ocr_correct": 4,
+        "ocr_total": 4,
+        "ocr": {
+          "海边咖啡": true,
+          "LATTE28": true,
+          "CAKE18": true,
+          "APM2026": true
+        },
+        "unsupported_people_count": 0
+      },
+      {
+        "core_counts_correct": 8,
+        "core_total": 8,
+        "core": {
+          "apple": {
+            "correct": true,
+            "count": 3,
+            "expected_count": 3
+          },
+          "banana": {
+            "correct": true,
+            "count": 2,
+            "expected_count": 2
+          },
+          "mug": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "notebook": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "phone": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "spoon": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "bowl": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "menu": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          }
+        },
+        "ocr_correct": 4,
+        "ocr_total": 4,
+        "ocr": {
+          "海边咖啡": true,
+          "LATTE28": true,
+          "CAKE18": true,
+          "APM2026": true
+        },
+        "unsupported_people_count": 0
+      }
+    ],
+    "qa_automatic_correct": 22,
+    "qa_reviewed_correct": 23,
+    "qa_total": 23,
+    "qa_errors": {}
+  },
+  {
+    "profile": "qwen35_4b_graph",
+    "label": "Qwen3.5-4B BF16 / CUDA Graph",
+    "measured_requests": 3,
+    "valid_requests": 3,
+    "startup_seconds": 155.20423988904804,
+    "startup_error": null,
+    "first_request_seconds": 26.424537230981514,
+    "seconds_median": 24.3815,
+    "seconds_min": 24.3215,
+    "seconds_max": 24.4054,
+    "ttft_seconds_median": 0.2641,
+    "decode_tps_median": 21.3596,
+    "completion_tokens_median": 515,
+    "content_characters_median": 1367,
+    "prompt_tokens_median": 911,
+    "apm_quality": [
+      {
+        "core_counts_correct": 7,
+        "core_total": 8,
+        "core": {
+          "apple": {
+            "correct": true,
+            "count": 3,
+            "expected_count": 3
+          },
+          "banana": {
+            "correct": true,
+            "count": 2,
+            "expected_count": 2
+          },
+          "mug": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "notebook": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "phone": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "spoon": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "bowl": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "menu": {
+            "correct": false,
+            "count": 0,
+            "expected_count": 1
+          }
+        },
+        "ocr_correct": 4,
+        "ocr_total": 4,
+        "ocr": {
+          "海边咖啡": true,
+          "LATTE28": true,
+          "CAKE18": true,
+          "APM2026": true
+        },
+        "unsupported_people_count": 1
+      },
+      {
+        "core_counts_correct": 7,
+        "core_total": 8,
+        "core": {
+          "apple": {
+            "correct": true,
+            "count": 3,
+            "expected_count": 3
+          },
+          "banana": {
+            "correct": true,
+            "count": 2,
+            "expected_count": 2
+          },
+          "mug": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "notebook": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "phone": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "spoon": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "bowl": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "menu": {
+            "correct": false,
+            "count": 0,
+            "expected_count": 1
+          }
+        },
+        "ocr_correct": 4,
+        "ocr_total": 4,
+        "ocr": {
+          "海边咖啡": true,
+          "LATTE28": true,
+          "CAKE18": true,
+          "APM2026": true
+        },
+        "unsupported_people_count": 1
+      },
+      {
+        "core_counts_correct": 7,
+        "core_total": 8,
+        "core": {
+          "apple": {
+            "correct": true,
+            "count": 3,
+            "expected_count": 3
+          },
+          "banana": {
+            "correct": true,
+            "count": 2,
+            "expected_count": 2
+          },
+          "mug": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "notebook": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "phone": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "spoon": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "bowl": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "menu": {
+            "correct": false,
+            "count": 0,
+            "expected_count": 1
+          }
+        },
+        "ocr_correct": 4,
+        "ocr_total": 4,
+        "ocr": {
+          "海边咖啡": true,
+          "LATTE28": true,
+          "CAKE18": true,
+          "APM2026": true
+        },
+        "unsupported_people_count": 1
+      }
+    ],
+    "qa_automatic_correct": 22,
+    "qa_reviewed_correct": 22,
+    "qa_total": 23,
+    "qa_errors": {
+      "spoon_relative_to_mug": {
+        "passed": false,
+        "actual": "左侧",
+        "expected": [
+          "前",
+          "front"
+        ]
+      }
+    }
+  },
+  {
+    "profile": "qwen35_9b_graph",
+    "label": "Qwen3.5-9B BF16 / CUDA Graph",
+    "measured_requests": 3,
+    "valid_requests": 3,
+    "startup_seconds": 105.17985385097563,
+    "startup_error": null,
+    "first_request_seconds": 42.804651997983456,
+    "seconds_median": 41.0554,
+    "seconds_min": 41.05,
+    "seconds_max": 41.0881,
+    "ttft_seconds_median": 0.4586,
+    "decode_tps_median": 12.9806,
+    "completion_tokens_median": 527,
+    "content_characters_median": 1358,
+    "prompt_tokens_median": 911,
+    "apm_quality": [
+      {
+        "core_counts_correct": 7,
+        "core_total": 8,
+        "core": {
+          "apple": {
+            "correct": true,
+            "count": 3,
+            "expected_count": 3
+          },
+          "banana": {
+            "correct": true,
+            "count": 2,
+            "expected_count": 2
+          },
+          "mug": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "notebook": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "phone": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "spoon": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "bowl": {
+            "correct": false,
+            "count": 0,
+            "expected_count": 1
+          },
+          "menu": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          }
+        },
+        "ocr_correct": 4,
+        "ocr_total": 4,
+        "ocr": {
+          "海边咖啡": true,
+          "LATTE28": true,
+          "CAKE18": true,
+          "APM2026": true
+        },
+        "unsupported_people_count": 1
+      },
+      {
+        "core_counts_correct": 7,
+        "core_total": 8,
+        "core": {
+          "apple": {
+            "correct": true,
+            "count": 3,
+            "expected_count": 3
+          },
+          "banana": {
+            "correct": true,
+            "count": 2,
+            "expected_count": 2
+          },
+          "mug": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "notebook": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "phone": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "spoon": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "bowl": {
+            "correct": false,
+            "count": 0,
+            "expected_count": 1
+          },
+          "menu": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          }
+        },
+        "ocr_correct": 4,
+        "ocr_total": 4,
+        "ocr": {
+          "海边咖啡": true,
+          "LATTE28": true,
+          "CAKE18": true,
+          "APM2026": true
+        },
+        "unsupported_people_count": 1
+      },
+      {
+        "core_counts_correct": 7,
+        "core_total": 8,
+        "core": {
+          "apple": {
+            "correct": true,
+            "count": 3,
+            "expected_count": 3
+          },
+          "banana": {
+            "correct": true,
+            "count": 2,
+            "expected_count": 2
+          },
+          "mug": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "notebook": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "phone": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "spoon": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "bowl": {
+            "correct": false,
+            "count": 0,
+            "expected_count": 1
+          },
+          "menu": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          }
+        },
+        "ocr_correct": 4,
+        "ocr_total": 4,
+        "ocr": {
+          "海边咖啡": true,
+          "LATTE28": true,
+          "CAKE18": true,
+          "APM2026": true
+        },
+        "unsupported_people_count": 1
+      }
+    ],
+    "qa_automatic_correct": 22,
+    "qa_reviewed_correct": 22,
+    "qa_total": 23,
+    "qa_errors": {
+      "spoon_relative_to_mug": {
+        "passed": false,
+        "actual": "左",
+        "expected": [
+          "前",
+          "front"
+        ]
+      }
+    }
+  },
+  {
+    "profile": "qwen36_35b_nvfp4_graph",
+    "label": "Qwen3.6-35B-A3B NVFP4 / CUDA Graph",
+    "measured_requests": 3,
+    "valid_requests": 3,
+    "startup_seconds": 480.60552219406236,
+    "startup_error": null,
+    "first_request_seconds": 44.99549162702169,
+    "seconds_median": 10.5171,
+    "seconds_min": 10.3576,
+    "seconds_max": 10.7032,
+    "ttft_seconds_median": 0.2942,
+    "decode_tps_median": 69.3476,
+    "completion_tokens_median": 709,
+    "content_characters_median": 1893,
+    "prompt_tokens_median": 911,
+    "apm_quality": [
+      {
+        "core_counts_correct": 8,
+        "core_total": 8,
+        "core": {
+          "apple": {
+            "correct": true,
+            "count": 3,
+            "expected_count": 3
+          },
+          "banana": {
+            "correct": true,
+            "count": 2,
+            "expected_count": 2
+          },
+          "mug": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "notebook": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "phone": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "spoon": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "bowl": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "menu": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          }
+        },
+        "ocr_correct": 4,
+        "ocr_total": 4,
+        "ocr": {
+          "海边咖啡": true,
+          "LATTE28": true,
+          "CAKE18": true,
+          "APM2026": true
+        },
+        "unsupported_people_count": 0
+      },
+      {
+        "core_counts_correct": 8,
+        "core_total": 8,
+        "core": {
+          "apple": {
+            "correct": true,
+            "count": 3,
+            "expected_count": 3
+          },
+          "banana": {
+            "correct": true,
+            "count": 2,
+            "expected_count": 2
+          },
+          "mug": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "notebook": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "phone": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "spoon": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "bowl": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "menu": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          }
+        },
+        "ocr_correct": 4,
+        "ocr_total": 4,
+        "ocr": {
+          "海边咖啡": true,
+          "LATTE28": true,
+          "CAKE18": true,
+          "APM2026": true
+        },
+        "unsupported_people_count": 0
+      },
+      {
+        "core_counts_correct": 8,
+        "core_total": 8,
+        "core": {
+          "apple": {
+            "correct": true,
+            "count": 3,
+            "expected_count": 3
+          },
+          "banana": {
+            "correct": true,
+            "count": 2,
+            "expected_count": 2
+          },
+          "mug": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "notebook": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "phone": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "spoon": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "bowl": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "menu": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          }
+        },
+        "ocr_correct": 4,
+        "ocr_total": 4,
+        "ocr": {
+          "海边咖啡": true,
+          "LATTE28": true,
+          "CAKE18": true,
+          "APM2026": true
+        },
+        "unsupported_people_count": 0
+      }
+    ],
+    "qa_automatic_correct": 23,
+    "qa_reviewed_correct": 23,
+    "qa_total": 23,
+    "qa_errors": {}
+  },
+  {
+    "profile": "gemma4_e2b_graph",
+    "label": "Gemma 4 E2B BF16 / CUDA Graph",
+    "measured_requests": 3,
+    "valid_requests": 3,
+    "startup_seconds": 125.18515670392662,
+    "startup_error": null,
+    "first_request_seconds": 7.343299235915765,
+    "seconds_median": 5.2273,
+    "seconds_min": 5.2224,
+    "seconds_max": 5.2311,
+    "ttft_seconds_median": 0.1526,
+    "decode_tps_median": 41.1898,
+    "completion_tokens_median": 209,
+    "content_characters_median": 525,
+    "prompt_tokens_median": 519,
+    "apm_quality": [
+      {
+        "core_counts_correct": 5,
+        "core_total": 8,
+        "core": {
+          "apple": {
+            "correct": false,
+            "count": 0,
+            "expected_count": 3
+          },
+          "banana": {
+            "correct": true,
+            "count": 2,
+            "expected_count": 2
+          },
+          "mug": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "notebook": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "phone": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "spoon": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "bowl": {
+            "correct": false,
+            "count": 0,
+            "expected_count": 1
+          },
+          "menu": {
+            "correct": false,
+            "count": 0,
+            "expected_count": 1
+          }
+        },
+        "ocr_correct": 2,
+        "ocr_total": 4,
+        "ocr": {
+          "海边咖啡": true,
+          "LATTE28": false,
+          "CAKE18": true,
+          "APM2026": false
+        },
+        "unsupported_people_count": 1
+      },
+      {
+        "core_counts_correct": 5,
+        "core_total": 8,
+        "core": {
+          "apple": {
+            "correct": false,
+            "count": 0,
+            "expected_count": 3
+          },
+          "banana": {
+            "correct": true,
+            "count": 2,
+            "expected_count": 2
+          },
+          "mug": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "notebook": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "phone": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "spoon": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "bowl": {
+            "correct": false,
+            "count": 0,
+            "expected_count": 1
+          },
+          "menu": {
+            "correct": false,
+            "count": 0,
+            "expected_count": 1
+          }
+        },
+        "ocr_correct": 2,
+        "ocr_total": 4,
+        "ocr": {
+          "海边咖啡": true,
+          "LATTE28": false,
+          "CAKE18": true,
+          "APM2026": false
+        },
+        "unsupported_people_count": 1
+      },
+      {
+        "core_counts_correct": 5,
+        "core_total": 8,
+        "core": {
+          "apple": {
+            "correct": false,
+            "count": 0,
+            "expected_count": 3
+          },
+          "banana": {
+            "correct": true,
+            "count": 2,
+            "expected_count": 2
+          },
+          "mug": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "notebook": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "phone": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "spoon": {
+            "correct": true,
+            "count": 1,
+            "expected_count": 1
+          },
+          "bowl": {
+            "correct": false,
+            "count": 0,
+            "expected_count": 1
+          },
+          "menu": {
+            "correct": false,
+            "count": 0,
+            "expected_count": 1
+          }
+        },
+        "ocr_correct": 2,
+        "ocr_total": 4,
+        "ocr": {
+          "海边咖啡": true,
+          "LATTE28": false,
+          "CAKE18": true,
+          "APM2026": false
+        },
+        "unsupported_people_count": 1
+      }
+    ],
+    "qa_automatic_correct": 20,
+    "qa_reviewed_correct": 20,
+    "qa_total": 23,
+    "qa_errors": {
+      "apple_count": {
+        "passed": false,
+        "actual": 0,
+        "expected": 3
+      },
+      "mug_handle_direction": {
+        "passed": false,
+        "actual": "up",
+        "expected": [
+          "右",
+          "right"
+        ]
+      },
+      "spoon_relative_to_mug": {
+        "passed": false,
+        "actual": "right",
+        "expected": [
+          "前",
+          "front"
+        ]
+      }
+    }
+  }
+]

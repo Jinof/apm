@@ -1,0 +1,4 @@
+interface:
+  display_name: "APM 相册搜索"
+  short_description: "让 Agent 通过只读工具自主搜索 APM 本地照片索引"
+  default_prompt: "Use $apm-search to find photos matching my request in the local APM index."

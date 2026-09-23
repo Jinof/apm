@@ -1,0 +1,27 @@
+{
+  "method": "Assistant visual review of the actual generated image and all three full annotation responses. This is not a blind human study or an independent quality dataset.",
+  "qwen38_27b_fp8_eager": {
+    "notes": ["All eight selected object classes and counts are present in all three runs.", "All four OCR targets are correct; no unsupported person entry.", "The QA answer below for the spoon is correct in image coordinates and receives the shared rubric correction."],
+    "observed_material_errors": []
+  },
+  "qwen38_27b_fp8_graph": {
+    "notes": ["All three full annotation contents are byte-for-byte identical to the corresponding eager baseline responses.", "The same QA below/front rubric correction applies."],
+    "observed_material_errors": []
+  },
+  "qwen35_4b_graph": {
+    "notes": ["All four OCR targets and fruit counts are correct.", "The menu card is omitted as a separately counted object."],
+    "observed_material_errors": ["All three full annotations add one person although no person can be confirmed in the image.", "The QA answer places the spoon left of the mug instead of in front/below."]
+  },
+  "qwen35_9b_graph": {
+    "notes": ["All four OCR targets and fruit counts are correct.", "The white bowl is mentioned as an apple attribute but not independently counted.", "Full annotations return uncertain daylight despite clearly visible daytime outside."],
+    "observed_material_errors": ["All three full annotations add one person although no person can be confirmed in the image.", "The QA answer places the spoon left of the mug instead of in front/below."]
+  },
+  "qwen36_35b_nvfp4_graph": {
+    "notes": ["All 23 QA facts pass without a rubric correction.", "All eight selected object classes and all four OCR targets are present; people stays empty."],
+    "observed_material_errors": ["All three captions incorrectly put bananas together with apples inside the bowl/fruit dish; the bananas actually lie on the table.", "Runs 2 and 3 label the phone screen as facing down; the visible dark screen faces up.", "Run 3 adds speculative breakfast/afternoon-tea tags."]
+  },
+  "gemma4_e2b_graph": {
+    "notes": ["Broad book/notebook naming is accepted as the same physical object in the core count assessment.", "All three full annotations are short and omit apples, the bowl and menu card as independently counted objects.", "QA uses several English color/direction words despite the Chinese instruction; accepted synonyms are still credited for factual scoring."],
+    "observed_material_errors": ["Full annotations add an unsupported person in all three runs.", "Full annotation OCR changes LATTE to LATTÉ and omits APM 2026.", "QA reports zero apples, an upward mug handle, and the spoon on the right instead of in front/below."]
+  }
+}

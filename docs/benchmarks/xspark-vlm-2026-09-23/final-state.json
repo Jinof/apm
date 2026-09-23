@@ -1,0 +1,53 @@
+{
+  "checked_at": 1790122536.58029,
+  "health": {
+    "Qwen production": 200,
+    "new-api": 200,
+    "IndexTTS": 200
+  },
+  "temporary_port_closed": true,
+  "temporary_active_units": "",
+  "channels": [
+    {
+      "id": 1,
+      "name": "xspark MiniMax H3",
+      "models": "minimax-h3-local",
+      "status": 2
+    },
+    {
+      "id": 2,
+      "name": "xspark IndexTTS 2.5",
+      "models": "index-tts-2.5",
+      "status": 1
+    },
+    {
+      "id": 3,
+      "name": "xspark Qwen3.8 27B",
+      "models": "qwen3.8-27b",
+      "status": 1
+    }
+  ],
+  "production_unit": "MainPID=306698\nActiveState=active\nUnitFileState=enabled\n",
+  "h3": "false no",
+  "gpu_processes": "pid, process_name, used_gpu_memory [MiB]\n2680, /home/jinof/services/index-tts-upstream/.venv/bin/python, 5388 MiB\n306762, VLLM::EngineCore, 32090 MiB\n",
+  "memory": "               total        used        free      shared  buff/cache   available\nMem:     130594746368 49830772736  2958434304   426577920 79406149632 80763973632\nSwap:    17179865088  5078233088 12101632000\n",
+  "verified_weight_files": 76,
+  "removed_own_download_chunks": [
+    {
+      "file": "model.safetensors.part2",
+      "bytes": 2561655480
+    },
+    {
+      "file": "model.safetensors.part3",
+      "bytes": 2561655478
+    },
+    {
+      "file": "model.safetensors.part1",
+      "bytes": 2561655480
+    },
+    {
+      "file": "model.safetensors.part0",
+      "bytes": 2561655480
+    }
+  ]
+}

@@ -1,0 +1,392 @@
+meta:
+  title "AI Photo Manager System Promise"
+  domain photo_management
+  version v36
+  status active
+  owner product
+  summary "Roadmap 0.0.5: read-only photo browsing, heatmaps, full-resolution viewing, external multimodal annotation and local or Agent search, with one model settings card and no duplicate detection or person/pet recognition."
+  source "README Roadmap 0.0.5 and user request 2026-09-22"
+
+resource User kind actor:
+  label "用户"
+  summary "The owner of photos, settings, APKs and persistent app data."
+
+resource PhotoLibrary kind system:
+  label "相册"
+  summary "A local catalog over read-only source photos."
+  maps PhotoAssetFieldPromise relation constrains
+
+resource ExternalModelApi kind external:
+  label "多模态 API"
+  summary "An explicitly configured service for annotation and search planning."
+  maps ConfigureAndroidModelFunctionPromise relation supports
+
+term scan kind action:
+  label "扫描"
+  summary "Operation in the read-only photo workflow."
+
+term annotate kind action:
+  label "标注"
+  summary "Operation in the read-only photo workflow."
+
+term search kind action:
+  label "搜索"
+  summary "Operation in the read-only photo workflow."
+
+term configure kind action:
+  label "配置"
+  summary "Operation in the read-only photo workflow."
+
+term browse kind action:
+  label "浏览"
+  summary "Operation in the read-only photo workflow."
+
+term view kind action:
+  label "查看"
+  summary "Operation in the read-only photo workflow."
+
+term select kind action:
+  label "选择"
+  summary "Operation in the read-only photo workflow."
+
+term local_library kind scope:
+  label "本地照片库"
+  summary "Operation in the read-only photo workflow."
+
+intent Roadmap005Intent priority must:
+  label "Roadmap 0.0.5"
+  statement "Expose album, heatmap, Agent and settings. Show model settings in a multimodal card explaining description, tags, visible text and natural-language search planning. Remove photo duplicate/similarity detection and person/pet recognition without deleting historical data."
+  rationale "Simplify the product to one external multimodal API."
+  status active
+  root true
+  source "README Roadmap 0.0.5"
+  requires ManagePhotos actor User action browse resource PhotoLibrary scope local_library priority must
+  requires ConfigureModel actor User action configure resource ExternalModelApi scope local_library priority must
+  maps ConfigureAndroidModelFunctionPromise relation motivates
+  maps AnnotateAndroidPhotosFunctionPromise relation motivates
+  maps AgentSearchPhotosFunctionPromise relation motivates
+  maps BrowseAndroidPhotoWallFunctionPromise relation motivates
+
+type PhotoID kind id base string:
+  label "照片内容标识"
+  summary "A lowercase SHA-256 digest of immutable photo bytes."
+  format sha256
+  generated true
+
+type FilePath kind value base path:
+  label "文件路径"
+  summary "An absolute normalized local filesystem path."
+  format absolute
+  generated false
+
+field PhotoAssetFieldPromise for PhotoAsset:
+  label "照片内容字段 Promise"
+  summary "Defines content-addressed photo truth independently of file location."
+  field id type PhotoID required true nullable false default null semantic "Stable identity derived from original bytes." mutable false system true readers scan,annotate,search writers scan
+  field mediaType type string required true nullable false default null semantic "Detected media type or extension-derived image type." mutable false system true readers scan,annotate,search writers scan
+  field byteSize type integer required true nullable false default 0 semantic "Original file size in bytes." mutable false system true readers scan,search writers scan
+  field discoveredAt type datetime required true nullable false default null semantic "First catalog discovery time." mutable false system true readers scan,search writers scan
+  invariant PhotoAsset.id_is_content_hash statement "PhotoAsset.id is the lowercase SHA-256 digest of the original bytes." refs PhotoAsset.id
+  invariant PhotoAsset.byte_size_non_negative statement "PhotoAsset.byteSize cannot be negative." refs PhotoAsset.byteSize must "PhotoAsset.byteSize >= 0"
+  forbid PhotoAsset.no_original_mutation_flag statement "Do not introduce catalog state that claims ownership or mutation rights over original files." refs PhotoAsset.id
+
+field PhotoLocationFieldPromise for PhotoLocation:
+  label "照片位置字段 Promise"
+  summary "Tracks one filesystem location for content without deleting history."
+  field path type FilePath required true nullable false default null semantic "Absolute normalized source path." mutable false system false readers scan,annotate,search writers scan
+  field photoId type PhotoID required true nullable false default null semantic "Content-addressed photo identity." mutable true system true readers scan,annotate,search writers scan
+  field rootPath type FilePath required true nullable false default null semantic "User-selected scan root containing the path." mutable true system false readers scan,search writers scan
+  field present type boolean required true nullable false default true semantic "Whether the path was observed in its latest root scan." mutable true system true readers scan,annotate,search writers scan
+  field modifiedNanoseconds type integer required true nullable false default 0 semantic "Filesystem modification timestamp used for scan diagnostics." mutable true system true readers scan writers scan
+  field lastSeenAt type datetime required true nullable false default null semantic "Most recent scan observation time." mutable true system true readers scan,search writers scan
+  invariant PhotoLocation.annotatable_path_present statement "Only present photo paths may be sent to a model." refs PhotoLocation.present when "PhotoLocation.present == true" must "PhotoLocation.path != null"
+  forbid PhotoLocation.no_implicit_delete statement "A missing path is marked absent; its catalog history is not implicitly deleted." refs PhotoLocation.present,PhotoLocation.lastSeenAt
+
+field PhotoAnnotationFieldPromise for PhotoAnnotation:
+  label "照片标注字段 Promise"
+  summary "Defines immutable, versioned model-generated search metadata."
+  field id type integer required true nullable false default null semantic "Monotonic annotation record identifier." mutable false system true readers annotate,search writers annotate
+  field photoId type PhotoID required true nullable false default null semantic "Photo content that was analyzed." mutable false system true readers annotate,search writers annotate
+  field caption type text required true nullable false default "" semantic "Concise Chinese description; historical marker-based annotations remain readable." mutable false system true readers search writers annotate
+  field tags type json required true nullable false default "[]" semantic "Deduplicated Chinese retrieval concepts and visible proper nouns." mutable false system true readers search writers annotate
+  field facets type json required true nullable false default "{}" semantic "Validated structured daylight, sky, counted objects, people presentation, actions, scenes, and weather used for retrieval." mutable false system true readers search writers annotate
+  field visibleText type text required true nullable false default "" semantic "Text visibly present in the photo, empty when none is legible." mutable false system true readers search writers annotate
+  field subjectMentions type json required true nullable false default "[]" semantic "Legacy marker observations retained for read compatibility; new API output omits this field." mutable false system true readers search writers annotate
+  field recognizedSubjects type json required true nullable false default "[]" semantic "Historical labels retained locally for read compatibility; no new recognition or matching runs." mutable true system true readers search writers -
+  field modelProvider type string required true nullable false default openai-compatible semantic "External API protocol that received the image; legacy provider values remain readable." mutable false system true readers annotate,search writers annotate
+  field modelName type string required true nullable false default null semantic "Exact configured model identifier." mutable false system false readers annotate,search writers annotate
+  field promptVersion type string required true nullable false default null semantic "Version of the annotation instruction and schema." mutable false system true readers annotate,search writers annotate
+  field createdAt type datetime required true nullable false default null semantic "Annotation completion time." mutable false system true readers annotate,search writers annotate
+  invariant PhotoAnnotation.provenance_complete statement "Every annotation records provider, model, prompt version, and creation time." refs PhotoAnnotation.modelProvider,PhotoAnnotation.modelName,PhotoAnnotation.promptVersion,PhotoAnnotation.createdAt must "PhotoAnnotation.modelProvider != null and PhotoAnnotation.modelName != null and PhotoAnnotation.promptVersion != null and PhotoAnnotation.createdAt != null"
+  invariant PhotoAnnotation.facets_complete statement "New annotations include caption, tags, visible text and structured facets; empty evidence stays empty or unknown." refs PhotoAnnotation.caption,PhotoAnnotation.tags,PhotoAnnotation.facets,PhotoAnnotation.visibleText
+  forbid PhotoAnnotation.no_unattributed_metadata statement "Do not write generated search metadata without model provenance." refs PhotoAnnotation.modelProvider,PhotoAnnotation.modelName,PhotoAnnotation.promptVersion
+  forbid PhotoAnnotation.no_overwrite_history statement "Re-annotation appends a new record and never overwrites earlier annotations." refs PhotoAnnotation.id,PhotoAnnotation.photoId
+
+field AndroidMediaLocationFieldPromise for AndroidMediaLocation:
+  label "Android MediaStore 位置字段 Promise"
+  summary "Tracks one read-only Android MediaStore content URI and its current accessibility without treating lost permission as deletion."
+  field uri type string required true nullable false default null semantic "Canonical content URI returned by MediaStore." mutable false system true readers scan,annotate,search writers scan
+  field mediaStoreId type integer required true nullable false default null semantic "MediaStore row identifier within the external image collection." mutable false system true readers scan writers scan
+  field photoId type PhotoID required true nullable false default null semantic "SHA-256 identity computed by reading, never changing, the original content stream." mutable true system true readers scan,annotate,search writers scan
+  field displayName type string required true nullable false default "" semantic "Display name exposed by MediaStore." mutable true system true readers scan,search writers scan
+  field dateTakenMillis type integer required false nullable true default null semantic "Best available MediaStore capture timestamp in Unix epoch milliseconds; null means capture time is unavailable and must not be inferred." mutable true system true readers scan,browse writers scan
+  field accessible type boolean required true nullable false default true semantic "Whether the URI was visible and readable during the latest permission-scoped scan." mutable true system true readers scan,annotate,search writers scan
+  field modifiedSeconds type integer required true nullable false default 0 semantic "MediaStore modification timestamp used to avoid rehashing unchanged bytes." mutable true system true readers scan writers scan
+  field lastSeenAt type datetime required true nullable false default null semantic "Most recent permission-scoped scan observation time." mutable true system true readers scan,search writers scan
+  invariant AndroidMediaLocation.content_identity statement "An accessible URI maps to the SHA-256 digest of the bytes read from ContentResolver." refs AndroidMediaLocation.uri,AndroidMediaLocation.photoId,AndroidMediaLocation.accessible
+  forbid AndroidMediaLocation.no_filesystem_assumption statement "A content URI is not converted into or treated as a writable filesystem path." refs AndroidMediaLocation.uri
+  forbid AndroidMediaLocation.no_delete_inference statement "accessible=false records current permission visibility only and never claims the original was deleted." refs AndroidMediaLocation.accessible,AndroidMediaLocation.lastSeenAt
+
+field AndroidPhotoWallFieldPromise for AndroidPhotoWall:
+  label "Android 按日照片墙字段 Promise"
+  summary "Defines one read-only UI projection over all distinct currently accessible photos, the selected destination in one stable top-level pager host, a dedicated photo-wall surface, real local capture-day groups, display mode, and an independent one-screen GitHub-style annual heatmap whose four quarters are stacked vertically, whose three months per quarter are arranged horizontally, and whose year and granularity controls share a compact integrated bar."
+  field photoIds type json required true nullable false default "[]" semantic "Every distinct currently accessible content photoId exactly once, independent of annotation state." mutable true system true readers browse writers browse
+  field dayGroups type json required true nullable false default "[]" semantic "Descending local-date groups followed by one optional unknown-capture-time group; order inside each group is descending dateTakenMillis then stable photoId." mutable true system true readers browse writers browse
+  field displayMode type string required true nullable false default thumbnails semantic "User-selected thumbnails or details presentation; it changes layout only." mutable true system false readers browse writers browse
+  field displayedYear type integer required true nullable false default null semantic "Calendar year shown by the heatmap, initially the latest captured-photo year or the current year when none is dated." mutable true system false readers browse writers browse
+  field heatmapGranularity type string required true nullable false default day semantic "User-selected annual aggregation unit: day, week, or month; changing it changes only heatmap aggregation and selection scope." mutable true system false readers browse writers browse
+  field selectedRange type json required false nullable true default null semantic "Optional inclusive device-local capture-date range selected from one non-empty heatmap cell; it is one date for day mode, the in-year part of a Sunday-through-Saturday calendar week for week mode, or one calendar month for month mode; null shows every day group." mutable true system false readers browse writers browse
+  field dailyCounts type json required true nullable false default "{}" semantic "Map from real local capture date to the count of distinct currently accessible photoIds captured that day." mutable true system true readers browse writers browse
+  field dockDestination type string required true nullable false default album semantic "The settled top-level pager destination: album, heatmap, Agent search, or settings, exactly matching the selected anchored Dock item." mutable true system false readers browse writers browse
+  invariant AndroidPhotoWall.accessible_distinct statement "photoIds contains every and only distinct currently accessible AndroidMediaLocation.photoId exactly once, including unannotated photos and libraries larger than search limits." refs AndroidPhotoWall.photoIds,AndroidMediaLocation.photoId,AndroidMediaLocation.accessible
+  invariant AndroidPhotoWall.real_capture_day statement "A dated photo day is derived only by converting dateTakenMillis through the device time zone; null dateTakenMillis belongs only to the unknown group and never uses modified, discovered, indexed, or annotation time as a fallback." refs AndroidPhotoWall.dayGroups,AndroidMediaLocation.dateTakenMillis
+  invariant AndroidPhotoWall.mode_preserves_membership statement "Switching displayMode or heatmapGranularity across the dedicated photo-wall and heatmap pages preserves photoIds, day membership, descending order, displayedYear, and dailyCounts exactly; changing heatmap granularity clears only selectedRange, while returning from heatmap preserves the selected range for the photo wall." refs AndroidPhotoWall.displayMode,AndroidPhotoWall.heatmapGranularity,AndroidPhotoWall.photoIds,AndroidPhotoWall.dayGroups,AndroidPhotoWall.displayedYear,AndroidPhotoWall.selectedRange,AndroidPhotoWall.dailyCounts
+  invariant AndroidPhotoWall.page_ownership statement "One stable top-level host owns an anchored bottom Dock ordered as 相册, heatmap, Agent search, settings at the right edge and four horizontally arranged exclusive page surfaces; dockDestination exactly matches the settled page, drag offset follows the finger between adjacent pages, release uses a velocity-aware non-oscillating snap to at most one adjacent page, a Dock tap uses the same low-latency horizontal settling grammar, and the latest programmatic destination replaces an in-flight programmatic settle instead of waiting in a queue. The heatmap, Agent search, and settings surfaces show no redundant top-left back arrow, Android system Back from any of those three surfaces animates to album, and no Dock transition starts, finishes, or recreates another top-level Activity. The photo-wall surface additionally shows the story introduction only at startup, keeps the home content compact, and includes photo display controls, optional selected-range summary, a left-edge route, and photo cards but no annual heatmap; the one-screen heatmap surface places year and granularity in a compact integrated horizontal control bar and expands a borderless full-area quarter-by-month grid, guide, and selected-range controls through the remaining width and height without photo cards." refs AndroidPhotoWall.dockDestination,AndroidPhotoWall.displayMode,AndroidPhotoWall.displayedYear,AndroidPhotoWall.heatmapGranularity,AndroidPhotoWall.selectedRange
+  invariant AndroidPhotoWall.heatmap_exact_counts statement "For displayedYear, day mode exposes every calendar date, week mode exposes every intersecting Sunday-through-Saturday week clipped to that year, and month mode exposes all twelve calendar months; every cell count is the exact sum of distinct dailyCounts in its inclusive range and each mode independently maps zero through its annual maximum to monotonic discrete levels zero through four, reserving zero for empty cells." refs AndroidPhotoWall.displayedYear,AndroidPhotoWall.heatmapGranularity,AndroidPhotoWall.dailyCounts
+  invariant AndroidPhotoWall.selected_range_exact statement "selectedRange is null or equals one non-empty cell range for the current displayedYear and heatmapGranularity, and when present the wall shows exactly the dated groups inside that inclusive range without relabeling photos." refs AndroidPhotoWall.displayedYear,AndroidPhotoWall.heatmapGranularity,AndroidPhotoWall.selectedRange,AndroidPhotoWall.dayGroups,AndroidPhotoWall.dailyCounts
+  forbid AndroidPhotoWall.no_annotation_gate statement "A photo cannot disappear from the wall solely because it lacks a VLM annotation, search text." refs AndroidPhotoWall.photoIds
+  forbid AndroidPhotoWall.no_original_mutation statement "Browsing either dedicated page, toggling modes or granularity, navigating years, and selecting a daily, weekly, or monthly heatmap range never writes to MediaStore or changes an original photo." refs AndroidPhotoWall.displayMode,AndroidPhotoWall.displayedYear,AndroidPhotoWall.heatmapGranularity,AndroidPhotoWall.selectedRange,AndroidMediaLocation.uri
+
+field AndroidPhotoViewerFieldPromise for AndroidPhotoViewer:
+  label "应用内照片查看器字段 Promise"
+  summary "Defines the accessible ordered photo sequence, selected photo, complete original-resolution in-memory image, and ephemeral zoom state of APM's native viewer."
+  field photoIds type json required true nullable false default "[]" semantic "Stable wall-order sequence of every distinct currently accessible photo available to viewer navigation." mutable true system true readers view writers view
+  field selectedPhotoId type string required false nullable true default null semantic "The currently displayed accessible photo identity, initially the exact photo tapped by the user." mutable true system false readers view writers view
+  field displayBitmap type json required false nullable true default null semantic "Metadata for an in-memory decode made directly from the selected original content URI at the decoder's complete orientation-correct intrinsic width and height; decoded pixels are never persisted as a new photo." mutable true system true readers view writers view
+  field zoomScale type number required true nullable false default 1 semantic "Current selected-photo scale clamped from 1 through an image-specific maximum that is at least 5 and large enough to inspect one original image pixel per display pixel, reset to 1 when the selected photo changes." mutable true system false readers view writers view
+  field panOffset type json required true nullable false default "{\"x\":0,\"y\":0}" semantic "Ephemeral display translation clamped to prevent the zoomed image from being panned entirely away, reset to zero when the selected photo changes." mutable true system false readers view writers view
+  invariant AndroidPhotoViewer.accessible_sequence statement "photoIds contains every distinct currently accessible AndroidPhotoWall.photoIds identity once in the same stable order, and selectedPhotoId is null only while no valid accessible photo can be selected." refs AndroidPhotoViewer.photoIds,AndroidPhotoViewer.selectedPhotoId,AndroidPhotoWall.photoIds
+  invariant AndroidPhotoViewer.original_decode statement "A successful displayBitmap is decoded read-only from the selected AndroidMediaLocation.uri without loadThumbnail, target-size reduction, sampling, cropping, or other resolution loss; its dimensions equal the decoder's orientation-correct intrinsic original dimensions." refs AndroidPhotoViewer.displayBitmap,AndroidPhotoViewer.selectedPhotoId,AndroidMediaLocation.uri
+  invariant AndroidPhotoViewer.zoom_bounds statement "zoomScale remains between 1 and max(5, nativePixelScale), where nativePixelScale fits one decoded original pixel to one display pixel; panOffset remains bounded and selecting another photo resets both values before its bitmap is shown." refs AndroidPhotoViewer.zoomScale,AndroidPhotoViewer.panOffset,AndroidPhotoViewer.selectedPhotoId
+  forbid AndroidPhotoViewer.no_external_handoff statement "Opening or navigating the viewer cannot dispatch the selected content URI through an ACTION_VIEW or other external-app handoff." refs AndroidPhotoViewer.selectedPhotoId,AndroidMediaLocation.uri
+  forbid AndroidPhotoViewer.no_original_mutation statement "Viewing, decoding, zooming, panning, and navigating never update, move, rename, trash, delete, or rewrite an original photo." refs AndroidPhotoViewer.displayBitmap,AndroidMediaLocation.uri
+
+field AndroidAnnotationSelectionFieldPromise for AndroidAnnotationSelection:
+  label "Android 标注选择字段 Promise"
+  summary "Persists the latest explicit system-picker selection used by selected-photo annotation."
+  field photoIds type json required true nullable false default "[]" semantic "Deduplicated content identities returned by the latest completed 选择照片 flow." mutable true system false readers select,annotate writers select
+  field selectedAt type datetime required false nullable true default null semantic "Completion time of the latest non-empty system photo-picker selection." mutable true system true readers select,annotate writers select
+  field source type string required true nullable false default system_photo_picker semantic "Authorization source; selected-photo annotation accepts only the Android system photo picker." mutable false system true readers select,annotate writers select
+  invariant AndroidAnnotationSelection.explicit_picker_only statement "Every selected photoId comes from the latest completed Android system photo-picker result and maps to a currently readable content URI." refs AndroidAnnotationSelection.photoIds,AndroidAnnotationSelection.source,AndroidMediaLocation.uri,AndroidMediaLocation.accessible
+  invariant AndroidAnnotationSelection.replace_not_union statement "A completed non-empty selection replaces the previous selected-photo scope instead of silently unioning old photos." refs AndroidAnnotationSelection.photoIds,AndroidAnnotationSelection.selectedAt
+  forbid AndroidAnnotationSelection.no_implicit_selection statement "Scanning the full accessible library, viewing search results, or opening a photo cannot add it to selected-photo annotation scope." refs AndroidAnnotationSelection.photoIds,AndroidMediaLocation.accessible
+
+field AndroidSearchStateFieldPromise for AndroidSearchState:
+  label "Android 搜索状态字段 Promise"
+  summary "Derives whether search is usable and which suggestion chips are justified by current annotations."
+  field annotationCount type integer required true nullable false default 0 semantic "Number of distinct photos with a current annotation." mutable true system true readers annotate,search writers annotate
+  field enabled type boolean required true nullable false default false semantic "Whether the search input and submission action are enabled." mutable true system true readers search writers annotate
+  field suggestions type json required true nullable false default "[]" semantic "Deduplicated suggestions derived only from latest accessible annotations, never static presets." mutable true system true readers search writers annotate
+  invariant AndroidSearchState.enabled_after_annotation statement "Search is enabled if and only if annotationCount is greater than zero." refs AndroidSearchState.annotationCount,AndroidSearchState.enabled
+  invariant AndroidSearchState.no_default_suggestions statement "suggestions is empty before the first annotation and every non-empty suggestion occurs in current annotation metadata." refs AndroidSearchState.annotationCount,AndroidSearchState.suggestions
+  forbid AndroidSearchState.no_static_presets statement "Do not populate suggestions from hard-coded example terms or unannotated photos." refs AndroidSearchState.suggestions
+
+field InferenceConfigurationFieldPromise for InferenceConfiguration:
+  label "外部 API 配置"
+  summary "Explicit endpoint, model, encrypted key and transmission consent."
+  field endpoint type string required true nullable false default "" semantic "User-supplied HTTP(S) base URL including its proxy path." mutable true system false readers annotate,search writers configure
+  field modelName type string required true nullable false default "" semantic "Exact provider model ID." mutable true system false readers annotate,search writers configure
+  field apiKey type string required true nullable false default "" semantic "Encrypted local bearer key, never logged." mutable true system false readers annotate,search writers configure
+  field allowRemote type boolean required true nullable false default false semantic "Explicit authorization to send images and requests." mutable true system false readers annotate,search writers configure
+  invariant InferenceConfiguration.api_only statement "No model runtime, weights, visual inference client, template registration or similarity ranking is shipped. Existing encrypted settings and legacy database rows remain intact." refs InferenceConfiguration.endpoint
+  forbid InferenceConfiguration.no_implicit_service statement "A blank model or endpoint never selects a default remote service." refs InferenceConfiguration.endpoint,InferenceConfiguration.modelName
+
+function ScanLibraryFunctionPromise action scan:
+  label "扫描照片库 Function Promise"
+  summary "Discovers supported photo files and refreshes current path presence."
+  depends PhotoAssetFieldPromise,PhotoLocationFieldPromise
+  trigger "User selects an absolute local directory and invokes scan."
+  precondition ScanLibrary.root_exists statement "The selected root exists and is a readable directory." refs PhotoLocation.rootPath
+  reads PhotoLocation.path,PhotoLocation.rootPath,PhotoLocation.present,PhotoLocation.modifiedNanoseconds
+  writes PhotoAsset.id,PhotoAsset.mediaType,PhotoAsset.byteSize,PhotoAsset.discoveredAt,PhotoLocation.path,PhotoLocation.photoId,PhotoLocation.rootPath,PhotoLocation.present,PhotoLocation.modifiedNanoseconds,PhotoLocation.lastSeenAt
+  ensure ScanLibrary.content_addressed statement "Each discovered file maps to a PhotoAsset identified by its SHA-256 bytes." refs PhotoAsset.id,PhotoLocation.photoId
+  ensure ScanLibrary.missing_marked statement "Previously known paths beneath this root that are not observed become present=false without deleting history." refs PhotoLocation.rootPath,PhotoLocation.present
+  sideeffect ScanLibrary.catalog_only statement "Only the APM catalog is written; source files are never modified." refs PhotoLocation.path
+  idempotency "Scanning an unchanged root preserves content identities and updates only observation metadata."
+  forbid ScanLibrary.no_source_write statement "Never write, rename, move, or delete a source photo." refs PhotoLocation.path
+
+function TagPhotoFunctionPromise action annotate:
+  label "外部 API 标注 Function Promise"
+  summary "Sends one present photo to a configured external model API and appends validated annotation output."
+  depends PhotoAssetFieldPromise,PhotoLocationFieldPromise,PhotoAnnotationFieldPromise
+  trigger "User requests annotation of unannotated photos or explicitly requests re-annotation."
+  precondition TagPhoto.path_present statement "At least one current readable path exists for the photo." refs PhotoLocation.path,PhotoLocation.present
+  precondition TagPhoto.api_configured statement "An explicit API base URL and model are configured before reading photo bytes." refs PhotoAnnotation.modelProvider
+  reads PhotoAsset.id,PhotoLocation.path,PhotoLocation.present,PhotoAnnotation.photoId,PhotoAnnotation.modelName,PhotoAnnotation.promptVersion
+  writes PhotoAnnotation.id,PhotoAnnotation.photoId,PhotoAnnotation.caption,PhotoAnnotation.tags,PhotoAnnotation.facets,PhotoAnnotation.visibleText,PhotoAnnotation.modelProvider,PhotoAnnotation.modelName,PhotoAnnotation.promptVersion,PhotoAnnotation.createdAt
+  ensure TagPhoto.validated_structured_output statement "Caption, tags, structured facets, and visible text are validated against the annotation schema before insertion." refs PhotoAnnotation.caption,PhotoAnnotation.tags,PhotoAnnotation.facets,PhotoAnnotation.visibleText
+  ensure TagPhoto.provenance_recorded statement "The exact provider, model name, and prompt version are stored with every successful result." refs PhotoAnnotation.modelProvider,PhotoAnnotation.modelName,PhotoAnnotation.promptVersion
+  reject TagPhoto.model_unavailable statement "No annotation is written when the configured model endpoint is unavailable." refs PhotoAnnotation.modelProvider,PhotoAnnotation.modelName
+  reject TagPhoto.invalid_output statement "No annotation is written when output fails schema validation." refs PhotoAnnotation.caption,PhotoAnnotation.tags,PhotoAnnotation.facets,PhotoAnnotation.visibleText
+  sideeffect TagPhoto.api_inference statement "The photo is sent only to the configured external Chat Completions API, using bearer authentication when supplied." refs PhotoLocation.path,PhotoAnnotation.modelProvider
+  idempotency "Without force, a photo with the same provider, model and prompt version is skipped; force appends a new immutable annotation."
+  forbid TagPhoto.no_implicit_remote statement "Never send photo bytes to a non-loopback endpoint without explicit configuration." refs PhotoLocation.path,PhotoAnnotation.modelProvider
+
+function SearchPhotosFunctionPromise action search:
+  label "搜索照片 Function Promise"
+  summary "Finds current photo paths using the latest annotation per photo."
+  depends PhotoLocationFieldPromise,PhotoAnnotationFieldPromise
+  trigger "User provides a non-empty text query."
+  precondition SearchPhotos.non_empty_query statement "The normalized search query is not empty." refs PhotoAnnotation.caption,PhotoAnnotation.tags,PhotoAnnotation.facets,PhotoAnnotation.visibleText
+  reads PhotoLocation.path,PhotoLocation.photoId,PhotoLocation.present,PhotoAnnotation.photoId,PhotoAnnotation.caption,PhotoAnnotation.tags,PhotoAnnotation.facets,PhotoAnnotation.visibleText,PhotoAnnotation.id
+  writes -
+  ensure SearchPhotos.latest_annotation statement "Matching uses the latest appended annotation for each photo." refs PhotoAnnotation.id,PhotoAnnotation.photoId
+  ensure SearchPhotos.current_paths_only statement "Returned paths have present=true." refs PhotoLocation.path,PhotoLocation.present
+  reject SearchPhotos.empty_query statement "An empty or whitespace-only query is rejected." refs PhotoAnnotation.caption,PhotoAnnotation.tags,PhotoAnnotation.facets,PhotoAnnotation.visibleText
+  sideeffect SearchPhotos.read_only statement "Search does not change catalog or photo files." refs PhotoLocation.path
+  idempotency "The same query against unchanged catalog state returns the same ordered results."
+  forbid SearchPhotos.no_absent_paths statement "Never return a path whose latest presence state is false." refs PhotoLocation.path,PhotoLocation.present
+
+function ScanAndroidGalleryFunctionPromise action scan:
+  label "扫描 Android 相册 Function Promise"
+  summary "Reads permission-visible MediaStore images, hashes original content streams, and refreshes the app-private catalog."
+  depends PhotoAssetFieldPromise,AndroidMediaLocationFieldPromise
+  trigger "User grants Android photo permission and invokes scan."
+  precondition ScanAndroidGallery.permission statement "Android has granted full or selected-photo read access." refs AndroidMediaLocation.accessible
+  reads AndroidMediaLocation.uri,AndroidMediaLocation.mediaStoreId,AndroidMediaLocation.modifiedSeconds,AndroidMediaLocation.accessible
+  writes PhotoAsset.id,PhotoAsset.mediaType,PhotoAsset.byteSize,PhotoAsset.discoveredAt,AndroidMediaLocation.uri,AndroidMediaLocation.mediaStoreId,AndroidMediaLocation.photoId,AndroidMediaLocation.displayName,AndroidMediaLocation.accessible,AndroidMediaLocation.modifiedSeconds,AndroidMediaLocation.lastSeenAt
+  ensure ScanAndroidGallery.content_hash statement "Every newly observed or changed URI is identified by streaming SHA-256 over ContentResolver bytes." refs PhotoAsset.id,AndroidMediaLocation.photoId,AndroidMediaLocation.uri
+  ensure ScanAndroidGallery.permission_scoped_visibility statement "Previously cataloged URIs not visible in this scan become accessible=false without deletion claims." refs AndroidMediaLocation.accessible,AndroidMediaLocation.lastSeenAt
+  ensure ScanAndroidGallery.partial_reselection statement "On Android 14 or later, if access is partial, every user scan action launches the system selected-photo permission flow before querying MediaStore." refs AndroidMediaLocation.accessible
+  sideeffect ScanAndroidGallery.catalog_only statement "Only the app-private SQLite catalog changes." refs AndroidMediaLocation.uri
+  idempotency "An unchanged permission-visible MediaStore snapshot keeps content identities and reuses hashes for unchanged metadata."
+  forbid ScanAndroidGallery.no_media_mutation statement "Never update, move, rename, trash, or delete a MediaStore item." refs AndroidMediaLocation.uri
+
+function BrowseAndroidPhotoWallFunctionPromise action browse:
+  label "浏览 Android 按日照片墙 Function Promise"
+  summary "Shows a startup-only story introduction, then loads every distinct currently accessible photo into a compact lazy day-grouped photo-wall surface inside one top-level horizontal pager with an anchored bottom Dock ordered 相册, heatmap, Agent search, settings-rightmost, and renders an exclusive one-screen heatmap surface whose borderless full-area grid stacks Q1 through Q4 vertically, places each quarter's three months horizontally, fuses a compact year/granularity control bar above it, and derives GitHub-style annual daily, weekly, and monthly views from exact daily counts."
+  depends AndroidMediaLocationFieldPromise,AndroidPhotoWallFieldPromise,PhotoAnnotationFieldPromise
+  trigger "The top-level pager host opens, the user taps a Dock destination, directly drags a page surface left or right, uses the photo wall's left-edge heatmap route, accessible catalog state changes, the display mode or heatmap granularity changes, the displayed year changes, or the user selects or clears a heatmap range."
+  precondition BrowseAndroidPhotoWall.catalog_available statement "The app-private catalog may be empty, but any projected row must have one currently accessible MediaStore location." refs AndroidMediaLocation.photoId,AndroidMediaLocation.accessible
+  reads AndroidMediaLocation.photoId,AndroidMediaLocation.uri,AndroidMediaLocation.displayName,AndroidMediaLocation.dateTakenMillis,AndroidMediaLocation.accessible,PhotoAnnotation.photoId,PhotoAnnotation.caption,PhotoAnnotation.tags,PhotoAnnotation.facets,PhotoAnnotation.createdAt
+  writes AndroidPhotoWall.photoIds,AndroidPhotoWall.dayGroups,AndroidPhotoWall.displayMode,AndroidPhotoWall.displayedYear,AndroidPhotoWall.heatmapGranularity,AndroidPhotoWall.selectedRange,AndroidPhotoWall.dailyCounts,AndroidPhotoWall.dockDestination
+  ensure BrowseAndroidPhotoWall.all_accessible_photos statement "The wall query has no search-result limit, includes annotated and unannotated photos, chooses one currently accessible URI per distinct photoId, and excludes inaccessible locations." refs AndroidPhotoWall.photoIds,AndroidMediaLocation.photoId,AndroidMediaLocation.uri,AndroidMediaLocation.accessible
+  ensure BrowseAndroidPhotoWall.day_sections statement "Photos are grouped by device-local date derived only from dateTakenMillis, dated groups and photos are newest first, and null capture times appear once in a final unknown-time group." refs AndroidPhotoWall.dayGroups,AndroidMediaLocation.dateTakenMillis
+  ensure BrowseAndroidPhotoWall.thumbnail_mode statement "Thumbnail mode renders a lazy three-column square grid with one tappable thumbnail per projected photo." refs AndroidPhotoWall.displayMode,AndroidPhotoWall.photoIds
+  ensure BrowseAndroidPhotoWall.detail_mode statement "Detail mode renders the same photos in the same order as full-width cards and shows annotation content only when a latest annotation exists." refs AndroidPhotoWall.displayMode,AndroidPhotoWall.photoIds,PhotoAnnotation.caption
+  ensure BrowseAndroidPhotoWall.dedicated_pages statement "The photo wall, annual heatmap, Agent search, and settings are exclusive page surfaces in one stable top-level horizontal pager: the anchored bottom Dock has exactly one selected destination, direct horizontal drag follows the finger and uses a velocity-aware non-oscillating snap to at most one adjacent surface, Dock taps animate through the same pager without an Activity launch or pop, a newer programmatic destination interrupts and replaces an unfinished programmatic settle, the three non-album surfaces show no top-left back arrow and use horizontal navigation, the Dock, or Android system Back to return to album, the photo-wall surface shows no annual heatmap, the heatmap surface shows no photo cards, and a selected-range action animates to the photo-wall surface without changing the exact range." refs AndroidPhotoWall.dockDestination,AndroidPhotoWall.selectedRange,AndroidPhotoWall.dayGroups
+  ensure BrowseAndroidPhotoWall.annual_heatmaps statement "The dedicated heatmap page fits the complete annual grid in one screen without a page scroll; a compact horizontal year and granularity control bar is part of the same borderless composition, and the grid consumes the remaining available width and height instead of sitting in a standalone card. Every mode stacks Q1 through Q4 vertically and places the three months of each quarter horizontally. Day mode renders each month as a Sunday-first calendar of every in-month date; week mode assigns every one of the year's 53 or 54 intersecting clipped Sunday-through-Saturday ranges exactly once to the month containing its clipped start date; month mode renders one enlarged cell per month in the same matrix. All modes use GitHub's square green five-level visual grammar, a 少-to-多 guide, selected-range emphasis, exact counts, and complete accessible range descriptions." refs AndroidPhotoWall.displayedYear,AndroidPhotoWall.heatmapGranularity,AndroidPhotoWall.selectedRange,AndroidPhotoWall.dailyCounts
+  ensure BrowseAndroidPhotoWall.range_filter statement "Tapping a non-empty daily, weekly, or monthly cell selects exactly the real capture-day groups in that inclusive cell range, shows the exact selected range and count on the heatmap page, offers a visible action to view the selection on the photo-wall page, and a clear action restores all groups." refs AndroidPhotoWall.displayedYear,AndroidPhotoWall.heatmapGranularity,AndroidPhotoWall.selectedRange,AndroidPhotoWall.dayGroups,AndroidPhotoWall.dailyCounts
+  reject BrowseAndroidPhotoWall.inaccessible statement "A photo without a currently accessible MediaStore location is absent even if an annotation remains." refs AndroidMediaLocation.accessible,PhotoAnnotation.photoId
+  sideeffect BrowseAndroidPhotoWall.read_only statement "Browsing reads the catalog and thumbnails only; page, display, aggregation, and selection state remain app-local and do not mutate MediaStore or annotation history." refs AndroidMediaLocation.uri,AndroidPhotoWall.displayMode,AndroidPhotoWall.displayedYear,AndroidPhotoWall.heatmapGranularity,AndroidPhotoWall.selectedRange
+  idempotency "The same accessible catalog, device time zone, page, display mode, displayed year, heatmap granularity, and selected range produce the same membership, groups, counts, levels, and stable order."
+  forbid BrowseAndroidPhotoWall.no_date_fallback statement "Modified time, discovery time, index time, and annotation time cannot stand in for a missing capture timestamp." refs AndroidMediaLocation.dateTakenMillis,PhotoAnnotation.createdAt
+
+function ViewAndroidPhotoFunctionPromise action view:
+  label "在 APM 内查看照片 Function Promise"
+  summary "Opens the tapped accessible photo in APM's native full-screen viewer, decodes its complete original image resolution, supports original-pixel zoom and bounded pan, and navigates the stable accessible-photo sequence."
+  depends AndroidMediaLocationFieldPromise,AndroidPhotoWallFieldPromise,AndroidPhotoViewerFieldPromise
+  trigger "The user taps an accessible photo in the photo wall, text search, Agent search, or similar-photo results, or selects previous or next inside the viewer."
+  precondition ViewAndroidPhoto.accessible_photo statement "The requested photoId maps to a currently accessible URI in the app-private catalog." refs AndroidMediaLocation.photoId,AndroidMediaLocation.uri,AndroidMediaLocation.accessible
+  reads AndroidPhotoWall.photoIds,AndroidMediaLocation.photoId,AndroidMediaLocation.uri,AndroidMediaLocation.displayName,AndroidMediaLocation.dateTakenMillis,AndroidMediaLocation.accessible
+  writes AndroidPhotoViewer.photoIds,AndroidPhotoViewer.selectedPhotoId,AndroidPhotoViewer.displayBitmap,AndroidPhotoViewer.zoomScale,AndroidPhotoViewer.panOffset
+  ensure ViewAndroidPhoto.in_app_destination statement "Opening from every APM photo-result surface starts the private native PhotoViewerActivity and keeps the user inside APM rather than resolving an external image application." refs AndroidPhotoViewer.selectedPhotoId,AndroidMediaLocation.uri
+  ensure ViewAndroidPhoto.exact_initial_selection statement "The first selectedPhotoId equals the exact accessible photoId tapped by the user, even when it originated in search or similarity results." refs AndroidPhotoViewer.selectedPhotoId,AndroidMediaLocation.photoId
+  ensure ViewAndroidPhoto.aspect_fit statement "The selected original URI is decoded off the main thread with ImageDecoder at its complete orientation-correct intrinsic dimensions and preserved aspect ratio, then shown fully fit on a dark full-screen surface at scale 1 without a thumbnail request or target size." refs AndroidPhotoViewer.displayBitmap,AndroidPhotoViewer.zoomScale
+  ensure ViewAndroidPhoto.zoom_and_pan statement "Pinch gestures clamp scale from 1 through max(5, nativePixelScale), permitting at least one original pixel per display pixel; pan remains bounded while zoomed, and changing selectedPhotoId resets scale and pan before rendering that photo." refs AndroidPhotoViewer.zoomScale,AndroidPhotoViewer.panOffset,AndroidPhotoViewer.selectedPhotoId
+  ensure ViewAndroidPhoto.adjacent_navigation statement "Visible previous and next controls move by one through the stable accessible wall order, disable at sequence boundaries, and show the current one-based position and total count." refs AndroidPhotoViewer.photoIds,AndroidPhotoViewer.selectedPhotoId
+  reject ViewAndroidPhoto.inaccessible_or_unreadable statement "A missing, newly inaccessible, or undecodable URI shows an in-app error state and never falls back to an external viewer or fabricates image content." refs AndroidMediaLocation.uri,AndroidMediaLocation.accessible,AndroidPhotoViewer.displayBitmap
+  sideeffect ViewAndroidPhoto.read_only statement "The function reads the app-private catalog and selected content URI only; navigation and gesture state are ephemeral and no MediaStore or annotation row is written." refs AndroidMediaLocation.uri,AndroidPhotoViewer.selectedPhotoId,AndroidPhotoViewer.zoomScale,AndroidPhotoViewer.panOffset
+  idempotency "Opening the same accessible photo against the same catalog order selects the same item and decodes the same complete original dimensions; gesture state always starts at scale 1 and zero pan."
+  forbid ViewAndroidPhoto.no_external_view statement "No viewer entry point constructs or dispatches Intent.ACTION_VIEW for a photo URI." refs AndroidMediaLocation.uri,AndroidPhotoViewer.selectedPhotoId
+
+function SelectAndroidPhotosForAnnotationFunctionPromise action select:
+  label "选择 Android 待标注照片 Function Promise"
+  summary "Uses the Android system multi-photo picker to grant read access, catalog only the returned URIs, and replace the selected-photo annotation scope."
+  depends PhotoAssetFieldPromise,AndroidMediaLocationFieldPromise,AndroidAnnotationSelectionFieldPromise
+  trigger "User taps 选择照片 and completes the Android system photo picker."
+  precondition SelectAndroidPhotosForAnnotation.system_result statement "The returned URI list comes from the registered Android system photo-picker contract." refs AndroidAnnotationSelection.source
+  reads AndroidMediaLocation.uri,AndroidMediaLocation.photoId,AndroidMediaLocation.accessible,AndroidAnnotationSelection.photoIds
+  writes PhotoAsset.id,PhotoAsset.mediaType,PhotoAsset.byteSize,PhotoAsset.discoveredAt,AndroidMediaLocation.uri,AndroidMediaLocation.mediaStoreId,AndroidMediaLocation.photoId,AndroidMediaLocation.displayName,AndroidMediaLocation.accessible,AndroidMediaLocation.modifiedSeconds,AndroidMediaLocation.lastSeenAt,AndroidAnnotationSelection.photoIds,AndroidAnnotationSelection.selectedAt
+  ensure SelectAndroidPhotosForAnnotation.content_hash statement "Every returned readable URI is content-addressed by streaming SHA-256 without modifying the original." refs PhotoAsset.id,AndroidMediaLocation.uri,AndroidMediaLocation.photoId
+  ensure SelectAndroidPhotosForAnnotation.exact_scope statement "After a non-empty picker result, photoIds contains exactly the deduplicated readable selected photos and no previously selected extras." refs AndroidAnnotationSelection.photoIds,AndroidAnnotationSelection.selectedAt
+  ensure SelectAndroidPhotosForAnnotation.preserve_other_access statement "Cataloging a selected set does not mark other previously authorized locations inaccessible." refs AndroidMediaLocation.accessible
+  reject SelectAndroidPhotosForAnnotation.cancelled statement "A cancelled or empty picker result starts no annotation and does not silently select the full library." refs AndroidAnnotationSelection.photoIds
+  reject SelectAndroidPhotosForAnnotation.unreadable statement "An unreadable returned URI is excluded, reported, and never sent to a model." refs AndroidMediaLocation.uri,AndroidMediaLocation.accessible
+  sideeffect SelectAndroidPhotosForAnnotation.catalog_and_selection_only statement "Only picker grants, app-private catalog rows, and the app-private selection set change." refs AndroidMediaLocation.uri,AndroidAnnotationSelection.photoIds
+  idempotency "Selecting the same unchanged URI set preserves content identities and replaces the selection with the same deduplicated photo IDs."
+  forbid SelectAndroidPhotosForAnnotation.no_media_mutation statement "Never update, move, rename, trash, or delete a selected source photo." refs AndroidMediaLocation.uri
+
+function SearchAndroidGalleryFunctionPromise action search:
+  label "搜索 Android 相册 Function Promise"
+  summary "Matches descriptions, structured facets, tags, and visible text in app-private SQLite and displays only currently accessible MediaStore items."
+  depends AndroidMediaLocationFieldPromise,PhotoAnnotationFieldPromise,AndroidSearchStateFieldPromise
+  trigger "User enters text or selects a facet in the Android app."
+  precondition SearchAndroidGallery.query statement "The normalized text query or selected facet is non-empty." refs PhotoAnnotation.caption,PhotoAnnotation.tags,PhotoAnnotation.facets,PhotoAnnotation.visibleText
+  precondition SearchAndroidGallery.annotation_exists statement "At least one current photo annotation exists and search is enabled." refs AndroidSearchState.annotationCount,AndroidSearchState.enabled
+  reads -
+  writes -
+  ensure SearchAndroidGallery.latest statement "Results use the latest annotation per photo and include searchable provenance." refs PhotoAnnotation.id,PhotoAnnotation.photoId,PhotoAnnotation.modelName,PhotoAnnotation.promptVersion
+  ensure SearchAndroidGallery.accessible_only statement "Results contain only accessible=true content URIs." refs AndroidMediaLocation.uri,AndroidMediaLocation.accessible
+  ensure SearchAndroidGallery.annotation_derived_suggestions statement "Suggestion chips are empty before annotation and afterwards come only from latest accessible annotation metadata." refs AndroidSearchState.annotationCount,AndroidSearchState.suggestions
+  reject SearchAndroidGallery.empty statement "Whitespace-only search is rejected while the annotated gallery may list recent annotations." refs PhotoAnnotation.caption
+  reject SearchAndroidGallery.no_annotations statement "Search input, submission, and suggestions remain disabled and empty before the first annotation." refs AndroidSearchState.annotationCount,AndroidSearchState.enabled,AndroidSearchState.suggestions
+  sideeffect SearchAndroidGallery.read_only statement "Search writes neither the catalog nor MediaStore." refs AndroidMediaLocation.uri
+  idempotency "The same query against unchanged local state returns the same newest-first results."
+  forbid SearchAndroidGallery.no_hidden_uri statement "Never display a result that is no longer permission-accessible." refs AndroidMediaLocation.uri,AndroidMediaLocation.accessible
+
+function ConfigureAndroidModelFunctionPromise action configure:
+  label "多模态模型卡片"
+  summary "A single card shows category 多模态模型 and purpose 生成描述、标签、识别图片文字，规划自然语言搜索."
+  depends InferenceConfigurationFieldPromise
+  trigger "User opens API settings, edits a draft, selects a recommendation, saves or tests it."
+  reads InferenceConfiguration.endpoint,InferenceConfiguration.modelName,InferenceConfiguration.apiKey,InferenceConfiguration.allowRemote
+  writes InferenceConfiguration.endpoint,InferenceConfiguration.modelName,InferenceConfiguration.apiKey,InferenceConfiguration.allowRemote
+  ensure ConfigureAndroidModel.card statement "One multimodal model card contains endpoint, model, masked key, consent, recommended models, save and 测试连接. No visual API or identity management entry remains." refs InferenceConfiguration.modelName
+  ensure ConfigureAndroidModel.connection_tests statement "Test uses the unsaved draft and a generated image with the production schema, without reading photos or saving settings; malformed output is failure, errors redact secrets, fields lock while running and edits clear previous results." refs InferenceConfiguration.endpoint,InferenceConfiguration.modelName
+  ensure ConfigureAndroidModel.recommendations statement "A recommendation fills only the model draft, with documented capabilities and verification date; it never changes the endpoint, consent or saved settings." refs InferenceConfiguration.modelName
+  ensure ConfigureAndroidModel.encryption statement "Keys remain in encrypted no-backup storage; legacy explicit settings migrate without losing endpoint proxy paths, model or consent." refs InferenceConfiguration.apiKey,InferenceConfiguration.endpoint
+  sideeffect ConfigureAndroidModel.no_request_on_save statement "Only an explicit test or inference operation initiates a network request." refs InferenceConfiguration.endpoint
+  idempotency "Saving unchanged settings preserves their meaning."
+  forbid ConfigureAndroidModel.no_plaintext_key statement "No key is written to preferences, logs or visible test errors." refs InferenceConfiguration.apiKey
+
+function AnnotateAndroidPhotosFunctionPromise action annotate:
+  label "多模态标注"
+  summary "Send a bounded thumbnail directly to the configured model, without identity detection or overlays."
+  depends AndroidMediaLocationFieldPromise,AndroidAnnotationSelectionFieldPromise,PhotoAnnotationFieldPromise,InferenceConfigurationFieldPromise
+  trigger "User explicitly chooses selected or all authorized photos."
+  precondition AnnotateAndroidPhotos.authorized statement "Configuration and consent are validated before pixels are read; selected scope requires a nonempty explicit selection." refs InferenceConfiguration.allowRemote,AndroidMediaLocation.accessible
+  reads AndroidMediaLocation.uri,AndroidMediaLocation.photoId,AndroidMediaLocation.accessible,InferenceConfiguration.endpoint,InferenceConfiguration.modelName
+  writes PhotoAnnotation.id,PhotoAnnotation.photoId,PhotoAnnotation.caption,PhotoAnnotation.tags,PhotoAnnotation.visibleText,PhotoAnnotation.facets,PhotoAnnotation.modelProvider,PhotoAnnotation.modelName,PhotoAnnotation.promptVersion,PhotoAnnotation.createdAt
+  ensure AnnotateAndroidPhotos.direct_api statement "Use Chat Completions with a JPEG thumbnail at most 1024px, one context-overflow-only retry at 768px and strict schema validation. No anonymous boxes, identity candidates or secondary visual API requests exist." refs PhotoAnnotation.caption,PhotoAnnotation.facets
+  ensure AnnotateAndroidPhotos.scope statement "Selected processing stays within explicit selection; full processing covers all accessible pending photos without a hidden batch limit. Existing provider/model/prompt output is skipped and successful re-annotation appends history." refs PhotoAnnotation.photoId,PhotoAnnotation.promptVersion
+  reject AnnotateAndroidPhotos.invalid_output statement "Network, auth, timeout, refusal, truncation and invalid-schema failures preserve previous rows and report a redacted error." refs PhotoAnnotation.id
+  sideeffect AnnotateAndroidPhotos.read_only_originals statement "Only new local derived annotations are written; originals, legacy identities, templates and visual features are preserved." refs AndroidMediaLocation.uri,PhotoAnnotation.id
+  idempotency "Same provider, model and prompt is skipped unless explicitly re-annotated."
+  forbid AnnotateAndroidPhotos.no_identity_inference statement "New responses cannot contain subject mentions or recognized identity fields; no secondary vision requests are made." refs PhotoAnnotation.subjectMentions,PhotoAnnotation.recognizedSubjects
+
+function AgentSearchPhotosFunctionPromise action search:
+  label "自然语言搜索"
+  summary "Use the same external API to plan bounded read-only local searches from the user's request."
+  depends InferenceConfigurationFieldPromise,PhotoAnnotationFieldPromise,AndroidSearchStateFieldPromise
+  trigger "User explicitly runs Agent search."
+  reads InferenceConfiguration.endpoint,InferenceConfiguration.modelName,PhotoAnnotation.caption,PhotoAnnotation.tags,PhotoAnnotation.facets
+  writes -
+  ensure AgentSearchPhotos.bounded statement "Send only the request and search tool contract, no stored identity catalog or photo. Validate the bounded plan before local search; do not mutate photos or annotations." refs PhotoAnnotation.id,InferenceConfiguration.endpoint
+  sideeffect AgentSearchPhotos.read_only statement "Only authorized remote planning and local read-only search occur." refs PhotoAnnotation.id
+  idempotency "Unchanged local search terms yield the same results."
+  forbid AgentSearchPhotos.no_write_tool statement "The generated plan can only invoke local search, never scan, annotate or mutate files." refs PhotoAnnotation.id
+
+verify Roadmap005Verification kind cross-cutting:
+  label "0.0.5 功能与保留验证"
+  claim "Roadmap features, external-only inference and existing user state remain verifiable."
+  verifies ConfigureAndroidModelFunctionPromise,AnnotateAndroidPhotosFunctionPromise,AgentSearchPhotosFunctionPromise,PhotoAssetFieldPromise,AndroidPhotoWallFieldPromise,AndroidPhotoViewerFieldPromise
+  methods unit,integration,review
+  scenario "simplified app and upgrade":
+    covers ConfigureAndroidModel.card,ConfigureAndroidModel.connection_tests,ConfigureAndroidModel.recommendations,InferenceConfiguration.api_only,AnnotateAndroidPhotos.direct_api,AnnotateAndroidPhotos.scope,AgentSearchPhotos.bounded,PhotoAsset.id_is_content_hash,AndroidPhotoWall.page_ownership
+    given "An existing catalog with annotations and legacy identity/visual rows, explicit API drafts, a mock server and an emulator."
+    when "Browsing, testing unsaved API settings, annotating selected photos, searching and updating an installed app."
+    then "Four destinations and a complete multimodal settings card work; only the selected API is called, malformed output writes nothing, retired entries are absent and old rows remain unchanged."
+    guard "APKs build only into a fresh isolated directory; real-device updates use adb install -r only for the confirmed existing package, never uninstall or clear; versions and database rows are compared before and after."
+  evidence "Promise checks, Python/JVM tests, emulator UI and HTTP workflow tests, lint, APK inspection and real-device preservation snapshots."
+  fail "A retired feature remains active, an original or old row is lost, API settings implicitly transmit data, or tests modify the real device package destructively."

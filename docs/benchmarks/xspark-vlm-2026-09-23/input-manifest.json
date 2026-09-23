@@ -1,0 +1,22 @@
+{
+  "original_size": [
+    1536,
+    1024
+  ],
+  "request_size": [
+    1024,
+    683
+  ],
+  "jpeg_quality": 82,
+  "resize": "Pillow bilinear; same dimensions/quality policy as Android, not byte-identical encoding",
+  "files": {
+    "cafe-original.png": {
+      "bytes": 2198682,
+      "sha256": "aa8293f6e931cf19618ebbfb3c73b6224c5dcaf815c837433b28e1f6da8e21d3"
+    },
+    "cafe-apm-1024.jpg": {
+      "bytes": 106488,
+      "sha256": "6e04b7e5f1a60367d5e12ec4819a3179fb7c1ebc7fa23d0e6619359c6f8966f9"
+    }
+  }
+}

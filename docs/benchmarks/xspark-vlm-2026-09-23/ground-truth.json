@@ -1,0 +1,66 @@
+{
+  "apple_count": 3,
+  "banana_count": 2,
+  "apple_color": [
+    "红",
+    "red"
+  ],
+  "banana_color": [
+    "黄",
+    "yellow"
+  ],
+  "bowl_color": [
+    "白",
+    "white"
+  ],
+  "mug_count": 1,
+  "mug_color": [
+    "蓝",
+    "blue"
+  ],
+  "mug_handle_direction": [
+    "右",
+    "right"
+  ],
+  "notebook_color": [
+    "橙",
+    "橘",
+    "orange"
+  ],
+  "phone_color": [
+    "黑",
+    "black"
+  ],
+  "phone_screen_on": false,
+  "phone_relative_to_notebook": [
+    "右",
+    "right"
+  ],
+  "spoon_relative_to_mug": [
+    "前",
+    "front"
+  ],
+  "menu_title": "海边咖啡",
+  "latte_price_yuan": 28,
+  "cake_price_yuan": 18,
+  "notebook_text": "APM2026",
+  "outdoor_scene": [
+    "海",
+    "sea",
+    "ocean"
+  ],
+  "sky": [
+    "云",
+    "cloud",
+    "阴"
+  ],
+  "daylight": [
+    "白天",
+    "天亮",
+    "日间",
+    "day"
+  ],
+  "people_count": 0,
+  "animal_count": 0,
+  "precise_city": null
+}
