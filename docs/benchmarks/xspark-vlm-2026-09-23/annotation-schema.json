@@ -1,0 +1,144 @@
+{
+  "type": "object",
+  "properties": {
+    "caption": {
+      "type": "string",
+      "maxLength": 500
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "maxLength": 100
+      },
+      "maxItems": 40
+    },
+    "visible_text": {
+      "type": "string",
+      "maxLength": 512
+    },
+    "facets": {
+      "type": "object",
+      "properties": {
+        "daylight": {
+          "type": "string",
+          "enum": [
+            "天亮",
+            "天黑",
+            "日出日落",
+            "室内",
+            "不确定"
+          ]
+        },
+        "sky": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "maxItems": 10
+        },
+        "objects": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "maxLength": 80
+              },
+              "count": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "attributes": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "maxLength": 100
+                },
+                "maxItems": 10
+              }
+            },
+            "required": [
+              "name",
+              "count",
+              "attributes"
+            ],
+            "additionalProperties": false
+          },
+          "maxItems": 30
+        },
+        "people": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "presentation": {
+                "type": "string",
+                "enum": [
+                  "男性呈现",
+                  "女性呈现",
+                  "儿童",
+                  "多人混合",
+                  "不确定"
+                ]
+              },
+              "count": {
+                "type": "integer",
+                "minimum": 1
+              }
+            },
+            "required": [
+              "presentation",
+              "count"
+            ],
+            "additionalProperties": false
+          },
+          "maxItems": 10
+        },
+        "actions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "maxItems": 20
+        },
+        "scenes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "maxItems": 10
+        },
+        "weather": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "maxItems": 10
+        }
+      },
+      "required": [
+        "daylight",
+        "sky",
+        "objects",
+        "people",
+        "actions",
+        "scenes",
+        "weather"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "caption",
+    "tags",
+    "visible_text",
+    "facets"
+  ],
+  "additionalProperties": false
+}

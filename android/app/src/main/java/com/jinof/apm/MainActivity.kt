@@ -17,6 +17,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -41,7 +42,6 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -51,7 +51,6 @@ import androidx.compose.material.icons.outlined.AddPhotoAlternate
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.GridView
-import androidx.compose.material.icons.outlined.ImageSearch
 import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Shield
@@ -85,7 +84,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
@@ -97,14 +95,12 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.time.Instant
-import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -117,11 +113,6 @@ private enum class AnnotationScope(val label: String) {
     ALL("全量"),
 }
 
-private enum class PendingPhotoPermissionAction {
-    ANNOTATE_ALL,
-    CHECK_SIMILAR,
-}
-
 private const val DEBUG_ANNOTATE_SELECTED_ACTION = "com.jinof.apm.debug.ANNOTATE_SELECTED"
 private const val DEBUG_ANNOTATION_ALIAS = "com.jinof.apm.DebugAnnotationAlias"
 private const val DEBUG_SEARCH_ACTION = "com.jinof.apm.debug.SEARCH"
@@ -132,7 +123,6 @@ class MainActivity : ComponentActivity() {
     private lateinit var database: ApmDatabase
     private lateinit var settingsStore: SettingsStore
     private lateinit var scanner: MediaStoreScanner
-    private lateinit var identityController: IdentityController
     private lateinit var agentController: AgentSearchController
     private val executor = Executors.newSingleThreadExecutor()
     private val busy = AtomicBoolean(false)
@@ -140,30 +130,14 @@ class MainActivity : ComponentActivity() {
     private var selectedPhotoRange by mutableStateOf<PhotoHeatmapSelection?>(null)
     private var requestedDockDestination by mutableStateOf(DockDestination.ALBUM)
     private var initialized = false
-    private var pendingPermissionAction = PendingPhotoPermissionAction.ANNOTATE_ALL
-    private var pendingSimilarityCheck: SimilarityCheckRequest? = null
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
     ) {
         if (hasFullPhotoAccess() || hasPartialPhotoAccess()) {
-            when (pendingPermissionAction) {
-                PendingPhotoPermissionAction.ANNOTATE_ALL -> startAnnotation(AnnotationScope.ALL)
-                PendingPhotoPermissionAction.CHECK_SIMILAR -> {
-                    val request = pendingSimilarityCheck
-                    pendingSimilarityCheck = null
-                    if (request == null) {
-                        updateStatus("相似检查范围已失效，请重新选择。")
-                    } else {
-                        startSimilarityCheck(request)
-                    }
-                }
-            }
+            startAnnotation(AnnotationScope.ALL)
         } else {
-            if (pendingPermissionAction == PendingPhotoPermissionAction.CHECK_SIMILAR) {
-                pendingSimilarityCheck = null
-            }
-            updateStatus("未获得照片读取权限。没有授权时不会扫描、标注或建立相似索引。")
+            updateStatus("未获得照片读取权限。没有授权时不会扫描或标注。")
         }
     }
 
@@ -185,19 +159,17 @@ class MainActivity : ComponentActivity() {
         database = ApmDatabase(applicationContext)
         settingsStore = SettingsStore(applicationContext)
         scanner = MediaStoreScanner(applicationContext, database)
-        identityController = IdentityController(this)
         agentController = AgentSearchController(this)
         initialized = true
         setContent {
             ApmTheme {
                 AppDockPager(
                     requestedDestination = requestedDockDestination,
-                    busy = uiState.busy || identityController.state.busy || agentController.state.busy,
+                    busy = uiState.busy || agentController.state.busy,
                     searchEnabled = uiState.search.enabled,
                     onDestinationSettled = { destination ->
                         requestedDockDestination = destination
                         when (destination) {
-                            DockDestination.PEOPLE -> identityController.refreshIdentities()
                             DockDestination.AGENT -> agentController.refreshAvailability()
                             else -> Unit
                         }
@@ -223,12 +195,10 @@ class MainActivity : ComponentActivity() {
                             onSelectPhotos = ::selectPhotosForAnnotation,
                             onAnnotateSelected = { startAnnotation(AnnotationScope.SELECTED) },
                             onAnnotateAll = ::onAnnotateAllRequested,
-                            onCheckSimilar = ::onSimilarityCheckRequested,
                             onHeatmap = { navigate(DockDestination.HEATMAP) },
                             initialSelectedRange = selectedPhotoRange,
                             startupStoryEnabled = requestedDockDestination == DockDestination.ALBUM,
                             onPhoto = ::openPhoto,
-                            onSimilar = ::openSimilar,
                         )
 
                         DockDestination.HEATMAP -> PhotoHeatmapPage(
@@ -237,16 +207,6 @@ class MainActivity : ComponentActivity() {
                                 selectedPhotoRange = selection
                                 navigate(DockDestination.ALBUM)
                             },
-                        )
-
-                        DockDestination.PEOPLE -> IdentityScreen(
-                            state = identityController.state,
-                            onKindChange = identityController::changeKind,
-                            onPick = identityController::pickReference,
-                            onSelectSubject = identityController::selectSubject,
-                            onNameChange = identityController::changeName,
-                            onRegister = identityController::registerSelectedSubject,
-                            onDelete = identityController::deleteIdentity,
                         )
 
                         DockDestination.AGENT -> AgentSearchScreen(
@@ -258,9 +218,7 @@ class MainActivity : ComponentActivity() {
                             },
                         )
 
-                        DockDestination.SETTINGS -> ModelSettingsScreen(
-                            onNavigate = navigate,
-                        )
+                        DockDestination.SETTINGS -> ModelSettingsScreen()
                     }
                 }
             }
@@ -303,7 +261,6 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         executor.shutdownNow()
-        identityController.close()
         agentController.close()
         database.close()
         super.onDestroy()
@@ -326,30 +283,6 @@ class MainActivity : ComponentActivity() {
             PhotoAccessAction.REQUEST_INITIAL_ACCESS,
             PhotoAccessAction.REQUEST_RESELECTION,
             -> {
-                pendingPermissionAction = PendingPhotoPermissionAction.ANNOTATE_ALL
-                permissionLauncher.launch(requiredPhotoPermissions())
-            }
-        }
-    }
-
-    private fun onSimilarityCheckRequested(request: SimilarityCheckRequest) {
-        val modelIssue = OnnxRuntimeDinoV2ImageEncoder.availability(applicationContext)
-        if (modelIssue != null) {
-            updateStatus(modelIssue)
-            return
-        }
-        val action = PhotoAccessPolicy.nextScanAction(
-            sdkInt = Build.VERSION.SDK_INT,
-            hasFullAccess = hasFullPhotoAccess(),
-            hasPartialAccess = hasPartialPhotoAccess(),
-        )
-        when (action) {
-            PhotoAccessAction.SCAN_NOW -> startSimilarityCheck(request)
-            PhotoAccessAction.REQUEST_INITIAL_ACCESS,
-            PhotoAccessAction.REQUEST_RESELECTION,
-            -> {
-                pendingSimilarityCheck = request
-                pendingPermissionAction = PendingPhotoPermissionAction.CHECK_SIMILAR
                 permissionLauncher.launch(requiredPhotoPermissions())
             }
         }
@@ -456,25 +389,8 @@ class MainActivity : ComponentActivity() {
                 } else {
                     null
                 }
-                val client = OllamaVlmClient(contentResolver, config)
+                val client = ApiVlmClient(contentResolver, config)
                 updateStatus("${scope.label}标注 · 正在连接 ${config.modelName}…")
-                client.ensureAvailable()
-                val faceReport = FaceIndexer(applicationContext, database).use { indexer ->
-                    indexer.indexPending(
-                        limit = null,
-                        selectedOnly = scope == AnnotationScope.SELECTED,
-                    ) { processed, total, name ->
-                        updateStatus("${scope.label}标注 · 本地人脸识别 $processed / $total · $name")
-                    }
-                }
-                val petReport = PetIndexer(applicationContext, database).use { indexer ->
-                    indexer.indexPending(
-                        limit = null,
-                        selectedOnly = scope == AnnotationScope.SELECTED,
-                    ) { processed, total, name ->
-                        updateStatus("${scope.label}标注 · 本地宠物识别 $processed / $total · $name")
-                    }
-                }
                 val scopeCount = if (scope == AnnotationScope.SELECTED) {
                     database.annotationSelectionCount()
                 } else {
@@ -498,7 +414,6 @@ class MainActivity : ComponentActivity() {
                             photoId = photo.photoId,
                             annotation = client.annotate(
                                 Uri.parse(photo.uri),
-                                database.subjectMarkers(photo.photoId),
                             ),
                             modelName = config.modelName,
                             promptVersion = AnnotationContract.PROMPT_VERSION,
@@ -517,51 +432,12 @@ class MainActivity : ComponentActivity() {
                 val scanSuffix = scanReport?.let {
                     " · 扫描可见 ${it.visible} 张${if (it.errors.isEmpty()) "" else "、读取失败 ${it.errors.size}"}"
                 }.orEmpty()
-                val faceSuffix = " · 本地人脸 ${faceReport.faces} 张、匹配 ${faceReport.matchedFaces} 张"
-                val petSuffix = " · 本地宠物 ${petReport.pets} 只、匹配 ${petReport.matchedPets} 只"
                 completeWork(
-                    "${scope.label}范围 $scopeCount 张 · 待处理 ${pending.size} 张 · 成功标注 $completed$scanSuffix$faceSuffix$petSuffix$details",
+                    "${scope.label}范围 $scopeCount 张 · 待处理 ${pending.size} 张 · 成功标注 $completed$scanSuffix$details",
                 )
             } catch (error: Exception) {
                 Log.e(ANNOTATION_LOG_TAG, "${scope.label} annotation pipeline failed", error)
                 failWork("${scope.label}标注失败：${error.message}")
-            }
-        }
-    }
-
-    private fun startSimilarityCheck(request: SimilarityCheckRequest) {
-        val modelIssue = OnnxRuntimeDinoV2ImageEncoder.availability(applicationContext)
-        if (modelIssue != null) {
-            updateStatus(modelIssue)
-            return
-        }
-        if (!beginWork("${request.displayName} · 正在扫描已授权照片…")) return
-        executor.execute {
-            try {
-                val scanReport = scanner.scan { processed, total, name ->
-                    if (processed == total || processed % 10 == 0) {
-                        updateStatus("${request.displayName} · 扫描 $processed / $total · $name")
-                    }
-                }
-                val report = VisualSimilarityIndexer(applicationContext, database).use { indexer ->
-                    indexer.check(request) { processed, total, name ->
-                        updateStatus("${request.displayName} · DINOv2 $processed / $total · $name")
-                    }
-                }
-                val firstError = (scanReport.errors + report.errors).firstOrNull()?.let { " · $it" }.orEmpty()
-                val noCaptureTime = if (report.excludedWithoutCaptureTime == 0) {
-                    ""
-                } else {
-                    " · 无拍摄时间排除 ${report.excludedWithoutCaptureTime} 张"
-                }
-                completeWork(
-                    "${request.displayName}完成 · 范围 ${report.consideredPhotos} 张 · 成功 ${report.indexedPhotos} 张" +
-                        " · 通用主体 ${report.generalSubjects} 个 · 扫描可见 ${scanReport.visible} 张" +
-                        "$noCaptureTime · 扫描失败 ${scanReport.errors.size} · 特征失败 ${report.errors.size}$firstError",
-                )
-            } catch (error: Exception) {
-                Log.e("APM.Similarity", "${request.displayName} failed", error)
-                failWork("${request.displayName}失败：${error.message}")
             }
         }
     }
@@ -584,9 +460,6 @@ class MainActivity : ComponentActivity() {
                 val galleryPhotos = database.galleryPhotos()
                 val accessible = database.accessibleCount()
                 val selected = database.annotationSelectionCount()
-                val identities = database.identityCount()
-                val visualIndexed = database.visualFeatureCount(SimilarityScorer.PIPELINE_VERSION)
-                val visualModelIssue = OnnxRuntimeDinoV2ImageEncoder.availability(applicationContext)
                 runOnUiThread {
                     busy.set(false)
                     uiState = uiState.copy(
@@ -596,9 +469,6 @@ class MainActivity : ComponentActivity() {
                         search = availability,
                         accessibleCount = accessible,
                         selectedCount = selected,
-                        identityCount = identities,
-                        visualIndexedCount = visualIndexed,
-                        visualModelIssue = visualModelIssue,
                         busy = false,
                         status = "“$query” · ${cards.size} 个结果",
                     )
@@ -619,9 +489,6 @@ class MainActivity : ComponentActivity() {
                 val galleryPhotos = database.galleryPhotos()
                 val accessible = database.accessibleCount()
                 val selected = database.annotationSelectionCount()
-                val identities = database.identityCount()
-                val visualIndexed = database.visualFeatureCount(SimilarityScorer.PIPELINE_VERSION)
-                val visualModelIssue = OnnxRuntimeDinoV2ImageEncoder.availability(applicationContext)
                 runOnUiThread {
                     uiState = uiState.copy(
                         query = query,
@@ -631,9 +498,6 @@ class MainActivity : ComponentActivity() {
                         search = availability,
                         accessibleCount = accessible,
                         selectedCount = selected,
-                        identityCount = identities,
-                        visualIndexedCount = visualIndexed,
-                        visualModelIssue = visualModelIssue,
                         status = message ?: uiState.status,
                     )
                 }
@@ -660,9 +524,6 @@ class MainActivity : ComponentActivity() {
         val galleryPhotos = database.galleryPhotos()
         val accessible = database.accessibleCount()
         val selected = database.annotationSelectionCount()
-        val identities = database.identityCount()
-        val visualIndexed = database.visualFeatureCount(SimilarityScorer.PIPELINE_VERSION)
-        val visualModelIssue = OnnxRuntimeDinoV2ImageEncoder.availability(applicationContext)
         runOnUiThread {
             busy.set(false)
             uiState = uiState.copy(
@@ -673,9 +534,6 @@ class MainActivity : ComponentActivity() {
                 search = availability,
                 accessibleCount = accessible,
                 selectedCount = selected,
-                identityCount = identities,
-                visualIndexedCount = visualIndexed,
-                visualModelIssue = visualModelIssue,
                 busy = false,
                 status = message,
             )
@@ -697,14 +555,7 @@ class MainActivity : ComponentActivity() {
         startActivity(PhotoViewerActivity.intent(this, photoId, uri))
     }
 
-    private fun openSimilar(photoId: String, uri: String, displayName: String) {
-        startActivity(
-            Intent(this, SimilarityActivity::class.java)
-                .putExtra(SimilarityActivity.EXTRA_PHOTO_ID, photoId)
-                .putExtra(SimilarityActivity.EXTRA_URI, uri)
-                .putExtra(SimilarityActivity.EXTRA_DISPLAY_NAME, displayName),
-        )
-    }
+
 }
 
 private const val ANNOTATION_LOG_TAG = "APM.Annotation"
@@ -719,12 +570,10 @@ private fun GalleryScreen(
     onSelectPhotos: () -> Unit,
     onAnnotateSelected: () -> Unit,
     onAnnotateAll: () -> Unit,
-    onCheckSimilar: (SimilarityCheckRequest) -> Unit,
     onHeatmap: () -> Unit,
     initialSelectedRange: PhotoHeatmapSelection?,
     startupStoryEnabled: Boolean,
     onPhoto: (String, String) -> Unit,
-    onSimilar: (String, String, String) -> Unit,
 ) {
     val zoneId = ZoneId.systemDefault()
     var displayMode by remember { mutableStateOf(PhotoWallDisplayMode.THUMBNAILS) }
@@ -790,12 +639,6 @@ private fun GalleryScreen(
                 )
             }
             item(span = { GridItemSpan(maxLineSpan) }) {
-                VisualSimilarityActions(
-                    state = state,
-                    onCheckSimilar = onCheckSimilar,
-                )
-            }
-            item(span = { GridItemSpan(maxLineSpan) }) {
                 SearchPanel(
                     state = state,
                     onQueryChange = onQueryChange,
@@ -836,9 +679,6 @@ private fun GalleryScreen(
                         PhotoResultCard(
                             photo = photo,
                             onClick = { onPhoto(photo.photoId, photo.uri) },
-                            onSimilar = {
-                                onSimilar(photo.photoId, photo.uri, photo.displayName)
-                            },
                         )
                     }
                 }
@@ -886,9 +726,6 @@ private fun GalleryScreen(
                             PhotoWallDetailCard(
                                 photo = photo,
                                 onClick = { onPhoto(photo.photoId, photo.uri) },
-                                onSimilar = {
-                                    onSimilar(photo.photoId, photo.uri, photo.displayName)
-                                },
                             )
                         }
                     }
@@ -968,160 +805,6 @@ private fun StartupStoryDialog(onDismiss: () -> Unit) {
             ) {
                 Text("稍后再看")
             }
-        },
-    )
-}
-
-@Composable
-private fun VisualSimilarityActions(
-    state: GalleryUiState,
-    onCheckSimilar: (SimilarityCheckRequest) -> Unit,
-) {
-    var showCheckDialog by remember { mutableStateOf(false) }
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        SectionTitle("相似照片", "DINOv2 · 本机")
-        Text(
-            "检查新增、近期或全部已授权照片，识别连拍、同场景、构图相似和主体相似。",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        FilledTonalButton(
-            onClick = { showCheckDialog = true },
-            enabled = !state.busy && state.visualModelIssue == null,
-            modifier = Modifier.fillMaxWidth().height(52.dp).testTag("check_similar"),
-            shape = MaterialTheme.shapes.medium,
-        ) {
-            Icon(Icons.Outlined.ImageSearch, contentDescription = null)
-            Spacer(Modifier.width(8.dp))
-            Text("检查相似")
-        }
-        if (state.visualModelIssue != null) {
-            Text(
-                state.visualModelIssue,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.error,
-                modifier = Modifier.testTag("similarity_model_issue"),
-            )
-        }
-    }
-    if (showCheckDialog) {
-        SimilarityCheckDialog(
-            onDismiss = { showCheckDialog = false },
-            onConfirm = { request ->
-                showCheckDialog = false
-                onCheckSimilar(request)
-            },
-        )
-    }
-}
-
-@Composable
-private fun SimilarityCheckDialog(
-    onDismiss: () -> Unit,
-    onConfirm: (SimilarityCheckRequest) -> Unit,
-) {
-    var mode by remember { mutableStateOf(SimilarityCheckMode.INCREMENTAL) }
-    var recentAmountText by remember { mutableStateOf("7") }
-    var recentUnit by remember { mutableStateOf(SimilarityRecentUnit.DAYS) }
-    val recentAmount = recentAmountText.toIntOrNull()
-    val recentValid = recentAmount != null &&
-        recentAmount in SimilarityCheckRequest.MIN_RECENT_AMOUNT..SimilarityCheckRequest.MAX_RECENT_AMOUNT
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        modifier = Modifier.testTag("similarity_check_dialog"),
-        title = { Text("检查相似") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(
-                    "选择本次检查范围。照片只在本机生成 DINOv2 特征。",
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    SimilarityCheckMode.entries.forEach { choice ->
-                        FilterChip(
-                            selected = mode == choice,
-                            onClick = { mode = choice },
-                            label = { Text(choice.displayName) },
-                            modifier = Modifier.testTag("similarity_mode_${choice.name.lowercase()}"),
-                        )
-                    }
-                }
-                Text(
-                    when (mode) {
-                        SimilarityCheckMode.INCREMENTAL ->
-                            "只处理新增或尚未完成当前 DINOv2 检查的照片。"
-                        SimilarityCheckMode.RECENT ->
-                            "重新检查真实拍摄时间落在所选范围内的照片。"
-                        SimilarityCheckMode.FULL ->
-                            "重新检查当前所有已授权照片，耗时可能较长。"
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                if (mode == SimilarityCheckMode.RECENT) {
-                    OutlinedTextField(
-                        value = recentAmountText,
-                        onValueChange = { value ->
-                            if (value.all(Char::isDigit) && value.length <= 4) recentAmountText = value
-                        },
-                        modifier = Modifier.fillMaxWidth().testTag("similarity_recent_amount"),
-                        label = { Text("最近多少时间") },
-                        singleLine = true,
-                        isError = recentAmountText.isNotEmpty() && !recentValid,
-                        supportingText = if (!recentValid) {
-                            { Text("请输入 1–9999") }
-                        } else {
-                            null
-                        },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        SimilarityRecentUnit.entries.forEach { unit ->
-                            FilterChip(
-                                selected = recentUnit == unit,
-                                onClick = { recentUnit = unit },
-                                label = { Text(unit.displayName) },
-                                modifier = Modifier.testTag("similarity_unit_${unit.name.lowercase()}"),
-                            )
-                        }
-                    }
-                    Text(
-                        "没有拍摄时间的照片会被排除并计数，不会用修改时间猜测。",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(
-                onClick = {
-                    val requestedAtMillis = System.currentTimeMillis()
-                    val request = when (mode) {
-                        SimilarityCheckMode.INCREMENTAL ->
-                            SimilarityCheckRequest.incremental(requestedAtMillis)
-                        SimilarityCheckMode.RECENT ->
-                            SimilarityCheckRequest.recent(
-                                amount = requireNotNull(recentAmount),
-                                unit = recentUnit,
-                                requestedAtMillis = requestedAtMillis,
-                            )
-                        SimilarityCheckMode.FULL -> SimilarityCheckRequest.full(requestedAtMillis)
-                    }
-                    onConfirm(request)
-                },
-                enabled = mode != SimilarityCheckMode.RECENT || recentValid,
-                modifier = Modifier.testTag("confirm_similarity_check"),
-            ) {
-                Text("开始检查")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("取消") }
         },
     )
 }
@@ -1341,7 +1024,6 @@ private fun PhotoWallThumbnail(photo: GalleryPhotoCard, onClick: () -> Unit) {
 private fun PhotoWallDetailCard(
     photo: GalleryPhotoCard,
     onClick: () -> Unit,
-    onSimilar: () -> Unit,
 ) {
     ElevatedCard(
         modifier = Modifier
@@ -1395,16 +1077,6 @@ private fun PhotoWallDetailCard(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Spacer(Modifier.height(8.dp))
-                FilledTonalButton(
-                    onClick = onSimilar,
-                    modifier = Modifier.testTag("wall_similar_${photo.photoId}"),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                ) {
-                    Icon(Icons.Outlined.ImageSearch, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text("查看相似照片")
-                }
             }
         }
     }
@@ -1486,7 +1158,7 @@ private fun EmptyState(
 }
 
 @Composable
-private fun PhotoResultCard(photo: PhotoCard, onClick: () -> Unit, onSimilar: () -> Unit) {
+private fun PhotoResultCard(photo: PhotoCard, onClick: () -> Unit) {
     ElevatedCard(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
         shape = MaterialTheme.shapes.large,
@@ -1538,20 +1210,6 @@ private fun PhotoResultCard(photo: PhotoCard, onClick: () -> Unit, onSimilar: ()
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Spacer(Modifier.height(8.dp))
-                FilledTonalButton(
-                    onClick = onSimilar,
-                    modifier = Modifier.testTag("similar_${photo.photoId}"),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                ) {
-                    Icon(
-                        Icons.Outlined.ImageSearch,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp),
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    Text("查看相似照片")
-                }
             }
         }
     }

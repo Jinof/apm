@@ -1,0 +1,6 @@
+{
+  "production_unit": "qwen38-27b.service",
+  "production_service_state": "ActiveState=active\nUnitFileState=enabled\n",
+  "gpu": "name, driver_version, power.limit [W]\nNVIDIA GB10, 580.173.02, [N/A]\n",
+  "memory": "               total        used        free      shared  buff/cache   available\nMem:     130594746368 51831304192 33563725824   420601856 46793068544 78763442176\nSwap:    17179865088  4675612672 12504252416\n"
+}

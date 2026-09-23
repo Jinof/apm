@@ -91,9 +91,6 @@ data class GalleryUiState(
     val search: SearchAvailability = SearchAvailability.derive(0, emptyList()),
     val accessibleCount: Int = 0,
     val selectedCount: Int = 0,
-    val identityCount: Int = 0,
-    val visualIndexedCount: Int = 0,
-    val visualModelIssue: String? = null,
     val busy: Boolean = false,
     val status: String = "准备就绪",
 )

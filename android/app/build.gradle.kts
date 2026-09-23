@@ -15,12 +15,8 @@ android {
         applicationId = "com.jinof.apm"
         minSdk = 29
         targetSdk = 34
-        versionCode = 6
-        versionName = "0.0.4"
-
-        ndk {
-            abiFilters += listOf("arm64-v8a", "x86_64")
-        }
+        versionCode = 7
+        versionName = "0.0.5"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -67,12 +63,10 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")
-    implementation("com.google.ai.edge.litert:litert:1.4.2")
-    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.24.3")
-    implementation("org.opencv:opencv:4.13.0")
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 
+    testImplementation("org.json:json:20240303")
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test:core:1.6.1")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")

@@ -1,0 +1,10 @@
+{
+  "rubric_version": 2,
+  "overrides": {
+    "spoon_relative_to_mug": {
+      "accepted_contains": ["前", "下", "front", "below"],
+      "reason": "The spoon is in front of the mug in scene coordinates and below it in image coordinates. Both are correct for the original question. The initial keyword-only rubric omitted below."
+    }
+  },
+  "policy": "Apply this same correction to every model. Preserve original response files and their uncorrected automatic scores. No model-specific exceptions."
+}

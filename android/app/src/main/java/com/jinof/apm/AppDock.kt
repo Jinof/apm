@@ -15,7 +15,6 @@ import androidx.compose.foundation.pager.PagerDefaults
 import androidx.compose.foundation.pager.PagerSnapDistance
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Face
 import androidx.compose.material.icons.outlined.GridView
 import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.Settings
@@ -49,7 +48,6 @@ private class PagerNavigationState(var job: Job? = null)
 internal enum class DockDestination(val label: String) {
     ALBUM("相册"),
     HEATMAP("热力图"),
-    PEOPLE("人"),
     AGENT("Agent"),
     SETTINGS("设置"),
 }
@@ -174,12 +172,11 @@ internal fun AppBottomDock(
         modifier = Modifier
             .testTag("bottom_dock")
             .semantics {
-                contentDescription = "固定底部 Dock：相册、热力图、人、Agent、设置；页面跟随左右滑动并平滑切换"
+                contentDescription = "固定底部 Dock：相册、热力图、Agent、设置；页面跟随左右滑动并平滑切换"
             },
     ) {
         destinations.forEach { destination ->
             val enabled = when (destination) {
-                DockDestination.PEOPLE -> !busy
                 DockDestination.AGENT -> searchEnabled && !busy
                 else -> true
             }
@@ -192,14 +189,12 @@ internal fun AppBottomDock(
                         imageVector = when (destination) {
                             DockDestination.ALBUM -> Icons.Outlined.PhotoLibrary
                             DockDestination.HEATMAP -> Icons.Outlined.GridView
-                            DockDestination.PEOPLE -> Icons.Outlined.Face
                             DockDestination.AGENT -> Icons.Outlined.SmartToy
                             DockDestination.SETTINGS -> Icons.Outlined.Settings
                         },
                         contentDescription = when (destination) {
                             DockDestination.ALBUM -> "相册首页"
                             DockDestination.HEATMAP -> "年度热力图"
-                            DockDestination.PEOPLE -> "人物与宠物"
                             DockDestination.AGENT -> "Agent 搜索"
                             DockDestination.SETTINGS -> "模型设置"
                         },
@@ -217,7 +212,6 @@ internal fun AppBottomDock(
 private fun DockDestination.pageTestTag(): String = when (this) {
     DockDestination.ALBUM -> "dock_page_swipe_album"
     DockDestination.HEATMAP -> "dock_page_swipe_heatmap"
-    DockDestination.PEOPLE -> "dock_page_swipe_people"
     DockDestination.AGENT -> "dock_page_swipe_agent"
     DockDestination.SETTINGS -> "dock_page_swipe_settings"
 }
@@ -225,7 +219,6 @@ private fun DockDestination.pageTestTag(): String = when (this) {
 private fun DockDestination.testTag(): String = when (this) {
     DockDestination.ALBUM -> "dock_album"
     DockDestination.HEATMAP -> "dock_heatmap"
-    DockDestination.PEOPLE -> "dock_identity"
     DockDestination.AGENT -> "dock_agent"
     DockDestination.SETTINGS -> "dock_settings"
 }
@@ -233,7 +226,6 @@ private fun DockDestination.testTag(): String = when (this) {
 private fun DockDestination.contentDescription(): String = when (this) {
     DockDestination.ALBUM -> "相册首页"
     DockDestination.HEATMAP -> "年度热力图"
-    DockDestination.PEOPLE -> "人物与宠物"
     DockDestination.AGENT -> "Agent 搜索"
     DockDestination.SETTINGS -> "模型设置"
 }

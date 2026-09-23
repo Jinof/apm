@@ -1,0 +1,2188 @@
+{
+  "profile": "qwen35_4b_graph",
+  "model": "qwen3.5-4b",
+  "task": "annotation",
+  "repetition": "2",
+  "started_at": 1790120674.775039,
+  "warmup": false,
+  "image_sha256": "6e04b7e5f1a60367d5e12ec4819a3179fb7c1ebc7fa23d0e6619359c6f8966f9",
+  "sampling": {
+    "temperature": 0,
+    "seed": 23,
+    "max_tokens": 1536,
+    "enable_thinking": false
+  },
+  "cache_isolation": "unique cache_salt and image UUID per request",
+  "stream": true,
+  "status": 200,
+  "seconds": 24.381524087977596,
+  "ttft_seconds": 0.26886758604086936,
+  "last_content_seconds": 24.332990795955993,
+  "usage": {
+    "prompt_tokens": 911,
+    "total_tokens": 1426,
+    "completion_tokens": 515,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "finish_reason": "stop",
+  "stream_done": true,
+  "content": "{\n  \"caption\": \"一张木质桌子上摆放着水果、蓝色马克杯、橙色笔记本和手机，背景是透过窗户看到的海景。\",\n  \"tags\": [\n    \"桌子\",\n    \"水果\",\n    \"杯子\",\n    \"笔记本\",\n    \"手机\",\n    \"海景\",\n    \"咖啡\",\n    \"苹果\",\n    \"香蕉\",\n    \"窗户\"\n  ],\n  \"visible_text\": \"海边咖啡 LATTE ¥28 CAKE ¥18 APM 2026\",\n  \"facets\": {\n    \"daylight\": \"天亮\",\n    \"sky\": [\n      \"多云\"\n    ],\n    \"objects\": [\n      {\n        \"name\": \"苹果\",\n        \"count\": 3,\n        \"attributes\": [\n          \"红色\"\n        ]\n      },\n      {\n        \"name\": \"香蕉\",\n        \"count\": 2,\n        \"attributes\": [\n          \"黄色\"\n        ]\n      },\n      {\n        \"name\": \"马克杯\",\n        \"count\": 1,\n        \"attributes\": [\n          \"蓝色\"\n        ]\n      },\n      {\n        \"name\": \"笔记本\",\n        \"count\": 1,\n        \"attributes\": [\n          \"橙色\"\n        ]\n      },\n      {\n        \"name\": \"手机\",\n        \"count\": 1,\n        \"attributes\": [\n          \"黑色\"\n        ]\n      },\n      {\n        \"name\": \"勺子\",\n        \"count\": 1,\n        \"attributes\": [\n          \"金属\"\n        ]\n      },\n      {\n        \"name\": \"碗\",\n        \"count\": 1,\n        \"attributes\": [\n          \"白色\"\n        ]\n      },\n      {\n        \"name\": \"椅子\",\n        \"count\": 2,\n        \"attributes\": [\n          \"木质\"\n        ]\n      }\n    ],\n    \"people\": [\n      {\n        \"presentation\": \"不确定\",\n        \"count\": 1\n      }\n    ],\n    \"actions\": [],\n    \"scenes\": [\n      \"室内\"\n    ],\n    \"weather\": [\n      \"多云\"\n    ]\n  }\n}",
+  "reasoning": "",
+  "deltas": [
+    {
+      "seconds": 0.26886758604086936,
+      "characters": 1
+    },
+    {
+      "seconds": 0.31515371100977063,
+      "characters": 1
+    },
+    {
+      "seconds": 0.3620397719787434,
+      "characters": 1
+    },
+    {
+      "seconds": 0.4092268099775538,
+      "characters": 2
+    },
+    {
+      "seconds": 0.4558108070632443,
+      "characters": 7
+    },
+    {
+      "seconds": 0.5025529490085319,
+      "characters": 2
+    },
+    {
+      "seconds": 0.5495540830306709,
+      "characters": 2
+    },
+    {
+      "seconds": 0.5972682890715078,
+      "characters": 2
+    },
+    {
+      "seconds": 0.6451094719814137,
+      "characters": 2
+    },
+    {
+      "seconds": 0.6908954039681703,
+      "characters": 3
+    },
+    {
+      "seconds": 0.7377582819899544,
+      "characters": 2
+    },
+    {
+      "seconds": 0.7847884399816394,
+      "characters": 1
+    },
+    {
+      "seconds": 0.8314099250128493,
+      "characters": 2
+    },
+    {
+      "seconds": 0.8783823390258476,
+      "characters": 1
+    },
+    {
+      "seconds": 0.9254342879867181,
+      "characters": 2
+    },
+    {
+      "seconds": 0.9714815010083839,
+      "characters": 2
+    },
+    {
+      "seconds": 1.0179386980598792,
+      "characters": 1
+    },
+    {
+      "seconds": 1.0655253210570663,
+      "characters": 1
+    },
+    {
+      "seconds": 1.1112793170614168,
+      "characters": 2
+    },
+    {
+      "seconds": 1.160241701058112,
+      "characters": 3
+    },
+    {
+      "seconds": 1.2061739530181512,
+      "characters": 1
+    },
+    {
+      "seconds": 1.253112334990874,
+      "characters": 2
+    },
+    {
+      "seconds": 1.2998724119970575,
+      "characters": 1
+    },
+    {
+      "seconds": 1.3460006810491905,
+      "characters": 2
+    },
+    {
+      "seconds": 1.3921508690109476,
+      "characters": 1
+    },
+    {
+      "seconds": 1.438470226014033,
+      "characters": 2
+    },
+    {
+      "seconds": 1.486453328980133,
+      "characters": 2
+    },
+    {
+      "seconds": 1.5325346529716626,
+      "characters": 3
+    },
+    {
+      "seconds": 1.5805860760156065,
+      "characters": 2
+    },
+    {
+      "seconds": 1.626409512013197,
+      "characters": 1
+    },
+    {
+      "seconds": 1.6732016060268506,
+      "characters": 2
+    },
+    {
+      "seconds": 1.719199793995358,
+      "characters": 1
+    },
+    {
+      "seconds": 1.7653910550288856,
+      "characters": 1
+    },
+    {
+      "seconds": 1.8121884280117229,
+      "characters": 2
+    },
+    {
+      "seconds": 1.8579735760577023,
+      "characters": 4
+    },
+    {
+      "seconds": 1.907269416959025,
+      "characters": 2
+    },
+    {
+      "seconds": 1.9535676690284163,
+      "characters": 2
+    },
+    {
+      "seconds": 1.9990917450049892,
+      "characters": 1
+    },
+    {
+      "seconds": 2.0469708159798756,
+      "characters": 3
+    },
+    {
+      "seconds": 2.0926976120099425,
+      "characters": 2
+    },
+    {
+      "seconds": 2.1408599469577894,
+      "characters": 2
+    },
+    {
+      "seconds": 2.1862709029810503,
+      "characters": 2
+    },
+    {
+      "seconds": 2.234095797059126,
+      "characters": 1
+    },
+    {
+      "seconds": 2.2802431690506637,
+      "characters": 3
+    },
+    {
+      "seconds": 2.3276588160078973,
+      "characters": 2
+    },
+    {
+      "seconds": 2.3736972119659185,
+      "characters": 2
+    },
+    {
+      "seconds": 2.4212095140246674,
+      "characters": 2
+    },
+    {
+      "seconds": 2.4676079750061035,
+      "characters": 1
+    },
+    {
+      "seconds": 2.513388643041253,
+      "characters": 3
+    },
+    {
+      "seconds": 2.5604874880518764,
+      "characters": 2
+    },
+    {
+      "seconds": 2.607162941014394,
+      "characters": 2
+    },
+    {
+      "seconds": 2.653752634068951,
+      "characters": 2
+    },
+    {
+      "seconds": 2.702205898007378,
+      "characters": 1
+    },
+    {
+      "seconds": 2.7484256220050156,
+      "characters": 3
+    },
+    {
+      "seconds": 2.79554438800551,
+      "characters": 2
+    },
+    {
+      "seconds": 2.841204287018627,
+      "characters": 3
+    },
+    {
+      "seconds": 2.887369147967547,
+      "characters": 2
+    },
+    {
+      "seconds": 2.935606027022004,
+      "characters": 1
+    },
+    {
+      "seconds": 2.981464870972559,
+      "characters": 3
+    },
+    {
+      "seconds": 3.0278221960179508,
+      "characters": 2
+    },
+    {
+      "seconds": 3.074700416997075,
+      "characters": 2
+    },
+    {
+      "seconds": 3.122015391010791,
+      "characters": 2
+    },
+    {
+      "seconds": 3.169688845053315,
+      "characters": 1
+    },
+    {
+      "seconds": 3.2150294489692897,
+      "characters": 3
+    },
+    {
+      "seconds": 3.262436951044947,
+      "characters": 2
+    },
+    {
+      "seconds": 3.3091738120419905,
+      "characters": 2
+    },
+    {
+      "seconds": 3.3550540150608867,
+      "characters": 2
+    },
+    {
+      "seconds": 3.4024365090299398,
+      "characters": 1
+    },
+    {
+      "seconds": 3.45074681204278,
+      "characters": 3
+    },
+    {
+      "seconds": 3.49851161101833,
+      "characters": 2
+    },
+    {
+      "seconds": 3.544436807045713,
+      "characters": 2
+    },
+    {
+      "seconds": 3.590691026998684,
+      "characters": 2
+    },
+    {
+      "seconds": 3.6378421450499445,
+      "characters": 1
+    },
+    {
+      "seconds": 3.6849782220087945,
+      "characters": 3
+    },
+    {
+      "seconds": 3.7320517080370337,
+      "characters": 2
+    },
+    {
+      "seconds": 3.7783395280130208,
+      "characters": 2
+    },
+    {
+      "seconds": 3.8247938610147685,
+      "characters": 2
+    },
+    {
+      "seconds": 3.8726058590691537,
+      "characters": 1
+    },
+    {
+      "seconds": 3.918720063054934,
+      "characters": 3
+    },
+    {
+      "seconds": 3.9654587960103527,
+      "characters": 2
+    },
+    {
+      "seconds": 4.012442362029105,
+      "characters": 2
+    },
+    {
+      "seconds": 4.058407734031789,
+      "characters": 2
+    },
+    {
+      "seconds": 4.106253572041169,
+      "characters": 1
+    },
+    {
+      "seconds": 4.15335637005046,
+      "characters": 3
+    },
+    {
+      "seconds": 4.199516094056889,
+      "characters": 2
+    },
+    {
+      "seconds": 4.246299579041079,
+      "characters": 2
+    },
+    {
+      "seconds": 4.292636599042453,
+      "characters": 1
+    },
+    {
+      "seconds": 4.340472821961157,
+      "characters": 1
+    },
+    {
+      "seconds": 4.386993602034636,
+      "characters": 1
+    },
+    {
+      "seconds": 4.433801454957575,
+      "characters": 3
+    },
+    {
+      "seconds": 4.479556011036038,
+      "characters": 1
+    },
+    {
+      "seconds": 4.526066440041177,
+      "characters": 1
+    },
+    {
+      "seconds": 4.572673539980315,
+      "characters": 2
+    },
+    {
+      "seconds": 4.621444788062945,
+      "characters": 7
+    },
+    {
+      "seconds": 4.6681171209784225,
+      "characters": 5
+    },
+    {
+      "seconds": 4.713701180065982,
+      "characters": 2
+    },
+    {
+      "seconds": 4.761181466048583,
+      "characters": 2
+    },
+    {
+      "seconds": 4.807512886007316,
+      "characters": 2
+    },
+    {
+      "seconds": 4.855327605037019,
+      "characters": 2
+    },
+    {
+      "seconds": 4.903091346961446,
+      "characters": 4
+    },
+    {
+      "seconds": 4.946558058960363,
+      "characters": 2
+    },
+    {
+      "seconds": 4.995649115066044,
+      "characters": 2
+    },
+    {
+      "seconds": 5.041131447069347,
+      "characters": 1
+    },
+    {
+      "seconds": 5.0889557170448825,
+      "characters": 1
+    },
+    {
+      "seconds": 5.136772259022109,
+      "characters": 3
+    },
+    {
+      "seconds": 5.182108254055493,
+      "characters": 2
+    },
+    {
+      "seconds": 5.229193708044477,
+      "characters": 2
+    },
+    {
+      "seconds": 5.27550159196835,
+      "characters": 1
+    },
+    {
+      "seconds": 5.32253451703582,
+      "characters": 1
+    },
+    {
+      "seconds": 5.369043682003394,
+      "characters": 2
+    },
+    {
+      "seconds": 5.4172425280557945,
+      "characters": 2
+    },
+    {
+      "seconds": 5.463553805020638,
+      "characters": 1
+    },
+    {
+      "seconds": 5.510734874056652,
+      "characters": 1
+    },
+    {
+      "seconds": 5.55742781504523,
+      "characters": 1
+    },
+    {
+      "seconds": 5.603134097997099,
+      "characters": 1
+    },
+    {
+      "seconds": 5.6509937279624864,
+      "characters": 1
+    },
+    {
+      "seconds": 5.697519020992331,
+      "characters": 2
+    },
+    {
+      "seconds": 5.744030680973083,
+      "characters": 1
+    },
+    {
+      "seconds": 5.791626711026765,
+      "characters": 1
+    },
+    {
+      "seconds": 5.836519601056352,
+      "characters": 2
+    },
+    {
+      "seconds": 5.8837797429878265,
+      "characters": 3
+    },
+    {
+      "seconds": 5.931675101048313,
+      "characters": 3
+    },
+    {
+      "seconds": 5.9783706499729306,
+      "characters": 2
+    },
+    {
+      "seconds": 6.024988005985506,
+      "characters": 2
+    },
+    {
+      "seconds": 6.071655650972389,
+      "characters": 1
+    },
+    {
+      "seconds": 6.119342993013561,
+      "characters": 3
+    },
+    {
+      "seconds": 6.165953341987915,
+      "characters": 2
+    },
+    {
+      "seconds": 6.213121691020206,
+      "characters": 3
+    },
+    {
+      "seconds": 6.259472183068283,
+      "characters": 5
+    },
+    {
+      "seconds": 6.3054062749724835,
+      "characters": 2
+    },
+    {
+      "seconds": 6.351718239020556,
+      "characters": 2
+    },
+    {
+      "seconds": 6.398559147957712,
+      "characters": 2
+    },
+    {
+      "seconds": 6.445686009014025,
+      "characters": 2
+    },
+    {
+      "seconds": 6.492176388972439,
+      "characters": 1
+    },
+    {
+      "seconds": 6.538649728987366,
+      "characters": 3
+    },
+    {
+      "seconds": 6.585989999002777,
+      "characters": 2
+    },
+    {
+      "seconds": 6.633509645005688,
+      "characters": 3
+    },
+    {
+      "seconds": 6.679600792005658,
+      "characters": 2
+    },
+    {
+      "seconds": 6.727458326029591,
+      "characters": 2
+    },
+    {
+      "seconds": 6.774282466969453,
+      "characters": 1
+    },
+    {
+      "seconds": 6.820980575983413,
+      "characters": 5
+    },
+    {
+      "seconds": 6.867370172054507,
+      "characters": 2
+    },
+    {
+      "seconds": 6.9156210829969496,
+      "characters": 2
+    },
+    {
+      "seconds": 6.9603802770143375,
+      "characters": 1
+    },
+    {
+      "seconds": 7.008227954967879,
+      "characters": 1
+    },
+    {
+      "seconds": 7.053105405066162,
+      "characters": 3
+    },
+    {
+      "seconds": 7.10216633300297,
+      "characters": 3
+    },
+    {
+      "seconds": 7.1495731780305505,
+      "characters": 1
+    },
+    {
+      "seconds": 7.196215750998817,
+      "characters": 3
+    },
+    {
+      "seconds": 7.2440184210427105,
+      "characters": 2
+    },
+    {
+      "seconds": 7.290054464014247,
+      "characters": 7
+    },
+    {
+      "seconds": 7.337226588977501,
+      "characters": 2
+    },
+    {
+      "seconds": 7.38420882599894,
+      "characters": 2
+    },
+    {
+      "seconds": 7.430835254024714,
+      "characters": 1
+    },
+    {
+      "seconds": 7.478447876055725,
+      "characters": 5
+    },
+    {
+      "seconds": 7.5239422710146755,
+      "characters": 2
+    },
+    {
+      "seconds": 7.570774635998532,
+      "characters": 1
+    },
+    {
+      "seconds": 7.6184309689560905,
+      "characters": 7
+    },
+    {
+      "seconds": 7.665370358037762,
+      "characters": 2
+    },
+    {
+      "seconds": 7.712316963006742,
+      "characters": 4
+    },
+    {
+      "seconds": 7.758317710016854,
+      "characters": 2
+    },
+    {
+      "seconds": 7.805487659061328,
+      "characters": 2
+    },
+    {
+      "seconds": 7.853267497033812,
+      "characters": 2
+    },
+    {
+      "seconds": 7.899142084992491,
+      "characters": 2
+    },
+    {
+      "seconds": 7.946183986030519,
+      "characters": 1
+    },
+    {
+      "seconds": 7.992395565030165,
+      "characters": 7
+    },
+    {
+      "seconds": 8.039586203056388,
+      "characters": 2
+    },
+    {
+      "seconds": 8.085896454053,
+      "characters": 5
+    },
+    {
+      "seconds": 8.13415293302387,
+      "characters": 2
+    },
+    {
+      "seconds": 8.180259297019802,
+      "characters": 1
+    },
+    {
+      "seconds": 8.227098540985025,
+      "characters": 1
+    },
+    {
+      "seconds": 8.273844394017942,
+      "characters": 1
+    },
+    {
+      "seconds": 8.320839670021087,
+      "characters": 1
+    },
+    {
+      "seconds": 8.367161986068822,
+      "characters": 7
+    },
+    {
+      "seconds": 8.41381105396431,
+      "characters": 2
+    },
+    {
+      "seconds": 8.459937370033003,
+      "characters": 10
+    },
+    {
+      "seconds": 8.508081928011961,
+      "characters": 2
+    },
+    {
+      "seconds": 8.55589331802912,
+      "characters": 2
+    },
+    {
+      "seconds": 8.602650993969291,
+      "characters": 1
+    },
+    {
+      "seconds": 8.650909809046425,
+      "characters": 9
+    },
+    {
+      "seconds": 8.69791026902385,
+      "characters": 2
+    },
+    {
+      "seconds": 8.744187481002882,
+      "characters": 2
+    },
+    {
+      "seconds": 8.790756453061476,
+      "characters": 1
+    },
+    {
+      "seconds": 8.837353234062903,
+      "characters": 1
+    },
+    {
+      "seconds": 8.884032526053488,
+      "characters": 7
+    },
+    {
+      "seconds": 8.930757530033588,
+      "characters": 2
+    },
+    {
+      "seconds": 8.977369382977486,
+      "characters": 1
+    },
+    {
+      "seconds": 9.023424193961546,
+      "characters": 5
+    },
+    {
+      "seconds": 9.07104715204332,
+      "characters": 3
+    },
+    {
+      "seconds": 9.117252571042627,
+      "characters": 1
+    },
+    {
+      "seconds": 9.165308697032742,
+      "characters": 5
+    },
+    {
+      "seconds": 9.21202765405178,
+      "characters": 2
+    },
+    {
+      "seconds": 9.258804145967588,
+      "characters": 1
+    },
+    {
+      "seconds": 9.30583847896196,
+      "characters": 7
+    },
+    {
+      "seconds": 9.352088122046553,
+      "characters": 2
+    },
+    {
+      "seconds": 9.399251991068013,
+      "characters": 4
+    },
+    {
+      "seconds": 9.445980099029839,
+      "characters": 2
+    },
+    {
+      "seconds": 9.492965599987656,
+      "characters": 2
+    },
+    {
+      "seconds": 9.540025852969848,
+      "characters": 2
+    },
+    {
+      "seconds": 9.58712319296319,
+      "characters": 2
+    },
+    {
+      "seconds": 9.633794213994406,
+      "characters": 1
+    },
+    {
+      "seconds": 9.681331522995606,
+      "characters": 7
+    },
+    {
+      "seconds": 9.728127839043736,
+      "characters": 2
+    },
+    {
+      "seconds": 9.773997418000363,
+      "characters": 5
+    },
+    {
+      "seconds": 9.821039943024516,
+      "characters": 2
+    },
+    {
+      "seconds": 9.867456355015747,
+      "characters": 1
+    },
+    {
+      "seconds": 9.913248653989285,
+      "characters": 1
+    },
+    {
+      "seconds": 9.963180318009108,
+      "characters": 1
+    },
+    {
+      "seconds": 10.010359002975747,
+      "characters": 1
+    },
+    {
+      "seconds": 10.05742695205845,
+      "characters": 7
+    },
+    {
+      "seconds": 10.104320660000667,
+      "characters": 2
+    },
+    {
+      "seconds": 10.152479137992486,
+      "characters": 10
+    },
+    {
+      "seconds": 10.199369903071783,
+      "characters": 2
+    },
+    {
+      "seconds": 10.246724508004263,
+      "characters": 2
+    },
+    {
+      "seconds": 10.294373849057592,
+      "characters": 1
+    },
+    {
+      "seconds": 10.341199157061055,
+      "characters": 9
+    },
+    {
+      "seconds": 10.389346819021739,
+      "characters": 2
+    },
+    {
+      "seconds": 10.43696334399283,
+      "characters": 2
+    },
+    {
+      "seconds": 10.483979964978062,
+      "characters": 1
+    },
+    {
+      "seconds": 10.530673849047162,
+      "characters": 1
+    },
+    {
+      "seconds": 10.578465303056873,
+      "characters": 7
+    },
+    {
+      "seconds": 10.626234675990418,
+      "characters": 2
+    },
+    {
+      "seconds": 10.67474707402289,
+      "characters": 1
+    },
+    {
+      "seconds": 10.720874030026607,
+      "characters": 5
+    },
+    {
+      "seconds": 10.767199513036758,
+      "characters": 3
+    },
+    {
+      "seconds": 10.813935781014152,
+      "characters": 1
+    },
+    {
+      "seconds": 10.861053041997366,
+      "characters": 5
+    },
+    {
+      "seconds": 10.908675455022603,
+      "characters": 2
+    },
+    {
+      "seconds": 10.954579066019505,
+      "characters": 1
+    },
+    {
+      "seconds": 11.00164999102708,
+      "characters": 7
+    },
+    {
+      "seconds": 11.048077731044032,
+      "characters": 2
+    },
+    {
+      "seconds": 11.09499681496527,
+      "characters": 4
+    },
+    {
+      "seconds": 11.14257212402299,
+      "characters": 2
+    },
+    {
+      "seconds": 11.190170392976142,
+      "characters": 2
+    },
+    {
+      "seconds": 11.237143350066617,
+      "characters": 2
+    },
+    {
+      "seconds": 11.283744081971236,
+      "characters": 1
+    },
+    {
+      "seconds": 11.330030365032144,
+      "characters": 2
+    },
+    {
+      "seconds": 11.376916873035952,
+      "characters": 1
+    },
+    {
+      "seconds": 11.42343288497068,
+      "characters": 7
+    },
+    {
+      "seconds": 11.470607410068624,
+      "characters": 2
+    },
+    {
+      "seconds": 11.517079020966776,
+      "characters": 5
+    },
+    {
+      "seconds": 11.564213178004138,
+      "characters": 2
+    },
+    {
+      "seconds": 11.609431348042563,
+      "characters": 1
+    },
+    {
+      "seconds": 11.65881963504944,
+      "characters": 1
+    },
+    {
+      "seconds": 11.705374318989925,
+      "characters": 1
+    },
+    {
+      "seconds": 11.751958395005204,
+      "characters": 1
+    },
+    {
+      "seconds": 11.798659831052646,
+      "characters": 7
+    },
+    {
+      "seconds": 11.844502241001464,
+      "characters": 2
+    },
+    {
+      "seconds": 11.892493695020676,
+      "characters": 10
+    },
+    {
+      "seconds": 11.938224202021956,
+      "characters": 2
+    },
+    {
+      "seconds": 11.984482389059849,
+      "characters": 2
+    },
+    {
+      "seconds": 12.031173728988506,
+      "characters": 1
+    },
+    {
+      "seconds": 12.07782732497435,
+      "characters": 9
+    },
+    {
+      "seconds": 12.125725034973584,
+      "characters": 2
+    },
+    {
+      "seconds": 12.172177286003716,
+      "characters": 2
+    },
+    {
+      "seconds": 12.219224691041745,
+      "characters": 1
+    },
+    {
+      "seconds": 12.267678000964224,
+      "characters": 1
+    },
+    {
+      "seconds": 12.312567610060796,
+      "characters": 7
+    },
+    {
+      "seconds": 12.36114291998092,
+      "characters": 2
+    },
+    {
+      "seconds": 12.406608883058652,
+      "characters": 1
+    },
+    {
+      "seconds": 12.453275677980855,
+      "characters": 5
+    },
+    {
+      "seconds": 12.499938922002912,
+      "characters": 3
+    },
+    {
+      "seconds": 12.548488936037757,
+      "characters": 1
+    },
+    {
+      "seconds": 12.593871074961498,
+      "characters": 5
+    },
+    {
+      "seconds": 12.64113228698261,
+      "characters": 2
+    },
+    {
+      "seconds": 12.687794347060844,
+      "characters": 1
+    },
+    {
+      "seconds": 12.734497718978673,
+      "characters": 7
+    },
+    {
+      "seconds": 12.78126942703966,
+      "characters": 2
+    },
+    {
+      "seconds": 12.82794358197134,
+      "characters": 4
+    },
+    {
+      "seconds": 12.876772284973413,
+      "characters": 2
+    },
+    {
+      "seconds": 12.923619881039485,
+      "characters": 2
+    },
+    {
+      "seconds": 12.97045349306427,
+      "characters": 3
+    },
+    {
+      "seconds": 13.016806927975267,
+      "characters": 2
+    },
+    {
+      "seconds": 13.063942364999093,
+      "characters": 1
+    },
+    {
+      "seconds": 13.110393624054268,
+      "characters": 7
+    },
+    {
+      "seconds": 13.158222452970222,
+      "characters": 2
+    },
+    {
+      "seconds": 13.204816401004791,
+      "characters": 5
+    },
+    {
+      "seconds": 13.250144746969454,
+      "characters": 2
+    },
+    {
+      "seconds": 13.2971545830369,
+      "characters": 1
+    },
+    {
+      "seconds": 13.344305683043785,
+      "characters": 1
+    },
+    {
+      "seconds": 13.392347745015286,
+      "characters": 1
+    },
+    {
+      "seconds": 13.439050653018057,
+      "characters": 1
+    },
+    {
+      "seconds": 13.485855143982917,
+      "characters": 7
+    },
+    {
+      "seconds": 13.532733379979618,
+      "characters": 2
+    },
+    {
+      "seconds": 13.579427344026044,
+      "characters": 10
+    },
+    {
+      "seconds": 13.626969133038074,
+      "characters": 2
+    },
+    {
+      "seconds": 13.6734120240435,
+      "characters": 2
+    },
+    {
+      "seconds": 13.7220887420699,
+      "characters": 1
+    },
+    {
+      "seconds": 13.76892525004223,
+      "characters": 9
+    },
+    {
+      "seconds": 13.816053790971637,
+      "characters": 2
+    },
+    {
+      "seconds": 13.863704907009378,
+      "characters": 2
+    },
+    {
+      "seconds": 13.909821685985662,
+      "characters": 1
+    },
+    {
+      "seconds": 13.956972755026072,
+      "characters": 1
+    },
+    {
+      "seconds": 14.003591086016968,
+      "characters": 7
+    },
+    {
+      "seconds": 14.05047136999201,
+      "characters": 2
+    },
+    {
+      "seconds": 14.09722666197922,
+      "characters": 1
+    },
+    {
+      "seconds": 14.144719459000044,
+      "characters": 5
+    },
+    {
+      "seconds": 14.191256014048122,
+      "characters": 3
+    },
+    {
+      "seconds": 14.237422968959436,
+      "characters": 1
+    },
+    {
+      "seconds": 14.28512655000668,
+      "characters": 5
+    },
+    {
+      "seconds": 14.33218281797599,
+      "characters": 2
+    },
+    {
+      "seconds": 14.378763932967559,
+      "characters": 1
+    },
+    {
+      "seconds": 14.424641399993561,
+      "characters": 7
+    },
+    {
+      "seconds": 14.473142870003358,
+      "characters": 2
+    },
+    {
+      "seconds": 14.519646352971904,
+      "characters": 4
+    },
+    {
+      "seconds": 14.566505308961496,
+      "characters": 2
+    },
+    {
+      "seconds": 14.613487481023185,
+      "characters": 2
+    },
+    {
+      "seconds": 14.661108677042648,
+      "characters": 2
+    },
+    {
+      "seconds": 14.707956161000766,
+      "characters": 2
+    },
+    {
+      "seconds": 14.754408188047819,
+      "characters": 1
+    },
+    {
+      "seconds": 14.801507879979908,
+      "characters": 7
+    },
+    {
+      "seconds": 14.84860904503148,
+      "characters": 2
+    },
+    {
+      "seconds": 14.895401648012921,
+      "characters": 5
+    },
+    {
+      "seconds": 14.942700861021876,
+      "characters": 2
+    },
+    {
+      "seconds": 14.987835254054517,
+      "characters": 1
+    },
+    {
+      "seconds": 15.036399508011527,
+      "characters": 1
+    },
+    {
+      "seconds": 15.082721870974638,
+      "characters": 1
+    },
+    {
+      "seconds": 15.130389036028646,
+      "characters": 1
+    },
+    {
+      "seconds": 15.176837655017152,
+      "characters": 7
+    },
+    {
+      "seconds": 15.223961891024373,
+      "characters": 2
+    },
+    {
+      "seconds": 15.271053391043097,
+      "characters": 10
+    },
+    {
+      "seconds": 15.317883483017795,
+      "characters": 2
+    },
+    {
+      "seconds": 15.362923428067006,
+      "characters": 2
+    },
+    {
+      "seconds": 15.411575314006768,
+      "characters": 1
+    },
+    {
+      "seconds": 15.458439597976394,
+      "characters": 9
+    },
+    {
+      "seconds": 15.505728826043196,
+      "characters": 2
+    },
+    {
+      "seconds": 15.552375541068614,
+      "characters": 2
+    },
+    {
+      "seconds": 15.599038016982377,
+      "characters": 1
+    },
+    {
+      "seconds": 15.646592637058347,
+      "characters": 1
+    },
+    {
+      "seconds": 15.693604376981966,
+      "characters": 7
+    },
+    {
+      "seconds": 15.740602053003386,
+      "characters": 2
+    },
+    {
+      "seconds": 15.787188895978034,
+      "characters": 1
+    },
+    {
+      "seconds": 15.834153052070178,
+      "characters": 5
+    },
+    {
+      "seconds": 15.880759094958194,
+      "characters": 3
+    },
+    {
+      "seconds": 15.927648019045591,
+      "characters": 1
+    },
+    {
+      "seconds": 15.974401951069012,
+      "characters": 5
+    },
+    {
+      "seconds": 16.021534282015637,
+      "characters": 2
+    },
+    {
+      "seconds": 16.068468534038402,
+      "characters": 1
+    },
+    {
+      "seconds": 16.114525601034984,
+      "characters": 7
+    },
+    {
+      "seconds": 16.163018143037334,
+      "characters": 2
+    },
+    {
+      "seconds": 16.20842535200063,
+      "characters": 4
+    },
+    {
+      "seconds": 16.256552550010383,
+      "characters": 2
+    },
+    {
+      "seconds": 16.303895905963145,
+      "characters": 2
+    },
+    {
+      "seconds": 16.35096167703159,
+      "characters": 2
+    },
+    {
+      "seconds": 16.396720840013586,
+      "characters": 2
+    },
+    {
+      "seconds": 16.443927156040445,
+      "characters": 1
+    },
+    {
+      "seconds": 16.490478622959927,
+      "characters": 7
+    },
+    {
+      "seconds": 16.5379567630589,
+      "characters": 2
+    },
+    {
+      "seconds": 16.584241574048065,
+      "characters": 5
+    },
+    {
+      "seconds": 16.63111422606744,
+      "characters": 2
+    },
+    {
+      "seconds": 16.677449133014306,
+      "characters": 1
+    },
+    {
+      "seconds": 16.724894601036794,
+      "characters": 1
+    },
+    {
+      "seconds": 16.771527332020923,
+      "characters": 1
+    },
+    {
+      "seconds": 16.819572848966345,
+      "characters": 1
+    },
+    {
+      "seconds": 16.866013532038778,
+      "characters": 7
+    },
+    {
+      "seconds": 16.911820742068812,
+      "characters": 2
+    },
+    {
+      "seconds": 16.960094116046093,
+      "characters": 10
+    },
+    {
+      "seconds": 17.006675919052213,
+      "characters": 2
+    },
+    {
+      "seconds": 17.05404207506217,
+      "characters": 2
+    },
+    {
+      "seconds": 17.101251446991228,
+      "characters": 1
+    },
+    {
+      "seconds": 17.14817582606338,
+      "characters": 9
+    },
+    {
+      "seconds": 17.19504039804451,
+      "characters": 2
+    },
+    {
+      "seconds": 17.24284391500987,
+      "characters": 2
+    },
+    {
+      "seconds": 17.28887061297428,
+      "characters": 1
+    },
+    {
+      "seconds": 17.335397375980392,
+      "characters": 1
+    },
+    {
+      "seconds": 17.382278571021743,
+      "characters": 7
+    },
+    {
+      "seconds": 17.429906776058488,
+      "characters": 2
+    },
+    {
+      "seconds": 17.476745779043995,
+      "characters": 1
+    },
+    {
+      "seconds": 17.52312324603554,
+      "characters": 5
+    },
+    {
+      "seconds": 17.569591513019986,
+      "characters": 3
+    },
+    {
+      "seconds": 17.61720206902828,
+      "characters": 1
+    },
+    {
+      "seconds": 17.6642259049695,
+      "characters": 5
+    },
+    {
+      "seconds": 17.711189051973633,
+      "characters": 2
+    },
+    {
+      "seconds": 17.757878007018007,
+      "characters": 1
+    },
+    {
+      "seconds": 17.804239633958787,
+      "characters": 7
+    },
+    {
+      "seconds": 17.851045534014702,
+      "characters": 2
+    },
+    {
+      "seconds": 17.89838322601281,
+      "characters": 4
+    },
+    {
+      "seconds": 17.946611911058426,
+      "characters": 2
+    },
+    {
+      "seconds": 17.99262452905532,
+      "characters": 2
+    },
+    {
+      "seconds": 18.039182443986647,
+      "characters": 1
+    },
+    {
+      "seconds": 18.08573251904454,
+      "characters": 2
+    },
+    {
+      "seconds": 18.133005331037566,
+      "characters": 1
+    },
+    {
+      "seconds": 18.180268847034313,
+      "characters": 7
+    },
+    {
+      "seconds": 18.226766570005566,
+      "characters": 2
+    },
+    {
+      "seconds": 18.27353949297685,
+      "characters": 5
+    },
+    {
+      "seconds": 18.320380783989094,
+      "characters": 2
+    },
+    {
+      "seconds": 18.36627767398022,
+      "characters": 1
+    },
+    {
+      "seconds": 18.415134376031347,
+      "characters": 1
+    },
+    {
+      "seconds": 18.46121173002757,
+      "characters": 1
+    },
+    {
+      "seconds": 18.508026350056753,
+      "characters": 1
+    },
+    {
+      "seconds": 18.55574727396015,
+      "characters": 7
+    },
+    {
+      "seconds": 18.601602419978008,
+      "characters": 2
+    },
+    {
+      "seconds": 18.649568961001933,
+      "characters": 10
+    },
+    {
+      "seconds": 18.695071322028525,
+      "characters": 2
+    },
+    {
+      "seconds": 18.743899928056635,
+      "characters": 2
+    },
+    {
+      "seconds": 18.791717763990164,
+      "characters": 1
+    },
+    {
+      "seconds": 18.83870028797537,
+      "characters": 9
+    },
+    {
+      "seconds": 18.88436373800505,
+      "characters": 2
+    },
+    {
+      "seconds": 18.930973205016926,
+      "characters": 2
+    },
+    {
+      "seconds": 18.97791547200177,
+      "characters": 1
+    },
+    {
+      "seconds": 19.026438076980412,
+      "characters": 1
+    },
+    {
+      "seconds": 19.071694822981954,
+      "characters": 7
+    },
+    {
+      "seconds": 19.120751284994185,
+      "characters": 2
+    },
+    {
+      "seconds": 19.16735200001858,
+      "characters": 1
+    },
+    {
+      "seconds": 19.212776520987973,
+      "characters": 5
+    },
+    {
+      "seconds": 19.25933618005365,
+      "characters": 3
+    },
+    {
+      "seconds": 19.306371647049673,
+      "characters": 1
+    },
+    {
+      "seconds": 19.3530506179668,
+      "characters": 5
+    },
+    {
+      "seconds": 19.399853621027432,
+      "characters": 2
+    },
+    {
+      "seconds": 19.446596879977733,
+      "characters": 1
+    },
+    {
+      "seconds": 19.49347876396496,
+      "characters": 7
+    },
+    {
+      "seconds": 19.540139446035028,
+      "characters": 2
+    },
+    {
+      "seconds": 19.58730883395765,
+      "characters": 4
+    },
+    {
+      "seconds": 19.634803134016693,
+      "characters": 2
+    },
+    {
+      "seconds": 19.681791385053657,
+      "characters": 2
+    },
+    {
+      "seconds": 19.72874752501957,
+      "characters": 2
+    },
+    {
+      "seconds": 19.77574516797904,
+      "characters": 2
+    },
+    {
+      "seconds": 19.822157434071414,
+      "characters": 1
+    },
+    {
+      "seconds": 19.869025702006184,
+      "characters": 7
+    },
+    {
+      "seconds": 19.917725075036287,
+      "characters": 2
+    },
+    {
+      "seconds": 19.96413138997741,
+      "characters": 5
+    },
+    {
+      "seconds": 20.01089455303736,
+      "characters": 2
+    },
+    {
+      "seconds": 20.056725873961113,
+      "characters": 1
+    },
+    {
+      "seconds": 20.103153932956047,
+      "characters": 1
+    },
+    {
+      "seconds": 20.15073300106451,
+      "characters": 1
+    },
+    {
+      "seconds": 20.1974545000121,
+      "characters": 1
+    },
+    {
+      "seconds": 20.24439595104195,
+      "characters": 7
+    },
+    {
+      "seconds": 20.291127098025754,
+      "characters": 2
+    },
+    {
+      "seconds": 20.33773803699296,
+      "characters": 10
+    },
+    {
+      "seconds": 20.38635480205994,
+      "characters": 2
+    },
+    {
+      "seconds": 20.43314234900754,
+      "characters": 2
+    },
+    {
+      "seconds": 20.478379750042222,
+      "characters": 1
+    },
+    {
+      "seconds": 20.524999137036502,
+      "characters": 9
+    },
+    {
+      "seconds": 20.57246719696559,
+      "characters": 2
+    },
+    {
+      "seconds": 20.6216757070506,
+      "characters": 2
+    },
+    {
+      "seconds": 20.666337875067256,
+      "characters": 1
+    },
+    {
+      "seconds": 20.71353662200272,
+      "characters": 1
+    },
+    {
+      "seconds": 20.759995784959756,
+      "characters": 7
+    },
+    {
+      "seconds": 20.80854774999898,
+      "characters": 2
+    },
+    {
+      "seconds": 20.854242959991097,
+      "characters": 1
+    },
+    {
+      "seconds": 20.9010700910585,
+      "characters": 5
+    },
+    {
+      "seconds": 20.948162470012903,
+      "characters": 2
+    },
+    {
+      "seconds": 20.99642565101385,
+      "characters": 1
+    },
+    {
+      "seconds": 21.04392959899269,
+      "characters": 3
+    },
+    {
+      "seconds": 21.08989704796113,
+      "characters": 3
+    },
+    {
+      "seconds": 21.138049973058514,
+      "characters": 1
+    },
+    {
+      "seconds": 21.18439644796308,
+      "characters": 3
+    },
+    {
+      "seconds": 21.232018762966618,
+      "characters": 2
+    },
+    {
+      "seconds": 21.27862506196834,
+      "characters": 6
+    },
+    {
+      "seconds": 21.325457024970092,
+      "characters": 2
+    },
+    {
+      "seconds": 21.372327468008734,
+      "characters": 2
+    },
+    {
+      "seconds": 21.41921783098951,
+      "characters": 1
+    },
+    {
+      "seconds": 21.46591864200309,
+      "characters": 5
+    },
+    {
+      "seconds": 21.513356189010665,
+      "characters": 2
+    },
+    {
+      "seconds": 21.558895830065012,
+      "characters": 1
+    },
+    {
+      "seconds": 21.605563585064374,
+      "characters": 7
+    },
+    {
+      "seconds": 21.65318878099788,
+      "characters": 2
+    },
+    {
+      "seconds": 21.700474119978026,
+      "characters": 12
+    },
+    {
+      "seconds": 21.74688985897228,
+      "characters": 2
+    },
+    {
+      "seconds": 21.793542461004108,
+      "characters": 2
+    },
+    {
+      "seconds": 21.841906617977656,
+      "characters": 3
+    },
+    {
+      "seconds": 21.88924152497202,
+      "characters": 2
+    },
+    {
+      "seconds": 21.936080927960575,
+      "characters": 1
+    },
+    {
+      "seconds": 21.982618427020498,
+      "characters": 7
+    },
+    {
+      "seconds": 22.029462454025634,
+      "characters": 2
+    },
+    {
+      "seconds": 22.07655529701151,
+      "characters": 5
+    },
+    {
+      "seconds": 22.12440857302863,
+      "characters": 2
+    },
+    {
+      "seconds": 22.17137592798099,
+      "characters": 1
+    },
+    {
+      "seconds": 22.21771193796303,
+      "characters": 1
+    },
+    {
+      "seconds": 22.26490070100408,
+      "characters": 1
+    },
+    {
+      "seconds": 22.31158860004507,
+      "characters": 5
+    },
+    {
+      "seconds": 22.35715150507167,
+      "characters": 2
+    },
+    {
+      "seconds": 22.405308300978504,
+      "characters": 1
+    },
+    {
+      "seconds": 22.4510832070373,
+      "characters": 3
+    },
+    {
+      "seconds": 22.499268786981702,
+      "characters": 3
+    },
+    {
+      "seconds": 22.544375788071193,
+      "characters": 1
+    },
+    {
+      "seconds": 22.593074281001464,
+      "characters": 3
+    },
+    {
+      "seconds": 22.640464548021555,
+      "characters": 2
+    },
+    {
+      "seconds": 22.687607311061583,
+      "characters": 7
+    },
+    {
+      "seconds": 22.732614999986254,
+      "characters": 2
+    },
+    {
+      "seconds": 22.77944902703166,
+      "characters": 4
+    },
+    {
+      "seconds": 22.828176944050938,
+      "characters": 1
+    },
+    {
+      "seconds": 22.874994346057065,
+      "characters": 3
+    },
+    {
+      "seconds": 22.92042107495945,
+      "characters": 2
+    },
+    {
+      "seconds": 22.968864672002383,
+      "characters": 6
+    },
+    {
+      "seconds": 23.015883450978436,
+      "characters": 2
+    },
+    {
+      "seconds": 23.06304000597447,
+      "characters": 2
+    },
+    {
+      "seconds": 23.109718224965036,
+      "characters": 1
+    },
+    {
+      "seconds": 23.15698578802403,
+      "characters": 5
+    },
+    {
+      "seconds": 23.20426015101839,
+      "characters": 2
+    },
+    {
+      "seconds": 23.250273281009868,
+      "characters": 2
+    },
+    {
+      "seconds": 23.29699082800653,
+      "characters": 1
+    },
+    {
+      "seconds": 23.345368743990548,
+      "characters": 1
+    },
+    {
+      "seconds": 23.39098260900937,
+      "characters": 3
+    },
+    {
+      "seconds": 23.43981434998568,
+      "characters": 3
+    },
+    {
+      "seconds": 23.486161784036085,
+      "characters": 1
+    },
+    {
+      "seconds": 23.533236611052416,
+      "characters": 3
+    },
+    {
+      "seconds": 23.58001716597937,
+      "characters": 2
+    },
+    {
+      "seconds": 23.627386729000136,
+      "characters": 7
+    },
+    {
+      "seconds": 23.674710595980287,
+      "characters": 2
+    },
+    {
+      "seconds": 23.72127110301517,
+      "characters": 2
+    },
+    {
+      "seconds": 23.768322105053812,
+      "characters": 1
+    },
+    {
+      "seconds": 23.815243651974015,
+      "characters": 5
+    },
+    {
+      "seconds": 23.86137250997126,
+      "characters": 2
+    },
+    {
+      "seconds": 23.911642589024268,
+      "characters": 2
+    },
+    {
+      "seconds": 23.957332613994367,
+      "characters": 1
+    },
+    {
+      "seconds": 24.004122256999835,
+      "characters": 1
+    },
+    {
+      "seconds": 24.051430796040222,
+      "characters": 3
+    },
+    {
+      "seconds": 24.097707477980293,
+      "characters": 2
+    },
+    {
+      "seconds": 24.146600099047646,
+      "characters": 1
+    },
+    {
+      "seconds": 24.192276124027558,
+      "characters": 1
+    },
+    {
+      "seconds": 24.239622903056443,
+      "characters": 2
+    },
+    {
+      "seconds": 24.28638382605277,
+      "characters": 1
+    },
+    {
+      "seconds": 24.332990795955993,
+      "characters": 1
+    }
+  ],
+  "decode_tokens_per_second": 21.35959808368239,
+  "output_tokens_per_total_second": 21.12255157395775,
+  "schema_valid": true,
+  "parsed": {
+    "caption": "一张木质桌子上摆放着水果、蓝色马克杯、橙色笔记本和手机，背景是透过窗户看到的海景。",
+    "tags": [
+      "桌子",
+      "水果",
+      "杯子",
+      "笔记本",
+      "手机",
+      "海景",
+      "咖啡",
+      "苹果",
+      "香蕉",
+      "窗户"
+    ],
+    "visible_text": "海边咖啡 LATTE ¥28 CAKE ¥18 APM 2026",
+    "facets": {
+      "daylight": "天亮",
+      "sky": [
+        "多云"
+      ],
+      "objects": [
+        {
+          "name": "苹果",
+          "count": 3,
+          "attributes": [
+            "红色"
+          ]
+        },
+        {
+          "name": "香蕉",
+          "count": 2,
+          "attributes": [
+            "黄色"
+          ]
+        },
+        {
+          "name": "马克杯",
+          "count": 1,
+          "attributes": [
+            "蓝色"
+          ]
+        },
+        {
+          "name": "笔记本",
+          "count": 1,
+          "attributes": [
+            "橙色"
+          ]
+        },
+        {
+          "name": "手机",
+          "count": 1,
+          "attributes": [
+            "黑色"
+          ]
+        },
+        {
+          "name": "勺子",
+          "count": 1,
+          "attributes": [
+            "金属"
+          ]
+        },
+        {
+          "name": "碗",
+          "count": 1,
+          "attributes": [
+            "白色"
+          ]
+        },
+        {
+          "name": "椅子",
+          "count": 2,
+          "attributes": [
+            "木质"
+          ]
+        }
+      ],
+      "people": [
+        {
+          "presentation": "不确定",
+          "count": 1
+        }
+      ],
+      "actions": [],
+      "scenes": [
+        "室内"
+      ],
+      "weather": [
+        "多云"
+      ]
+    }
+  },
+  "ok": true
+}

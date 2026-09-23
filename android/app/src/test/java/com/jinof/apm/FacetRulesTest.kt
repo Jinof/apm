@@ -47,27 +47,6 @@ class FacetRulesTest {
         }
     }
 
-    @Test
-    fun recognitionProfileNormalizesAndSeparatesKinds() {
-        val profile = RecognitionProfile.fromText(" 小明，小红，小明 ", "旺财\n咪咪")
-
-        assertEquals(listOf("小明", "小红"), profile.personNames)
-        assertEquals(listOf("旺财", "咪咪"), profile.petNames)
-        assertThrows(IllegalArgumentException::class.java) {
-            RecognitionProfile.fromText("小明", "小明")
-        }
-    }
-
-    @Test
-    fun annotationContractRejectsNameOutsidePreset() {
-        val profile = RecognitionProfile(personNames = listOf("小明"), petNames = listOf("旺财"))
-
-        assertThrows(IllegalArgumentException::class.java) {
-            profile.validate(listOf(RecognizedSubject("陌生人", "人物")))
-        }
-        profile.validate(listOf(RecognizedSubject("旺财", "宠物")))
-    }
-
     private fun sampleAnnotation() = PhotoAnnotation(
         caption = "夜晚的公园里，一位女性呈现的人带着两只狗跑步",
         tags = listOf("夜晚", "狗", "公园"),

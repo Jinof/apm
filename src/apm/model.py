@@ -2,18 +2,18 @@ from __future__ import annotations
 
 import base64
 import json
+import math
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from ipaddress import ip_address
 from pathlib import Path
-from typing import Iterable
 from urllib.parse import urlparse
 
 
-PROMPT_VERSION = "photo-annotation-zh-v3"
-DEFAULT_MODEL = "qwen3-vl:4b"
-DEFAULT_OLLAMA_URL = "http://127.0.0.1:11434"
+PROMPT_VERSION = "photo-annotation-zh-v4"
+MAX_RESPONSE_BYTES = 4 * 1024 * 1024
+MAX_IMAGE_BYTES = 20 * 1024 * 1024
 
 STRING_ARRAY = {"type": "array", "items": {"type": "string"}}
 
@@ -38,6 +38,7 @@ ANNOTATION_SCHEMA = {
             "type": "object",
             "properties": {
                 "daylight": {
+                    "type": "string",
                     "enum": ["天亮", "天黑", "日出日落", "室内", "不确定"]
                 },
                 "sky": {**STRING_ARRAY, "maxItems": 10},
@@ -62,6 +63,7 @@ ANNOTATION_SCHEMA = {
                         "type": "object",
                         "properties": {
                             "presentation": {
+                                "type": "string",
                                 "enum": [
                                     "男性呈现",
                                     "女性呈现",
@@ -91,35 +93,21 @@ ANNOTATION_SCHEMA = {
             ],
             "additionalProperties": False,
         },
-        "recognized_subjects": {
-            "type": "array",
-            "maxItems": 20,
-            "items": {
-                "type": "object",
-                "properties": {
-                    "name": {"type": "string"},
-                    "kind": {"enum": ["人物", "宠物"]},
-                },
-                "required": ["name", "kind"],
-                "additionalProperties": False,
-            },
-        },
     },
-    "required": ["caption", "tags", "visible_text", "facets", "recognized_subjects"],
+    "required": ["caption", "tags", "visible_text", "facets"],
     "additionalProperties": False,
 }
 
-ANNOTATION_PROMPT = """你是私人相册检索系统的照片标注器。只描述图中可见内容，不猜测人物身份、关系、地点、族裔、健康等敏感属性。
+ANNOTATION_PROMPT = """你是私人相册检索系统的照片标注器。只描述图中可见内容，不猜测人物或宠物身份、关系、地点、族裔、健康等敏感属性。
 人物的男性/女性标签只表示可见外观呈现，不代表实际性别；无法判断时必须输出“不确定”。数量看不清时按明确可见的最小数量记录。
 请用中文输出一句客观 caption，并分别给出通用 tags、清晰可辨的 visible_text，以及 facets：
 daylight（天亮、天黑、日出日落、室内、不确定之一）、sky、objects（name、正整数 count、attributes）、people（presentation、正整数 count）、actions、scenes、weather。
 没有内容的数组使用 []。
-recognized_subjects 只在有足够可见依据时从给出的候选名称中选择，kind 只能是“人物”或“宠物”；不确定、没有候选或无法匹配时输出 []，绝不编造名称。
 输出必须严格符合给定 JSON Schema，不要添加解释。"""
 
 
 class ModelError(RuntimeError):
-    """The local multimodal model could not produce a valid annotation."""
+    """The external model API could not produce a valid annotation."""
 
 
 @dataclass(frozen=True)
@@ -142,42 +130,6 @@ class RecognizedSubject:
 
 
 @dataclass(frozen=True)
-class RecognitionProfile:
-    person_names: tuple[str, ...] = ()
-    pet_names: tuple[str, ...] = ()
-
-    @classmethod
-    def normalize(
-        cls,
-        person_names: Iterable[str] = (),
-        pet_names: Iterable[str] = (),
-    ) -> "RecognitionProfile":
-        def normalized(values: Iterable[str]) -> tuple[str, ...]:
-            result: list[str] = []
-            seen: set[str] = set()
-            for raw in values:
-                value = raw.strip()
-                if not value:
-                    continue
-                if len(value) > 40:
-                    raise ValueError("名称最多 40 个字符")
-                key = value.casefold()
-                if key not in seen:
-                    result.append(value)
-                    seen.add(key)
-            if len(result) > 20:
-                raise ValueError("人物或宠物名称最多 20 个")
-            return tuple(result)
-
-        people = normalized(person_names)
-        pets = normalized(pet_names)
-        people_keys = {name.casefold() for name in people}
-        if any(name.casefold() in people_keys for name in pets):
-            raise ValueError("同一名称不能同时属于人物和宠物")
-        return cls(people, pets)
-
-
-@dataclass(frozen=True)
 class PhotoFacets:
     daylight: str
     sky: tuple[str, ...]
@@ -197,133 +149,174 @@ class Annotation:
     recognized_subjects: tuple[RecognizedSubject, ...] = ()
 
 
-class OllamaClient:
-    provider = "ollama"
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        fp.close()
+        raise ModelError("模型 API 返回重定向；请直接配置最终 API 地址")
+
+
+class ChatCompletionsClient:
+    provider = "openai-compatible"
     prompt_version = PROMPT_VERSION
 
     def __init__(
         self,
         *,
-        model: str = DEFAULT_MODEL,
-        base_url: str = DEFAULT_OLLAMA_URL,
+        model: str,
+        base_url: str,
+        api_key: str = "",
         timeout_seconds: float = 180.0,
         allow_remote: bool = False,
-        person_names: Iterable[str] = (),
-        pet_names: Iterable[str] = (),
     ) -> None:
         self.model = model.strip()
-        self.base_url = base_url.rstrip("/")
+        self.base_url = _validate_api_url(base_url)
+        self._api_key = api_key.strip()
         self.timeout_seconds = timeout_seconds
-        self.recognition_profile = RecognitionProfile.normalize(person_names, pet_names)
         if not self.model:
-            raise ValueError("模型名称不能为空")
+            raise ValueError("请通过 --model 或 APM_MODEL 配置模型名称")
+        if any(ord(character) < 33 or ord(character) > 126 for character in self._api_key):
+            raise ValueError("API 密钥只能包含不带空格的可打印 ASCII 字符")
+        if not math.isfinite(timeout_seconds) or timeout_seconds <= 0:
+            raise ValueError("timeout 必须是有限的正数")
         if not _is_loopback_url(self.base_url) and not allow_remote:
             raise ValueError("非本机模型地址需要显式传入 --allow-remote")
+        handlers = [_NoRedirect()]
         if _is_local_network_url(self.base_url):
-            self._opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-        else:
-            self._opener = urllib.request.build_opener()
-
-    def ensure_available(self) -> None:
-        try:
-            payload = self._request("GET", "/api/tags")
-        except ModelError as error:
-            raise ModelError(f"无法连接 Ollama: {error}") from error
-        names = {
-            model.get("name")
-            for model in payload.get("models", [])
-            if isinstance(model, dict)
-        }
-        if self.model not in names:
-            raise ModelError(
-                f"本地尚未安装模型 {self.model!r}；请先运行: ollama pull {self.model}"
-            )
+            handlers.append(urllib.request.ProxyHandler({}))
+        self._opener = urllib.request.build_opener(*handlers)
 
     def annotate(self, image_path: Path) -> Annotation:
         try:
-            image_bytes = image_path.read_bytes()
+            with image_path.open("rb") as image:
+                image_bytes = image.read(MAX_IMAGE_BYTES + 1)
         except OSError as error:
             raise ModelError(f"无法读取照片 {image_path}: {error}") from error
+        if len(image_bytes) > MAX_IMAGE_BYTES:
+            raise ModelError("照片超过 API 请求的 20 MiB 上限")
+        media_type = _image_media_type(image_bytes)
 
         payload = self._request(
-            "POST",
-            "/api/chat",
             {
                 "model": self.model,
                 "messages": [
                     {
                         "role": "user",
-                        "content": annotation_prompt(self.recognition_profile),
-                        "images": [base64.b64encode(image_bytes).decode("ascii")],
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": ANNOTATION_PROMPT,
+                            },
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": f"data:{media_type};base64,{base64.b64encode(image_bytes).decode('ascii')}",
+                                },
+                            },
+                        ],
                     }
                 ],
-                "format": annotation_schema(self.recognition_profile),
+                "response_format": {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "photo_annotation",
+                        "strict": True,
+                        "schema": annotation_schema(),
+                    },
+                },
                 "stream": False,
-                "options": {"temperature": 0},
             },
         )
         try:
-            content = payload["message"]["content"]
+            choice = payload["choices"][0]
+            if choice["finish_reason"] != "stop":
+                raise ModelError("模型 API 未完整完成标注")
+            message = choice["message"]
+            if message.get("refusal"):
+                raise ModelError("模型 API 拒绝了标注请求")
+            content = message["content"]
+            if not isinstance(content, str):
+                raise ModelError("模型 API 标注内容必须是 JSON 文本")
             raw_annotation = json.loads(content)
-        except (KeyError, TypeError, json.JSONDecodeError) as error:
-            raise ModelError("Ollama 返回了无法解析的标注结果") from error
-        return validate_annotation(raw_annotation, self.recognition_profile)
+        except (KeyError, IndexError, TypeError, AttributeError, ValueError, RecursionError) as error:
+            raise ModelError("模型 API 返回了无法解析的标注结果") from error
+        return validate_annotation(raw_annotation)
 
-    def _request(
-        self,
-        method: str,
-        path: str,
-        payload: dict[str, object] | None = None,
-    ) -> dict[str, object]:
-        data = None
-        headers = {"Accept": "application/json"}
-        if payload is not None:
-            data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-            headers["Content-Type"] = "application/json"
+    def _request(self, payload: dict[str, object]) -> dict[str, object]:
+        data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        headers = {"Accept": "application/json", "Content-Type": "application/json"}
+        if self._api_key:
+            headers["Authorization"] = f"Bearer {self._api_key}"
         request = urllib.request.Request(
-            f"{self.base_url}{path}", data=data, headers=headers, method=method
+            f"{self.base_url}/chat/completions", data=data, headers=headers, method="POST"
         )
         try:
             with self._opener.open(request, timeout=self.timeout_seconds) as response:
-                body = response.read()
-        except (urllib.error.URLError, TimeoutError, OSError) as error:
-            raise ModelError(str(error)) from error
+                body = response.read(MAX_RESPONSE_BYTES + 1)
+        except urllib.error.HTTPError as error:
+            status = error.code
+            error.close()
+            raise ModelError(f"模型 API 请求失败（HTTP {status}）") from None
+        except (urllib.error.URLError, TimeoutError, OSError):
+            raise ModelError("无法连接模型 API，请检查地址、网络和超时设置") from None
+        if len(body) > MAX_RESPONSE_BYTES:
+            raise ModelError("模型 API 响应超过 4 MiB 上限")
         try:
             parsed = json.loads(body)
-        except json.JSONDecodeError as error:
-            raise ModelError("Ollama 返回了非 JSON 响应") from error
+        except (ValueError, UnicodeError, RecursionError) as error:
+            raise ModelError("模型 API 返回了非 JSON 响应") from error
         if not isinstance(parsed, dict):
-            raise ModelError("Ollama 响应必须是 JSON 对象")
+            raise ModelError("模型 API 响应必须是 JSON 对象")
         if "error" in parsed:
-            raise ModelError(str(parsed["error"]))
+            raise ModelError("模型 API 返回错误，请检查服务配置和可用额度")
         return parsed
 
 
-def annotation_prompt(profile: RecognitionProfile) -> str:
-    people = "、".join(profile.person_names) or "（无）"
-    pets = "、".join(profile.pet_names) or "（无）"
-    return f"{ANNOTATION_PROMPT}\n人物候选：{people}\n宠物候选：{pets}"
+def _validate_api_url(value: str) -> str:
+    value = value.strip().rstrip("/")
+    if not value:
+        raise ValueError("请通过 --api-url 或 APM_API_URL 配置 API 基础地址（包含 /v1）")
+    try:
+        parsed = urlparse(value)
+        invalid = (
+            parsed.scheme not in {"http", "https"}
+            or not parsed.hostname
+            or parsed.username is not None
+            or parsed.password is not None
+            or "?" in value
+            or "#" in value
+            or any(character.isspace() or ord(character) < 32 for character in value)
+            or parsed.port == 0
+        )
+    except ValueError:
+        invalid = True
+    if invalid:
+        raise ValueError("API 基础地址必须是有效的 HTTP(S) URL，不能包含凭证、查询参数或片段")
+    return value
 
 
-def annotation_schema(profile: RecognitionProfile) -> dict[str, object]:
-    schema = json.loads(json.dumps(ANNOTATION_SCHEMA, ensure_ascii=False))
-    candidates = [*profile.person_names, *profile.pet_names]
-    recognized = schema["properties"]["recognized_subjects"]
-    recognized["maxItems"] = 20 if candidates else 0
-    if candidates:
-        recognized["items"]["properties"]["name"] = {"enum": candidates}
-    return schema
+def _image_media_type(data: bytes) -> str:
+    if data.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if data.startswith((b"GIF87a", b"GIF89a")):
+        return "image/gif"
+    if data.startswith(b"RIFF") and data[8:12] == b"WEBP":
+        return "image/webp"
+    raise ModelError("模型 API 仅支持 JPEG、PNG、WebP 或 GIF；其他格式仍可扫描和搜索")
+
+
+def annotation_schema() -> dict[str, object]:
+    return json.loads(json.dumps(ANNOTATION_SCHEMA, ensure_ascii=False))
 
 
 def validate_annotation(
     value: object,
-    profile: RecognitionProfile | None = None,
 ) -> Annotation:
     if not isinstance(value, dict):
         raise ModelError("标注结果必须是 JSON 对象")
     v2_keys = {"caption", "tags", "visible_text", "facets"}
-    v3_keys = {*v2_keys, "recognized_subjects"}
-    if set(value) != v3_keys and not (profile is None and set(value) == v2_keys):
+    if set(value) != v2_keys:
         raise ModelError("标注结果字段与约定不一致")
 
     caption = value["caption"]
@@ -336,48 +329,12 @@ def validate_annotation(
     if not isinstance(visible_text, str) or len(visible_text) > 4000:
         raise ModelError("visible_text 必须是最多 4000 字的字符串")
     normalized_facets = _validate_facets(facets)
-    recognized_subjects = _validate_recognized_subjects(
-        value.get("recognized_subjects", []),
-        profile,
-    )
     return Annotation(
         caption.strip(),
         normalized_tags,
         visible_text.strip(),
         normalized_facets,
-        recognized_subjects,
     )
-
-
-def _validate_recognized_subjects(
-    value: object,
-    profile: RecognitionProfile | None,
-) -> tuple[RecognizedSubject, ...]:
-    if not isinstance(value, list) or len(value) > 20:
-        raise ModelError("recognized_subjects 必须是最多 20 项的数组")
-    people = set(profile.person_names) if profile else None
-    pets = set(profile.pet_names) if profile else None
-    result: list[RecognizedSubject] = []
-    seen: set[tuple[str, str]] = set()
-    for index, item in enumerate(value):
-        if not isinstance(item, dict) or set(item) != {"name", "kind"}:
-            raise ModelError(f"recognized_subjects[{index}] 字段不合法")
-        name = item["name"]
-        kind = item["kind"]
-        if not isinstance(name, str) or not name.strip() or len(name) > 40:
-            raise ModelError(f"recognized_subjects[{index}].name 不合法")
-        if kind not in {"人物", "宠物"}:
-            raise ModelError(f"recognized_subjects[{index}].kind 不合法")
-        normalized_name = name.strip()
-        if profile is not None:
-            allowed = normalized_name in (people if kind == "人物" else pets)
-            if not allowed:
-                raise ModelError(f"识别名称 {normalized_name} 不在对应的预设候选中")
-        key = (kind, normalized_name.casefold())
-        if key not in seen:
-            result.append(RecognizedSubject(normalized_name, kind))
-            seen.add(key)
-    return tuple(result)
 
 
 def facets_as_dict(facets: PhotoFacets) -> dict[str, object]:
@@ -432,7 +389,7 @@ def _validate_facets(value: object) -> PhotoFacets:
     if not isinstance(value, dict) or set(value) != required:
         raise ModelError("facets 字段不完整或包含未知字段")
     daylight = value["daylight"]
-    if daylight not in {"天亮", "天黑", "日出日落", "室内", "不确定"}:
+    if not isinstance(daylight, str) or daylight not in {"天亮", "天黑", "日出日落", "室内", "不确定"}:
         raise ModelError("daylight 取值不合法")
     objects_value = value["objects"]
     if not isinstance(objects_value, list) or len(objects_value) > 30:
@@ -460,7 +417,7 @@ def _validate_facets(value: object) -> PhotoFacets:
             raise ModelError(f"people[{index}] 字段不合法")
         presentation = item["presentation"]
         count = item["count"]
-        if presentation not in allowed_people:
+        if not isinstance(presentation, str) or presentation not in allowed_people:
             raise ModelError(f"people[{index}].presentation 取值不合法")
         if not isinstance(count, int) or isinstance(count, bool) or not 1 <= count <= 999:
             raise ModelError(f"people[{index}].count 必须是正整数")

@@ -3,27 +3,27 @@ package com.jinof.apm
 import java.net.URI
 
 object EndpointPolicy {
-    const val DEFAULT_ENDPOINT = "http://127.0.0.1:11434"
+    const val DEFAULT_ENDPOINT = ""
 
     fun validate(config: InferenceConfig): InferenceConfig {
         val endpoint = config.endpoint.trim().trimEnd('/')
         val model = config.modelName.trim()
-        require(model.isNotEmpty()) { "模型名称不能为空" }
+        require(model.isNotEmpty()) { "请填写 API 模型名称" }
         val uri = try {
             URI(endpoint)
         } catch (error: Exception) {
-            throw IllegalArgumentException("模型地址不是有效 URL", error)
+            throw IllegalArgumentException("API 地址不是有效 URL")
         }
         require(uri.scheme?.lowercase() in setOf("http", "https")) {
-            "模型地址必须使用 http 或 https"
+            "API 地址必须使用 http 或 https"
         }
-        require(!uri.host.isNullOrBlank() && uri.userInfo == null && uri.query == null && uri.fragment == null) {
-            "模型地址必须是无账号、查询参数和片段的绝对地址"
+        require(!uri.host.isNullOrBlank() && uri.userInfo == null && uri.query == null && uri.fragment == null &&
+            uri.port in -1..65535 && uri.path.orEmpty().split('/').none { it == ".." || it == "." }) {
+            "API 地址必须是无账号、查询参数和片段的绝对地址"
         }
-        if (!isLoopbackHost(uri.host) && !config.allowRemote) {
-            throw IllegalArgumentException("非本机模型地址需要勾选“允许发送照片到该地址”")
-        }
-        return InferenceConfig(endpoint, model, config.allowRemote && !isLoopbackHost(uri.host))
+        require(config.allowRemote) { "请允许将照片和搜索请求发送到此 API" }
+        require(config.apiKey.length <= 4096 && config.apiKey.all { it.code in 33..126 }) { "API 密钥格式无效" }
+        return config.copy(endpoint = endpoint, modelName = model)
     }
 
     fun isLoopback(config: InferenceConfig): Boolean {

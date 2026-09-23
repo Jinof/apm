@@ -138,13 +138,8 @@ internal class AgentSearchController(private val activity: ComponentActivity) {
         state = state.copy(busy = true, status = "Agent 正在规划本地搜索…", result = null)
         executor.execute {
             try {
-                val identities = database.localIdentitySummaries()
-                val planner = OllamaSearchPlanner(
+                val planner = ApiSearchPlanner(
                     candidateConfig = settingsStore.load(),
-                    profile = RecognitionProfile(
-                        personNames = identities.filter { it.kind == LocalIdentityKind.PERSON }.map { it.name },
-                        petNames = identities.filter { it.kind == LocalIdentityKind.PET }.map { it.name },
-                    ),
                 )
                 val result = SearchAgent(planner, DatabasePhotoSearchSkill(database)).run(request)
                 activity.runOnUiThread {

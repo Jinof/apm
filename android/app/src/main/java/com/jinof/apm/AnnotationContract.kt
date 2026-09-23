@@ -4,16 +4,14 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 object AnnotationContract {
-    const val PROMPT_VERSION = "photo-annotation-zh-v6-grammar-safe"
+    const val PROMPT_VERSION = "photo-annotation-zh-v7"
     const val VISIBLE_TEXT_SCHEMA_MAX_LENGTH = 512
     const val GRAMMAR_MAX_REPETITION_EXCLUSIVE = 2000
 
-    private val markerPattern = Regex("(?<![A-Z0-9])(?:PET[1-9][0-9]*|P[1-9][0-9]*)(?![A-Z0-9])")
 
     private const val BASE_PROMPT = """你是私人相册检索系统的照片标注器。只描述图中可见内容，不猜测人物或宠物身份、关系、地点、族裔、健康等敏感属性。
-图片上可能有手机本地绘制的匿名主体框：P1、P2 表示人物，PET1、PET2 表示宠物。它们不是姓名。只能使用下方明确提供的标记，禁止输出、猜测或新增任何真实姓名。
 人物的男性/女性标签只表示可见外观呈现，不代表实际性别；无法判断时必须输出“不确定”。数量看不清时按明确可见的最小数量记录。
-请用中文输出一句客观 caption。提到有标记的主体时必须直接使用该标记，例如“P1抱着PET1”，不要改写标记。并分别给出：
+请用中文输出一句客观 caption，并分别给出：
 - tags：通用检索词，不含姓名；
 - visible_text：清晰可辨的原文，最多 512 字符，没有则为空字符串；
 - facets.daylight：天亮、天黑、日出日落、室内、不确定之一；
@@ -21,20 +19,11 @@ object AnnotationContract {
 - facets.objects：物体 name、正整数 count、可见 attributes；
 - facets.people：男性呈现、女性呈现、儿童、多人混合、不确定及正整数 count；
 - facets.actions：可见动作；facets.scenes：场景；facets.weather：天气；
-- subject_mentions：只记录已提供匿名标记的可见描述和动作。marker 必须原样使用，kind 必须与 P/PET 类型一致。没有则输出 []。
 没有内容的数组使用 []。严格符合 JSON Schema，不添加解释或身份字段。"""
 
-    fun prompt(markers: List<LocalSubjectMarker>): String {
-        val legend = markers.joinToString("、") { marker ->
-            "${marker.marker}=${marker.kind.displayName}"
-        }.ifEmpty { "（无匿名主体标记）" }
-        return "$BASE_PROMPT\n本图允许使用的匿名标记：$legend"
-    }
+    fun prompt(): String = BASE_PROMPT
 
-    @Deprecated("Android VLM no longer receives identity candidates")
-    fun prompt(profile: RecognitionProfile): String = prompt(emptyList())
-
-    fun schema(markers: List<LocalSubjectMarker> = emptyList()): JSONObject {
+    fun schema(): JSONObject {
         fun stringSchema(maxLength: Int? = null) = JSONObject().put("type", "string").also {
             if (maxLength != null) it.put("maxLength", maxLength)
         }
@@ -61,7 +50,7 @@ object AnnotationContract {
                 JSONObject()
                     .put(
                         "presentation",
-                        JSONObject().put(
+                        JSONObject().put("type", "string").put(
                             "enum",
                             JSONArray(listOf("男性呈现", "女性呈现", "儿童", "多人混合", "不确定")),
                         ),
@@ -77,7 +66,7 @@ object AnnotationContract {
                 JSONObject()
                     .put(
                         "daylight",
-                        JSONObject().put(
+                        JSONObject().put("type", "string").put(
                             "enum",
                             JSONArray(listOf("天亮", "天黑", "日出日落", "室内", "不确定")),
                         ),
@@ -101,29 +90,6 @@ object AnnotationContract {
             )
             .put("additionalProperties", false)
 
-        val markerNames = markers.map(LocalSubjectMarker::marker)
-        val markerSchema = if (markerNames.isEmpty()) {
-            stringSchema(12)
-        } else {
-            JSONObject().put("enum", JSONArray(markerNames))
-        }
-        val subjectMention = JSONObject()
-            .put("type", "object")
-            .put(
-                "properties",
-                JSONObject()
-                    .put("marker", markerSchema)
-                    .put("kind", JSONObject().put("enum", JSONArray(listOf("人物", "宠物"))))
-                    .put("description", stringSchema(100))
-                    .put("actions", stringArray(10)),
-            )
-            .put("required", JSONArray(listOf("marker", "kind", "description", "actions")))
-            .put("additionalProperties", false)
-        val subjectMentions = JSONObject()
-            .put("type", "array")
-            .put("items", subjectMention)
-            .put("maxItems", if (markerNames.isEmpty()) 0 else markerNames.size)
-
         return JSONObject()
             .put("type", "object")
             .put(
@@ -132,64 +98,65 @@ object AnnotationContract {
                     .put("caption", stringSchema(500))
                     .put("tags", stringArray(40))
                     .put("visible_text", stringSchema(VISIBLE_TEXT_SCHEMA_MAX_LENGTH))
-                    .put("facets", facets)
-                    .put("subject_mentions", subjectMentions),
+                    .put("facets", facets),
             )
             .put(
                 "required",
-                JSONArray(listOf("caption", "tags", "visible_text", "facets", "subject_mentions")),
+                JSONArray(listOf("caption", "tags", "visible_text", "facets")),
             )
             .put("additionalProperties", false)
     }
 
-    @Deprecated("Android VLM no longer receives identity candidates")
-    fun schema(profile: RecognitionProfile): JSONObject = schema(emptyList())
-
-    fun parseVlm(value: JSONObject, markers: List<LocalSubjectMarker>): PhotoAnnotation {
-        requireExactKeys(
-            value,
-            setOf("caption", "tags", "visible_text", "facets", "subject_mentions"),
-            "标注",
-        )
-        val annotation = parseCurrent(value)
-        val offered = markers.associateBy(LocalSubjectMarker::marker)
-        require(annotation.subjectMentions.map(SubjectMention::marker).distinct().size == annotation.subjectMentions.size) {
-            "同一匿名标记只能出现一次"
-        }
-        annotation.subjectMentions.forEach { mention ->
-            val marker = offered[mention.marker]
-                ?: throw IllegalArgumentException("VLM 返回了未提供的匿名标记 ${mention.marker}")
-            require(mention.kind == marker.kind.displayName) {
-                "匿名标记 ${mention.marker} 的 kind 与手机本地类型不一致"
-            }
-        }
-        markerPattern.findAll(value.toString()).forEach { match ->
-            require(match.value in offered) { "标注包含未提供的匿名标记 ${match.value}" }
-        }
-        val responseText = value.toString().lowercase()
-        markers.mapNotNull(LocalSubjectMarker::matchedName)
-            .filter { it.length >= 2 }
-            .forEach { localName ->
-                require(!responseText.contains(localName.lowercase())) {
-                    "VLM 输出包含本地身份名称；姓名只能由手机本地替换"
-                }
-        }
-        return annotation
+    fun parseVlm(value: JSONObject): PhotoAnnotation {
+        validateApiValue(value, schema(), "标注")
+        return parseLegacy(value)
     }
 
-    fun parse(value: JSONObject, profile: RecognitionProfile? = null): PhotoAnnotation {
+    /** Check new API output before org.json getters can coerce types; stored legacy rows keep their parser. */
+    private fun validateApiValue(value: Any?, schema: JSONObject, path: String) {
+        when (schema.getString("type")) {
+            "object" -> {
+                require(value is JSONObject) { "$path 必须是对象" }
+                val properties = schema.getJSONObject("properties")
+                requireExactKeys(value, properties.keys().asSequence().toSet(), path)
+                properties.keys().forEach { key ->
+                    validateApiValue(value.get(key), properties.getJSONObject(key), "$path.$key")
+                }
+            }
+            "array" -> {
+                require(value is JSONArray) { "$path 必须是数组" }
+                require(value.length() <= schema.getInt("maxItems")) { "$path 项目数量超出限制" }
+                for (index in 0 until value.length()) {
+                    validateApiValue(value.get(index), schema.getJSONObject("items"), "$path[$index]")
+                }
+            }
+            "string" -> {
+                require(value is String) { "$path 必须是字符串" }
+                if (schema.has("maxLength")) {
+                    require(value.codePointCount(0, value.length) <= schema.getInt("maxLength")) { "$path 长度超出限制" }
+                }
+                if (schema.has("enum")) {
+                    val choices = schema.getJSONArray("enum")
+                    require((0 until choices.length()).any { value == choices.getString(it) }) { "$path 取值不合法" }
+                }
+            }
+            "integer" -> {
+                val number = (value as? Number)?.toString()?.toBigDecimalOrNull()
+                require(number != null && number.stripTrailingZeros().scale() <= 0 &&
+                    number >= schema.getInt("minimum").toBigDecimal() && number <= Int.MAX_VALUE.toBigDecimal()) {
+                    "$path 必须是范围内的整数"
+                }
+            }
+            else -> error("标注 schema 类型不受支持")
+        }
+    }
+
+    fun parse(value: JSONObject): PhotoAnnotation {
         val keys = value.keys().asSequence().toSet()
         return when (keys) {
             setOf("caption", "tags", "visible_text", "facets", "subject_mentions") -> parseCurrent(value)
-            setOf("caption", "tags", "visible_text", "facets", "recognized_subjects") -> {
-                val legacy = parseLegacy(value)
-                profile?.validate(legacy.recognizedSubjects)
-                legacy
-            }
-            setOf("caption", "tags", "visible_text", "facets") -> {
-                require(profile == null) { "标注字段不完整" }
-                parseLegacy(value)
-            }
+            setOf("caption", "tags", "visible_text", "facets", "recognized_subjects"),
+            setOf("caption", "tags", "visible_text", "facets") -> parseLegacy(value)
             else -> throw IllegalArgumentException("标注字段不完整或包含未知字段")
         }
     }

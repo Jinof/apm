@@ -1,0 +1,44 @@
+{
+  "complete": true,
+  "model": "google/gemma-4-E2B-it",
+  "revision": "3e22461f65e89153144f8adb70e3b8c2cc9845a7",
+  "files": {
+    ".gitattributes": {
+      "bytes": 1570,
+      "digest": "52373fe24473b1aa44333d318f578ae6bf04b49b"
+    },
+    "README.md": {
+      "bytes": 27955,
+      "digest": "61e18105d7cb61ce375aa16ed66442b85116bb8a"
+    },
+    "chat_template.jinja": {
+      "bytes": 18569,
+      "digest": "fbe3b59b625cd1b8850ea592d4203df6ec04684b"
+    },
+    "config.json": {
+      "bytes": 4954,
+      "digest": "923b5e9405e7d319572b0c1b1a89291512262aa3"
+    },
+    "generation_config.json": {
+      "bytes": 208,
+      "digest": "e605bb4523b1462ea9d9a3810b9e3ecf7ab7b1f6"
+    },
+    "model.safetensors": {
+      "bytes": 10246621918,
+      "digest": "2db5482b20d746879bb3ef79b5203e9075a2e2b98f54ec7c2f281c1477ddc550"
+    },
+    "processor_config.json": {
+      "bytes": 1689,
+      "digest": "5465974d23e1eca2c46c2809b26c997946ce0d90"
+    },
+    "tokenizer.json": {
+      "bytes": 32169626,
+      "digest": "cc8d3a0ce36466ccc1278bf987df5f71db1719b9ca6b4118264f45cb627bfe0f"
+    },
+    "tokenizer_config.json": {
+      "bytes": 3082,
+      "digest": "6068e357379d36f823c377e30efb101fa2c67fe4"
+    }
+  },
+  "seconds": 260.70080947875977
+}

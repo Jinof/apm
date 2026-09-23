@@ -25,52 +25,6 @@ data class SubjectMention(
     val actions: List<String>,
 )
 
-data class RecognitionProfile(
-    val personNames: List<String> = emptyList(),
-    val petNames: List<String> = emptyList(),
-) {
-    fun validate(subjects: List<RecognizedSubject>) {
-        val people = personNames.toSet()
-        val pets = petNames.toSet()
-        subjects.forEach { subject ->
-            val allowed = when (subject.kind) {
-                "人物" -> subject.name in people
-                "宠物" -> subject.name in pets
-                else -> false
-            }
-            require(allowed) { "识别名称 ${subject.name} 不在对应的预设候选中" }
-        }
-    }
-
-    companion object {
-        private val separators = Regex("[,，;；\\n]+")
-
-        fun fromText(personNames: String, petNames: String): RecognitionProfile = normalize(
-            personNames = personNames.split(separators),
-            petNames = petNames.split(separators),
-        )
-
-        fun normalize(personNames: List<String>, petNames: List<String>): RecognitionProfile {
-            fun names(values: List<String>): List<String> {
-                val seen = linkedSetOf<String>()
-                return values.map(String::trim)
-                    .filter(String::isNotEmpty)
-                    .onEach { require(it.length <= 40) { "名称最多 40 个字符" } }
-                    .filter { seen.add(it.lowercase(Locale.ROOT)) }
-                    .also { require(it.size <= 20) { "人物或宠物名称最多 20 个" } }
-            }
-
-            val people = names(personNames)
-            val pets = names(petNames)
-            val peopleKeys = people.mapTo(mutableSetOf()) { it.lowercase(Locale.ROOT) }
-            require(pets.none { it.lowercase(Locale.ROOT) in peopleKeys }) {
-                "同一名称不能同时属于人物和宠物"
-            }
-            return RecognitionProfile(people, pets)
-        }
-    }
-}
-
 data class PhotoFacets(
     val daylight: String,
     val sky: List<String>,
@@ -92,9 +46,12 @@ data class PhotoAnnotation(
 
 data class InferenceConfig(
     val endpoint: String = EndpointPolicy.DEFAULT_ENDPOINT,
-    val modelName: String = "qwen3-vl:4b",
+    val modelName: String = "",
     val allowRemote: Boolean = false,
-)
+    val apiKey: String = "",
+) {
+    override fun toString(): String = "InferenceConfig(redacted)"
+}
 
 data class ScannedPhoto(
     val uri: String,

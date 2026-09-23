@@ -1,0 +1,103 @@
+{
+  "type": "object",
+  "properties": {
+    "apple_count": {
+      "type": "integer"
+    },
+    "banana_count": {
+      "type": "integer"
+    },
+    "apple_color": {
+      "type": "string"
+    },
+    "banana_color": {
+      "type": "string"
+    },
+    "bowl_color": {
+      "type": "string"
+    },
+    "mug_count": {
+      "type": "integer"
+    },
+    "mug_color": {
+      "type": "string"
+    },
+    "mug_handle_direction": {
+      "type": "string"
+    },
+    "notebook_color": {
+      "type": "string"
+    },
+    "phone_color": {
+      "type": "string"
+    },
+    "phone_screen_on": {
+      "type": "boolean"
+    },
+    "phone_relative_to_notebook": {
+      "type": "string"
+    },
+    "spoon_relative_to_mug": {
+      "type": "string"
+    },
+    "menu_title": {
+      "type": "string"
+    },
+    "latte_price_yuan": {
+      "type": "integer"
+    },
+    "cake_price_yuan": {
+      "type": "integer"
+    },
+    "notebook_text": {
+      "type": "string"
+    },
+    "outdoor_scene": {
+      "type": "string"
+    },
+    "sky": {
+      "type": "string"
+    },
+    "daylight": {
+      "type": "string"
+    },
+    "people_count": {
+      "type": "integer"
+    },
+    "animal_count": {
+      "type": "integer"
+    },
+    "precise_city": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "apple_count",
+    "banana_count",
+    "apple_color",
+    "banana_color",
+    "bowl_color",
+    "mug_count",
+    "mug_color",
+    "mug_handle_direction",
+    "notebook_color",
+    "phone_color",
+    "phone_screen_on",
+    "phone_relative_to_notebook",
+    "spoon_relative_to_mug",
+    "menu_title",
+    "latte_price_yuan",
+    "cake_price_yuan",
+    "notebook_text",
+    "outdoor_scene",
+    "sky",
+    "daylight",
+    "people_count",
+    "animal_count",
+    "precise_city"
+  ],
+  "additionalProperties": false
+}

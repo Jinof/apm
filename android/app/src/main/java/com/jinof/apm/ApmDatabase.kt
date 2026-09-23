@@ -12,7 +12,7 @@ import java.time.Instant
 class ApmDatabase(
     context: Context,
     databaseName: String = "apm-android.sqlite3",
-) : SQLiteOpenHelper(context, databaseName, null, 7) {
+) : SQLiteOpenHelper(context, databaseName, null, 8) {
     init {
         setWriteAheadLoggingEnabled(true)
     }
@@ -88,7 +88,6 @@ class ApmDatabase(
         }
         if (oldVersion < 3) {
             createFaceTables(db)
-            stripLegacyVlmPeople(db)
         }
         if (oldVersion < 4) {
             createAnnotationSelectionTable(db)
@@ -105,10 +104,22 @@ class ApmDatabase(
                 )
             }
             createPetTables(db)
-            if (tableExists(db, "photo_annotations")) stripLegacyVlmIdentities(db)
         }
         if (oldVersion < 7) {
             createVisualSimilarityTables(db)
+        } else if (oldVersion < 8) {
+            // SQLiteOpenHelper runs upgrades in a transaction. Preserve every retained
+            // vector and its original provenance; only the retired grid columns go away.
+            createVisualFeatureTable(db, "photo_visual_features_without_grid")
+            db.execSQL("""
+                INSERT INTO photo_visual_features_without_grid
+                    (photo_id, global_embedding, embedding_dimension, model_name, pipeline_version, indexed_at)
+                SELECT photo_id, global_embedding, embedding_dimension, model_name, pipeline_version, indexed_at
+                FROM photo_visual_features
+            """.trimIndent())
+            db.execSQL("DROP TABLE photo_visual_features")
+            db.execSQL("ALTER TABLE photo_visual_features_without_grid RENAME TO photo_visual_features")
+            db.execSQL("CREATE INDEX photo_visual_features_pipeline ON photo_visual_features(model_name, pipeline_version)")
         }
     }
 
@@ -128,6 +139,7 @@ class ApmDatabase(
         arrayOf(name),
     ).use { it.moveToFirst() }
 
+    // Schema v8 keeps retired tables so upgrades never discard user-owned archives.
     private fun createFaceTables(db: SQLiteDatabase) {
         db.execSQL(
             """
@@ -266,21 +278,23 @@ class ApmDatabase(
         db.execSQL("CREATE INDEX IF NOT EXISTS photo_pets_identity ON photo_pets(matched_identity_id, match_state)")
     }
 
-    private fun createVisualSimilarityTables(db: SQLiteDatabase) {
+    private fun createVisualFeatureTable(db: SQLiteDatabase, tableName: String = "photo_visual_features") {
         db.execSQL(
             """
-            CREATE TABLE IF NOT EXISTS photo_visual_features (
+            CREATE TABLE IF NOT EXISTS $tableName (
                 photo_id TEXT PRIMARY KEY REFERENCES photo_assets(photo_id) ON DELETE CASCADE,
                 global_embedding BLOB NOT NULL,
                 embedding_dimension INTEGER NOT NULL CHECK(embedding_dimension > 0),
-                patch_grid BLOB NOT NULL,
-                grid_size INTEGER NOT NULL CHECK(grid_size = 4),
                 model_name TEXT NOT NULL,
                 pipeline_version TEXT NOT NULL,
                 indexed_at TEXT NOT NULL
             )
             """.trimIndent(),
         )
+    }
+
+    private fun createVisualSimilarityTables(db: SQLiteDatabase) {
+        createVisualFeatureTable(db)
         db.execSQL(
             "CREATE INDEX IF NOT EXISTS photo_visual_features_pipeline ON photo_visual_features(model_name, pipeline_version)",
         )
@@ -306,103 +320,6 @@ class ApmDatabase(
         db.execSQL(
             "CREATE INDEX IF NOT EXISTS photo_general_subjects_photo ON photo_general_subjects(photo_id, pipeline_version)",
         )
-    }
-
-    private fun stripLegacyVlmPeople(db: SQLiteDatabase) {
-        val rows = db.rawQuery(
-            """
-            SELECT annotation_id, caption, tags_json, facets_json, visible_text, recognized_subjects_json
-            FROM photo_annotations
-            """.trimIndent(),
-            null,
-        ).use { cursor ->
-            buildList {
-                while (cursor.moveToNext()) {
-                    add(
-                        listOf(
-                            cursor.getString(0),
-                            cursor.getString(1),
-                            cursor.getString(2),
-                            cursor.getString(3),
-                            cursor.getString(4),
-                            cursor.getString(5),
-                        ),
-                    )
-                }
-            }
-        }
-        rows.forEach { row ->
-            val keptPets = runCatching {
-                val source = JSONArray(row[5])
-                JSONArray().also { target ->
-                    for (index in 0 until source.length()) {
-                        val subject = source.optJSONObject(index) ?: continue
-                        if (subject.optString("kind") == "宠物") target.put(subject)
-                    }
-                }
-            }.getOrElse { JSONArray() }
-            val combined = JSONObject()
-                .put("caption", row[1])
-                .put("tags", JSONArray(row[2]))
-                .put("facets", JSONObject(row[3]))
-                .put("visible_text", row[4])
-                .put("recognized_subjects", keptPets)
-            val searchText = runCatching { FacetRules.searchText(AnnotationContract.parse(combined)) }
-                .getOrElse { "${row[1]} ${row[2]} ${row[3]} ${row[4]}".lowercase() }
-            db.update(
-                "photo_annotations",
-                ContentValues().apply {
-                    put("recognized_subjects_json", keptPets.toString())
-                    put("search_text", searchText)
-                },
-                "annotation_id = ?",
-                arrayOf(row[0]),
-            )
-        }
-    }
-
-    private fun stripLegacyVlmIdentities(db: SQLiteDatabase) {
-        val rows = db.rawQuery(
-            """
-            SELECT annotation_id, caption, tags_json, facets_json, visible_text
-            FROM photo_annotations
-            """.trimIndent(),
-            null,
-        ).use { cursor ->
-            buildList {
-                while (cursor.moveToNext()) {
-                    add(
-                        listOf(
-                            cursor.getString(0),
-                            cursor.getString(1),
-                            cursor.getString(2),
-                            cursor.getString(3),
-                            cursor.getString(4),
-                        ),
-                    )
-                }
-            }
-        }
-        rows.forEach { row ->
-            val annotation = JSONObject()
-                .put("caption", row[1])
-                .put("tags", JSONArray(row[2]))
-                .put("facets", JSONObject(row[3]))
-                .put("visible_text", row[4])
-                .put("subject_mentions", JSONArray())
-            val searchText = runCatching { FacetRules.searchText(AnnotationContract.parse(annotation)) }
-                .getOrElse { "${row[1]} ${row[2]} ${row[3]} ${row[4]}".lowercase() }
-            db.update(
-                "photo_annotations",
-                ContentValues().apply {
-                    put("recognized_subjects_json", "[]")
-                    put("subject_mentions_json", "[]")
-                    put("search_text", searchText)
-                },
-                "annotation_id = ?",
-                arrayOf(row[0]),
-            )
-        }
     }
 
     @Synchronized
@@ -540,7 +457,7 @@ class ApmDatabase(
               AND NOT EXISTS (
                   SELECT 1 FROM photo_annotations AS annotation
                   WHERE annotation.photo_id = location.photo_id
-                    AND annotation.provider = 'ollama'
+                    AND annotation.provider = 'openai-compatible'
                     AND annotation.model_name = ?
                     AND annotation.prompt_version = ?
             )
@@ -566,7 +483,7 @@ class ApmDatabase(
               AND NOT EXISTS (
                   SELECT 1 FROM photo_annotations AS annotation
                   WHERE annotation.photo_id = location.photo_id
-                    AND annotation.provider = 'ollama'
+                    AND annotation.provider = 'openai-compatible'
                     AND annotation.model_name = ?
                     AND annotation.prompt_version = ?
               )
@@ -580,1131 +497,6 @@ class ApmDatabase(
                 }
             }
         }
-    }
-
-    @Synchronized
-    fun pendingFacePhotos(
-        modelName: String,
-        limit: Int? = 500,
-        selectedOnly: Boolean = false,
-    ): List<PendingPhoto> {
-        if (limit != null) require(limit in 1..5_000)
-        val selectionJoin = if (selectedOnly) {
-            "JOIN annotation_selection AS selection ON selection.photo_id = location.photo_id"
-        } else {
-            ""
-        }
-        val limitClause = if (limit == null) "" else "LIMIT ?"
-        val sql = """
-            SELECT location.photo_id, MIN(location.uri), MIN(location.display_name)
-            FROM media_locations AS location
-            $selectionJoin
-            WHERE location.accessible = 1
-              AND NOT EXISTS (
-                  SELECT 1 FROM photo_face_index AS face_index
-                  WHERE face_index.photo_id = location.photo_id
-                    AND face_index.model_name = ?
-            )
-            GROUP BY location.photo_id
-            ORDER BY COALESCE(MAX(location.date_taken_millis), MAX(location.modified_seconds) * 1000) DESC
-            $limitClause
-        """.trimIndent()
-        val arguments = if (limit == null) arrayOf(modelName) else arrayOf(modelName, limit.toString())
-        return readableDatabase.rawQuery(sql, arguments).use { cursor ->
-            buildList {
-                while (cursor.moveToNext()) {
-                    add(PendingPhoto(cursor.getString(0), cursor.getString(1), cursor.getString(2)))
-                }
-            }
-        }
-    }
-
-    @Synchronized
-    fun pendingPetPhotos(
-        indexVersion: String,
-        limit: Int? = 500,
-        selectedOnly: Boolean = false,
-    ): List<PendingPhoto> {
-        if (limit != null) require(limit in 1..5_000)
-        val selectionJoin = if (selectedOnly) {
-            "JOIN annotation_selection AS selection ON selection.photo_id = location.photo_id"
-        } else {
-            ""
-        }
-        val limitClause = if (limit == null) "" else "LIMIT ?"
-        val sql = """
-            SELECT location.photo_id, MIN(location.uri), MIN(location.display_name)
-            FROM media_locations AS location
-            $selectionJoin
-            WHERE location.accessible = 1
-              AND NOT EXISTS (
-                  SELECT 1 FROM photo_pet_index AS pet_index
-                  WHERE pet_index.photo_id = location.photo_id
-                    AND pet_index.pipeline_version = ?
-              )
-            GROUP BY location.photo_id
-            ORDER BY COALESCE(MAX(location.date_taken_millis), MAX(location.modified_seconds) * 1000) DESC
-            $limitClause
-        """.trimIndent()
-        val arguments = if (limit == null) arrayOf(indexVersion) else arrayOf(indexVersion, limit.toString())
-        return readableDatabase.rawQuery(sql, arguments).use { cursor ->
-            buildList {
-                while (cursor.moveToNext()) {
-                    add(PendingPhoto(cursor.getString(0), cursor.getString(1), cursor.getString(2)))
-                }
-            }
-        }
-    }
-
-    @Synchronized
-    fun pendingVisualPhotos(
-        modelName: String,
-        pipelineVersion: String,
-        limit: Int? = null,
-        selectedOnly: Boolean = false,
-    ): List<PendingPhoto> {
-        if (limit != null) require(limit in 1..5_000)
-        val selectionJoin = if (selectedOnly) {
-            "JOIN annotation_selection AS selection ON selection.photo_id = location.photo_id"
-        } else {
-            ""
-        }
-        val limitClause = if (limit == null) "" else "LIMIT ?"
-        val sql = """
-            SELECT location.photo_id, MIN(location.uri), MIN(location.display_name)
-            FROM media_locations AS location
-            $selectionJoin
-            WHERE location.accessible = 1
-              AND NOT EXISTS (
-                  SELECT 1 FROM photo_visual_features AS feature
-                  WHERE feature.photo_id = location.photo_id
-                    AND feature.model_name = ?
-                    AND feature.pipeline_version = ?
-              )
-            GROUP BY location.photo_id
-            ORDER BY COALESCE(MAX(location.date_taken_millis), MAX(location.modified_seconds) * 1000) DESC
-            $limitClause
-        """.trimIndent()
-        val arguments = buildList {
-            add(modelName)
-            add(pipelineVersion)
-            if (limit != null) add(limit.toString())
-        }.toTypedArray()
-        return readableDatabase.rawQuery(sql, arguments).use { cursor ->
-            buildList {
-                while (cursor.moveToNext()) {
-                    add(PendingPhoto(cursor.getString(0), cursor.getString(1), cursor.getString(2)))
-                }
-            }
-        }
-    }
-
-    @Synchronized
-    fun visualPhotosForCheck(
-        request: SimilarityCheckRequest,
-        modelName: String,
-        pipelineVersion: String,
-        limit: Int? = null,
-    ): VisualCheckSelection {
-        if (limit != null) require(limit >= 1)
-        val scopeClause = when (request.mode) {
-            SimilarityCheckMode.INCREMENTAL ->
-                """
-                AND NOT EXISTS (
-                    SELECT 1 FROM photo_visual_features AS feature
-                    WHERE feature.photo_id = location.photo_id
-                      AND feature.model_name = ?
-                      AND feature.pipeline_version = ?
-                )
-                """.trimIndent()
-            SimilarityCheckMode.RECENT -> "AND location.date_taken_millis >= ?"
-            SimilarityCheckMode.FULL -> ""
-        }
-        val limitClause = if (limit == null) "" else "LIMIT ?"
-        val arguments = buildList {
-            when (request.mode) {
-                SimilarityCheckMode.INCREMENTAL -> {
-                    add(modelName)
-                    add(pipelineVersion)
-                }
-                SimilarityCheckMode.RECENT -> add(requireNotNull(request.recentCutoffMillis).toString())
-                SimilarityCheckMode.FULL -> Unit
-            }
-            if (limit != null) add(limit.toString())
-        }.toTypedArray()
-        val photos = readableDatabase.rawQuery(
-            """
-            SELECT location.photo_id, MIN(location.uri), MIN(location.display_name)
-            FROM media_locations AS location
-            WHERE location.accessible = 1
-              $scopeClause
-            GROUP BY location.photo_id
-            ORDER BY COALESCE(MAX(location.date_taken_millis), MAX(location.modified_seconds) * 1000) DESC,
-                     location.photo_id ASC
-            $limitClause
-            """.trimIndent(),
-            arguments,
-        ).use { cursor ->
-            buildList {
-                while (cursor.moveToNext()) {
-                    add(PendingPhoto(cursor.getString(0), cursor.getString(1), cursor.getString(2)))
-                }
-            }
-        }
-        val excludedWithoutCaptureTime = if (request.mode == SimilarityCheckMode.RECENT) {
-            readableDatabase.rawQuery(
-                """
-                SELECT COUNT(*) FROM (
-                    SELECT location.photo_id
-                    FROM media_locations AS location
-                    WHERE location.accessible = 1
-                    GROUP BY location.photo_id
-                    HAVING MAX(location.date_taken_millis) IS NULL
-                )
-                """.trimIndent(),
-                null,
-            ).use { cursor -> cursor.moveToFirst(); cursor.getInt(0) }
-        } else {
-            0
-        }
-        return VisualCheckSelection(photos, excludedWithoutCaptureTime)
-    }
-
-    @Synchronized
-    fun replaceVisualFeature(
-        feature: PhotoVisualFeature,
-        generalSubjects: List<GeneralSubjectObservation>,
-    ) {
-        require(generalSubjects.all {
-            it.modelName == feature.modelName && it.pipelineVersion == feature.pipelineVersion
-        })
-        val db = writableDatabase
-        db.beginTransaction()
-        try {
-            db.delete("photo_general_subjects", "photo_id = ?", arrayOf(feature.photoId))
-            db.insertWithOnConflict(
-                "photo_visual_features",
-                null,
-                ContentValues().apply {
-                    put("photo_id", feature.photoId)
-                    put("global_embedding", VisualEmbeddingCodec.encode(feature.globalEmbedding))
-                    put("embedding_dimension", feature.dimension)
-                    put("patch_grid", VisualEmbeddingCodec.encodeGrid(feature.patchEmbeddings, feature.dimension))
-                    put("grid_size", PhotoVisualFeature.GRID_SIZE)
-                    put("model_name", feature.modelName)
-                    put("pipeline_version", feature.pipelineVersion)
-                    put("indexed_at", feature.indexedAt)
-                },
-                SQLiteDatabase.CONFLICT_REPLACE,
-            )
-            generalSubjects.forEach { subject ->
-                db.insertOrThrow(
-                    "photo_general_subjects",
-                    null,
-                    ContentValues().apply {
-                        put("photo_id", feature.photoId)
-                        put("subject_index", subject.subjectIndex)
-                        put("category", subject.category)
-                        put("embedding", VisualEmbeddingCodec.encode(subject.embedding))
-                        put("embedding_dimension", subject.embedding.size)
-                        put("bounding_box_json", faceBoxJson(subject.box).toString())
-                        put("detector_score", subject.detectorScore)
-                        put("detector_name", subject.detectorName)
-                        put("model_name", subject.modelName)
-                        put("pipeline_version", subject.pipelineVersion)
-                        put("indexed_at", feature.indexedAt)
-                    },
-                )
-            }
-            db.setTransactionSuccessful()
-        } finally {
-            db.endTransaction()
-        }
-    }
-
-    @Synchronized
-    fun visualFeatureCount(modelName: String, pipelineVersion: String): Int = readableDatabase.rawQuery(
-        """
-        SELECT COUNT(*)
-        FROM photo_visual_features AS feature
-        WHERE feature.model_name = ? AND feature.pipeline_version = ?
-          AND EXISTS (
-              SELECT 1 FROM media_locations AS location
-              WHERE location.photo_id = feature.photo_id AND location.accessible = 1
-          )
-        """.trimIndent(),
-        arrayOf(modelName, pipelineVersion),
-    ).use { cursor -> cursor.moveToFirst(); cursor.getInt(0) }
-
-    @Synchronized
-    fun visualFeatureCount(pipelineVersion: String): Int = readableDatabase.rawQuery(
-        """
-        SELECT COUNT(*)
-        FROM photo_visual_features AS feature
-        WHERE feature.pipeline_version = ?
-          AND EXISTS (
-              SELECT 1 FROM media_locations AS location
-              WHERE location.photo_id = feature.photo_id AND location.accessible = 1
-          )
-        """.trimIndent(),
-        arrayOf(pipelineVersion),
-    ).use { cursor -> cursor.moveToFirst(); cursor.getInt(0) }
-
-    @Synchronized
-    fun hasVisualFeature(photoId: String): Boolean = readableDatabase.rawQuery(
-        """
-        SELECT 1
-        FROM photo_visual_features AS feature
-        WHERE feature.photo_id = ? AND feature.pipeline_version = ?
-          AND EXISTS (
-              SELECT 1 FROM media_locations AS location
-              WHERE location.photo_id = feature.photo_id AND location.accessible = 1
-          )
-        LIMIT 1
-        """.trimIndent(),
-        arrayOf(photoId, SimilarityScorer.PIPELINE_VERSION),
-    ).use(Cursor::moveToFirst)
-
-    @Synchronized
-    fun similarPhotos(queryPhotoId: String, limit: Int = 100): List<SimilarPhotoCard> {
-        require(limit in 1..500)
-        val queryFeature = readableDatabase.rawQuery(
-            "SELECT model_name, pipeline_version FROM photo_visual_features WHERE photo_id = ?",
-            arrayOf(queryPhotoId),
-        ).use { cursor ->
-            if (!cursor.moveToFirst()) return emptyList()
-            cursor.getString(0) to cursor.getString(1)
-        }
-        val loaded = loadSimilarityInputs(queryFeature.first, queryFeature.second)
-        val query = loaded.inputs.firstOrNull { it.photoId == queryPhotoId } ?: return emptyList()
-
-        // Ranking is deliberately completed before any annotation is read.
-        val ranked = SimilarityScorer.rank(query, loaded.inputs).take(limit)
-        val queryAnnotation = latestAnnotation(queryPhotoId)
-        return ranked.mapNotNull { result ->
-            val location = loaded.locations[result.candidatePhotoId] ?: return@mapNotNull null
-            SimilarPhotoCard(
-                result = SimilarityExplanationBuilder.build(
-                    result,
-                    queryAnnotation,
-                    latestAnnotation(result.candidatePhotoId),
-                ),
-                uri = location.uri,
-                displayName = location.displayName,
-                dateTakenMillis = location.dateTakenMillis,
-            )
-        }
-    }
-
-    private data class LoadedSimilarityInputs(
-        val inputs: List<SimilarityPhotoInput>,
-        val locations: Map<String, SimilarityPhotoLocation>,
-    )
-
-    private fun loadSimilarityInputs(modelName: String, pipelineVersion: String): LoadedSimilarityInputs {
-        val locations = linkedMapOf<String, SimilarityPhotoLocation>()
-        val features = linkedMapOf<String, PhotoVisualFeature>()
-        readableDatabase.rawQuery(
-            """
-            WITH chosen_location AS (
-                SELECT photo_id, MIN(uri) AS uri
-                FROM media_locations
-                WHERE accessible = 1
-                GROUP BY photo_id
-            )
-            SELECT feature.photo_id, feature.global_embedding, feature.embedding_dimension,
-                   feature.patch_grid, feature.model_name, feature.pipeline_version, feature.indexed_at,
-                   location.uri, location.display_name, location.date_taken_millis
-            FROM photo_visual_features AS feature
-            JOIN chosen_location AS chosen ON chosen.photo_id = feature.photo_id
-            JOIN media_locations AS location ON location.uri = chosen.uri
-            WHERE feature.model_name = ? AND feature.pipeline_version = ?
-              AND location.accessible = 1
-            ORDER BY feature.photo_id
-            """.trimIndent(),
-            arrayOf(modelName, pipelineVersion),
-        ).use { cursor ->
-            while (cursor.moveToNext()) {
-                runCatching {
-                    val photoId = cursor.getString(0)
-                    val dimension = cursor.getInt(2)
-                    features[photoId] = PhotoVisualFeature(
-                        photoId = photoId,
-                        globalEmbedding = VisualEmbeddingCodec.decode(cursor.getBlob(1), dimension),
-                        patchEmbeddings = VisualEmbeddingCodec.decodeGrid(cursor.getBlob(3), dimension),
-                        modelName = cursor.getString(4),
-                        pipelineVersion = cursor.getString(5),
-                        indexedAt = cursor.getString(6),
-                    )
-                    locations[photoId] = SimilarityPhotoLocation(
-                        photoId = photoId,
-                        uri = cursor.getString(7),
-                        displayName = cursor.getString(8),
-                        dateTakenMillis = if (cursor.isNull(9)) null else cursor.getLong(9),
-                    )
-                }
-            }
-        }
-        if (features.isEmpty()) return LoadedSimilarityInputs(emptyList(), emptyMap())
-
-        val subjects = mutableMapOf<String, MutableList<SimilaritySubjectObservation>>()
-        fun addSubject(photoId: String, subject: SimilaritySubjectObservation) {
-            if (photoId in features) subjects.getOrPut(photoId, ::mutableListOf).add(subject)
-        }
-        readableDatabase.rawQuery(
-            """
-            SELECT face.photo_id, face.embedding, face.embedding_dimension,
-                   face.model_name, face.pipeline_version
-            FROM photo_faces AS face
-            JOIN photo_visual_features AS feature ON feature.photo_id = face.photo_id
-            WHERE feature.model_name = ? AND feature.pipeline_version = ?
-            ORDER BY face.photo_id, face.face_index
-            """.trimIndent(),
-            arrayOf(modelName, pipelineVersion),
-        ).use { cursor ->
-            while (cursor.moveToNext()) runCatching {
-                addSubject(
-                    cursor.getString(0),
-                    SimilaritySubjectObservation(
-                        kind = SimilaritySubjectKind.FACE,
-                        category = "person",
-                        embedding = FaceEmbeddingCodec.decode(cursor.getBlob(1), cursor.getInt(2)),
-                        modelName = cursor.getString(3),
-                        pipelineVersion = cursor.getString(4),
-                    ),
-                )
-            }
-        }
-        readableDatabase.rawQuery(
-            """
-            SELECT pet.photo_id, pet.species, pet.embedding, pet.embedding_dimension,
-                   pet.model_name, pet.pipeline_version
-            FROM photo_pets AS pet
-            JOIN photo_visual_features AS feature ON feature.photo_id = pet.photo_id
-            WHERE feature.model_name = ? AND feature.pipeline_version = ?
-            ORDER BY pet.photo_id, pet.pet_index
-            """.trimIndent(),
-            arrayOf(modelName, pipelineVersion),
-        ).use { cursor ->
-            while (cursor.moveToNext()) runCatching {
-                addSubject(
-                    cursor.getString(0),
-                    SimilaritySubjectObservation(
-                        kind = SimilaritySubjectKind.PET,
-                        category = cursor.getString(1),
-                        embedding = FaceEmbeddingCodec.decode(cursor.getBlob(2), cursor.getInt(3)),
-                        modelName = cursor.getString(4),
-                        pipelineVersion = cursor.getString(5),
-                    ),
-                )
-            }
-        }
-        readableDatabase.rawQuery(
-            """
-            SELECT subject.photo_id, subject.category, subject.embedding, subject.embedding_dimension,
-                   subject.model_name, subject.pipeline_version
-            FROM photo_general_subjects AS subject
-            JOIN photo_visual_features AS feature ON feature.photo_id = subject.photo_id
-            WHERE feature.model_name = ? AND feature.pipeline_version = ?
-              AND subject.model_name = feature.model_name
-              AND subject.pipeline_version = feature.pipeline_version
-            ORDER BY subject.photo_id, subject.subject_index
-            """.trimIndent(),
-            arrayOf(modelName, pipelineVersion),
-        ).use { cursor ->
-            while (cursor.moveToNext()) runCatching {
-                addSubject(
-                    cursor.getString(0),
-                    SimilaritySubjectObservation(
-                        kind = SimilaritySubjectKind.GENERAL_OBJECT,
-                        category = cursor.getString(1),
-                        embedding = VisualEmbeddingCodec.decode(cursor.getBlob(2), cursor.getInt(3)),
-                        modelName = cursor.getString(4),
-                        pipelineVersion = cursor.getString(5),
-                    ),
-                )
-            }
-        }
-        return LoadedSimilarityInputs(
-            inputs = features.map { (photoId, feature) ->
-                SimilarityPhotoInput(
-                    photoId = photoId,
-                    feature = feature,
-                    dateTakenMillis = locations[photoId]?.dateTakenMillis,
-                    subjects = subjects[photoId].orEmpty(),
-                )
-            },
-            locations = locations,
-        )
-    }
-
-    private fun latestAnnotation(photoId: String): PhotoAnnotation? = readableDatabase.rawQuery(
-        """
-        SELECT caption, tags_json, facets_json, visible_text, subject_mentions_json
-        FROM photo_annotations
-        WHERE photo_id = ?
-        ORDER BY annotation_id DESC
-        LIMIT 1
-        """.trimIndent(),
-        arrayOf(photoId),
-    ).use { cursor ->
-        if (!cursor.moveToFirst()) return null
-        runCatching {
-            val parsed = AnnotationContract.parse(
-                JSONObject()
-                    .put("caption", cursor.getString(0))
-                    .put("tags", JSONArray(cursor.getString(1)))
-                    .put("facets", JSONObject(cursor.getString(2)))
-                    .put("visible_text", cursor.getString(3))
-                    .put("subject_mentions", JSONArray(cursor.getString(4))),
-            )
-            SubjectMarkerPipeline.compose(parsed, subjectMarkers(photoId))
-        }.getOrNull()
-    }
-
-    @Synchronized
-    fun identitySummaries(): List<PersonIdentitySummary> = readableDatabase.rawQuery(
-        """
-        SELECT identity.identity_id, identity.name, COUNT(template.template_id)
-        FROM person_identities AS identity
-        LEFT JOIN face_templates AS template ON template.identity_id = identity.identity_id
-        GROUP BY identity.identity_id, identity.name
-        ORDER BY identity.name COLLATE NOCASE
-        """.trimIndent(),
-        null,
-    ).use { cursor ->
-        buildList {
-            while (cursor.moveToNext()) {
-                add(PersonIdentitySummary(cursor.getLong(0), cursor.getString(1), cursor.getInt(2)))
-            }
-        }
-    }
-
-    @Synchronized
-    fun identityNames(): List<String> = identitySummaries().map(PersonIdentitySummary::name)
-
-    @Synchronized
-    fun personIdentityCount(): Int = readableDatabase.rawQuery(
-        "SELECT COUNT(*) FROM person_identities",
-        null,
-    ).use { cursor -> cursor.moveToFirst(); cursor.getInt(0) }
-
-    @Synchronized
-    fun petIdentityCount(): Int = readableDatabase.rawQuery(
-        "SELECT COUNT(*) FROM pet_identities",
-        null,
-    ).use { cursor -> cursor.moveToFirst(); cursor.getInt(0) }
-
-    @Synchronized
-    fun identityCount(): Int = personIdentityCount() + petIdentityCount()
-
-    @Synchronized
-    fun localIdentitySummaries(): List<LocalIdentitySummary> {
-        val people = identitySummaries().map {
-            LocalIdentitySummary(it.id, it.name, it.templateCount, LocalIdentityKind.PERSON)
-        }
-        val pets = petIdentitySummaries().map {
-            LocalIdentitySummary(it.id, it.name, it.templateCount, LocalIdentityKind.PET, it.species)
-        }
-        return (people + pets).sortedWith(compareBy({ it.kind.ordinal }, { it.name.lowercase() }))
-    }
-
-    @Synchronized
-    fun faceTemplates(modelName: String): List<FaceTemplateRecord> = readableDatabase.rawQuery(
-        """
-        SELECT template.template_id, template.identity_id, identity.name,
-               template.embedding, template.embedding_dimension, template.model_name
-        FROM face_templates AS template
-        JOIN person_identities AS identity ON identity.identity_id = template.identity_id
-        WHERE template.model_name = ?
-        ORDER BY template.template_id
-        """.trimIndent(),
-        arrayOf(modelName),
-    ).use { cursor ->
-        buildList {
-            while (cursor.moveToNext()) {
-                add(
-                    FaceTemplateRecord(
-                        id = cursor.getLong(0),
-                        identityId = cursor.getLong(1),
-                        identityName = cursor.getString(2),
-                        embedding = FaceEmbeddingCodec.decode(cursor.getBlob(3), cursor.getInt(4)),
-                        modelName = cursor.getString(5),
-                    ),
-                )
-            }
-        }
-    }
-
-    @Synchronized
-    fun registerFaceTemplate(
-        name: String,
-        sample: FaceSample,
-        modelName: String,
-        sourcePhotoId: String?,
-    ): PersonIdentitySummary {
-        val normalizedName = name.trim()
-        require(normalizedName.isNotEmpty() && normalizedName.length <= 40) { "人物名称必须是 1 到 40 个字符" }
-        val embedding = FaceEmbeddingCodec.encode(sample.embedding)
-        val now = Instant.now().toString()
-        val db = writableDatabase
-        db.beginTransaction()
-        try {
-            db.insertWithOnConflict(
-                "person_identities",
-                null,
-                ContentValues().apply {
-                    put("name", normalizedName)
-                    put("created_at", now)
-                    put("updated_at", now)
-                },
-                SQLiteDatabase.CONFLICT_IGNORE,
-            )
-            val identityId = db.rawQuery(
-                "SELECT identity_id FROM person_identities WHERE name = ? COLLATE NOCASE",
-                arrayOf(normalizedName),
-            ).use { cursor ->
-                check(cursor.moveToFirst()) { "无法创建人物身份" }
-                cursor.getLong(0)
-            }
-            db.update(
-                "person_identities",
-                ContentValues().apply {
-                    put("name", normalizedName)
-                    put("updated_at", now)
-                },
-                "identity_id = ?",
-                arrayOf(identityId.toString()),
-            )
-            db.insertOrThrow(
-                "face_templates",
-                null,
-                ContentValues().apply {
-                    put("identity_id", identityId)
-                    put("embedding", embedding)
-                    put("embedding_dimension", sample.embedding.size)
-                    put("model_name", modelName)
-                    if (sourcePhotoId == null) putNull("source_photo_id") else put("source_photo_id", sourcePhotoId)
-                    put("bounding_box_json", faceBoxJson(sample.box).toString())
-                    put("created_at", now)
-                },
-            )
-            db.setTransactionSuccessful()
-            return PersonIdentitySummary(
-                id = identityId,
-                name = normalizedName,
-                templateCount = db.rawQuery(
-                    "SELECT COUNT(*) FROM face_templates WHERE identity_id = ?",
-                    arrayOf(identityId.toString()),
-                ).use { cursor -> cursor.moveToFirst(); cursor.getInt(0) },
-            )
-        } finally {
-            db.endTransaction()
-        }
-    }
-
-    @Synchronized
-    fun replaceFaceObservations(
-        photoId: String,
-        samples: List<FaceSample>,
-        decisions: List<FaceMatchDecision>,
-        modelName: String,
-        detectorName: String,
-        indexVersion: String = modelName,
-    ) {
-        require(samples.size == decisions.size)
-        val now = Instant.now().toString()
-        val db = writableDatabase
-        db.beginTransaction()
-        try {
-            db.delete("photo_faces", "photo_id = ? AND model_name = ?", arrayOf(photoId, modelName))
-            samples.zip(decisions).forEach { (sample, decision) ->
-                db.insertOrThrow(
-                    "photo_faces",
-                    null,
-                    ContentValues().apply {
-                        put("photo_id", photoId)
-                        put("face_index", sample.faceIndex)
-                        put("embedding", FaceEmbeddingCodec.encode(sample.embedding))
-                        put("embedding_dimension", sample.embedding.size)
-                        put("bounding_box_json", faceBoxJson(sample.box).toString())
-                        put("detector_score", sample.detectorScore)
-                        put("model_name", modelName)
-                        put("pipeline_version", indexVersion)
-                        put("match_state", decision.state)
-                        if (decision.identityId == null) putNull("matched_identity_id")
-                        else put("matched_identity_id", decision.identityId)
-                        if (decision.similarity == null) putNull("similarity")
-                        else put("similarity", decision.similarity)
-                        put("threshold", decision.threshold)
-                        put("indexed_at", now)
-                    },
-                )
-            }
-            db.insertWithOnConflict(
-                "photo_face_index",
-                null,
-                ContentValues().apply {
-                    put("photo_id", photoId)
-                    put("model_name", indexVersion)
-                    put("detector_name", detectorName)
-                    put("face_count", samples.size)
-                    put("indexed_at", now)
-                },
-                SQLiteDatabase.CONFLICT_REPLACE,
-            )
-            db.delete(
-                "photo_face_index",
-                "photo_id = ? AND model_name <> ?",
-                arrayOf(photoId, indexVersion),
-            )
-            db.setTransactionSuccessful()
-        } finally {
-            db.endTransaction()
-        }
-    }
-
-    @Synchronized
-    fun rematchFaceObservations(modelName: String): Int {
-        val templates = faceTemplates(modelName)
-        val rows = readableDatabase.rawQuery(
-            """
-            SELECT face_id, embedding, embedding_dimension
-            FROM photo_faces
-            WHERE model_name = ?
-            """.trimIndent(),
-            arrayOf(modelName),
-        ).use { cursor ->
-            buildList {
-                while (cursor.moveToNext()) {
-                    add(Triple(cursor.getLong(0), cursor.getBlob(1), cursor.getInt(2)))
-                }
-            }
-        }
-        val db = writableDatabase
-        db.beginTransaction()
-        try {
-            var matched = 0
-            rows.forEach { (faceId, blob, dimension) ->
-                val decision = FaceMatcher.decide(FaceEmbeddingCodec.decode(blob, dimension), templates)
-                if (decision.state == FaceMatcher.MATCHED) matched += 1
-                db.update(
-                    "photo_faces",
-                    ContentValues().apply {
-                        put("match_state", decision.state)
-                        if (decision.identityId == null) putNull("matched_identity_id")
-                        else put("matched_identity_id", decision.identityId)
-                        if (decision.similarity == null) putNull("similarity")
-                        else put("similarity", decision.similarity)
-                        put("threshold", decision.threshold)
-                        put("indexed_at", Instant.now().toString())
-                    },
-                    "face_id = ?",
-                    arrayOf(faceId.toString()),
-                )
-            }
-            db.setTransactionSuccessful()
-            return matched
-        } finally {
-            db.endTransaction()
-        }
-    }
-
-    @Synchronized
-    fun deleteIdentity(identityId: Long, modelName: String): Int {
-        val db = writableDatabase
-        val deleted: Int
-        db.beginTransaction()
-        try {
-            db.update(
-                "photo_faces",
-                ContentValues().apply {
-                    put("match_state", FaceMatcher.UNKNOWN)
-                    putNull("matched_identity_id")
-                },
-                "matched_identity_id = ?",
-                arrayOf(identityId.toString()),
-            )
-            deleted = db.delete("person_identities", "identity_id = ?", arrayOf(identityId.toString()))
-            db.setTransactionSuccessful()
-        } finally {
-            db.endTransaction()
-        }
-        if (deleted > 0) rematchFaceObservations(modelName)
-        return deleted
-    }
-
-    @Synchronized
-    fun petIdentitySummaries(): List<PetIdentitySummary> = readableDatabase.rawQuery(
-        """
-        SELECT identity.identity_id, identity.name, COUNT(template.template_id),
-               COALESCE(MIN(template.species), '')
-        FROM pet_identities AS identity
-        LEFT JOIN pet_templates AS template ON template.identity_id = identity.identity_id
-        GROUP BY identity.identity_id, identity.name
-        ORDER BY identity.name COLLATE NOCASE
-        """.trimIndent(),
-        null,
-    ).use { cursor ->
-        buildList {
-            while (cursor.moveToNext()) {
-                add(
-                    PetIdentitySummary(
-                        id = cursor.getLong(0),
-                        name = cursor.getString(1),
-                        templateCount = cursor.getInt(2),
-                        species = cursor.getString(3),
-                    ),
-                )
-            }
-        }
-    }
-
-    @Synchronized
-    fun petTemplates(modelName: String): List<PetTemplateRecord> = readableDatabase.rawQuery(
-        """
-        SELECT template.template_id, template.identity_id, identity.name, template.species,
-               template.embedding, template.embedding_dimension, template.model_name
-        FROM pet_templates AS template
-        JOIN pet_identities AS identity ON identity.identity_id = template.identity_id
-        WHERE template.model_name = ?
-        ORDER BY template.template_id
-        """.trimIndent(),
-        arrayOf(modelName),
-    ).use { cursor ->
-        buildList {
-            while (cursor.moveToNext()) {
-                add(
-                    PetTemplateRecord(
-                        id = cursor.getLong(0),
-                        identityId = cursor.getLong(1),
-                        identityName = cursor.getString(2),
-                        species = cursor.getString(3),
-                        embedding = FaceEmbeddingCodec.decode(cursor.getBlob(4), cursor.getInt(5)),
-                        modelName = cursor.getString(6),
-                    ),
-                )
-            }
-        }
-    }
-
-    @Synchronized
-    fun registerPetTemplate(
-        name: String,
-        sample: PetSample,
-        modelName: String,
-        sourcePhotoId: String?,
-    ): PetIdentitySummary {
-        val normalizedName = name.trim()
-        require(normalizedName.isNotEmpty() && normalizedName.length <= 40) {
-            "宠物名称必须是 1 到 40 个字符"
-        }
-        val embedding = FaceEmbeddingCodec.encode(sample.embedding)
-        val now = Instant.now().toString()
-        val db = writableDatabase
-        db.beginTransaction()
-        try {
-            db.insertWithOnConflict(
-                "pet_identities",
-                null,
-                ContentValues().apply {
-                    put("name", normalizedName)
-                    put("created_at", now)
-                    put("updated_at", now)
-                },
-                SQLiteDatabase.CONFLICT_IGNORE,
-            )
-            val identityId = db.rawQuery(
-                "SELECT identity_id FROM pet_identities WHERE name = ? COLLATE NOCASE",
-                arrayOf(normalizedName),
-            ).use { cursor ->
-                check(cursor.moveToFirst()) { "无法创建宠物身份" }
-                cursor.getLong(0)
-            }
-            val existingSpecies = db.rawQuery(
-                "SELECT DISTINCT species FROM pet_templates WHERE identity_id = ?",
-                arrayOf(identityId.toString()),
-            ).use { cursor ->
-                buildSet { while (cursor.moveToNext()) add(cursor.getString(0)) }
-            }
-            require(existingSpecies.isEmpty() || existingSpecies == setOf(sample.species)) {
-                "同一个宠物名称不能同时注册为猫和狗"
-            }
-            db.update(
-                "pet_identities",
-                ContentValues().apply {
-                    put("name", normalizedName)
-                    put("updated_at", now)
-                },
-                "identity_id = ?",
-                arrayOf(identityId.toString()),
-            )
-            db.insertOrThrow(
-                "pet_templates",
-                null,
-                ContentValues().apply {
-                    put("identity_id", identityId)
-                    put("species", sample.species)
-                    put("embedding", embedding)
-                    put("embedding_dimension", sample.embedding.size)
-                    put("model_name", modelName)
-                    if (sourcePhotoId == null) putNull("source_photo_id") else put("source_photo_id", sourcePhotoId)
-                    put("bounding_box_json", faceBoxJson(sample.box).toString())
-                    put("created_at", now)
-                },
-            )
-            db.setTransactionSuccessful()
-            return PetIdentitySummary(
-                id = identityId,
-                name = normalizedName,
-                templateCount = db.rawQuery(
-                    "SELECT COUNT(*) FROM pet_templates WHERE identity_id = ?",
-                    arrayOf(identityId.toString()),
-                ).use { cursor -> cursor.moveToFirst(); cursor.getInt(0) },
-                species = sample.species,
-            )
-        } finally {
-            db.endTransaction()
-        }
-    }
-
-    @Synchronized
-    fun replacePetObservations(
-        photoId: String,
-        samples: List<PetSample>,
-        decisions: List<PetMatchDecision>,
-        modelName: String,
-        detectorName: String,
-        indexVersion: String,
-    ) {
-        require(samples.size == decisions.size)
-        val now = Instant.now().toString()
-        val db = writableDatabase
-        db.beginTransaction()
-        try {
-            db.delete("photo_pets", "photo_id = ? AND model_name = ?", arrayOf(photoId, modelName))
-            samples.zip(decisions).forEach { (sample, decision) ->
-                db.insertOrThrow(
-                    "photo_pets",
-                    null,
-                    ContentValues().apply {
-                        put("photo_id", photoId)
-                        put("pet_index", sample.petIndex)
-                        put("species", sample.species)
-                        put("embedding", FaceEmbeddingCodec.encode(sample.embedding))
-                        put("embedding_dimension", sample.embedding.size)
-                        put("bounding_box_json", faceBoxJson(sample.box).toString())
-                        put("detector_score", sample.detectorScore)
-                        put("model_name", modelName)
-                        put("pipeline_version", indexVersion)
-                        put("match_state", decision.state)
-                        if (decision.identityId == null) putNull("matched_identity_id")
-                        else put("matched_identity_id", decision.identityId)
-                        if (decision.similarity == null) putNull("similarity")
-                        else put("similarity", decision.similarity)
-                        put("threshold", decision.threshold)
-                        put("indexed_at", now)
-                    },
-                )
-            }
-            db.insertWithOnConflict(
-                "photo_pet_index",
-                null,
-                ContentValues().apply {
-                    put("photo_id", photoId)
-                    put("pipeline_version", indexVersion)
-                    put("detector_name", detectorName)
-                    put("pet_count", samples.size)
-                    put("indexed_at", now)
-                },
-                SQLiteDatabase.CONFLICT_REPLACE,
-            )
-            db.delete(
-                "photo_pet_index",
-                "photo_id = ? AND pipeline_version <> ?",
-                arrayOf(photoId, indexVersion),
-            )
-            db.setTransactionSuccessful()
-        } finally {
-            db.endTransaction()
-        }
-    }
-
-    @Synchronized
-    fun rematchPetObservations(modelName: String): Int {
-        val templates = petTemplates(modelName)
-        val rows = readableDatabase.rawQuery(
-            """
-            SELECT pet_id, species, embedding, embedding_dimension
-            FROM photo_pets
-            WHERE model_name = ?
-            """.trimIndent(),
-            arrayOf(modelName),
-        ).use { cursor ->
-            buildList {
-                while (cursor.moveToNext()) {
-                    add(
-                        PetObservationEmbedding(
-                            cursor.getLong(0),
-                            cursor.getString(1),
-                            cursor.getBlob(2),
-                            cursor.getInt(3),
-                        ),
-                    )
-                }
-            }
-        }
-        val db = writableDatabase
-        db.beginTransaction()
-        try {
-            var matched = 0
-            rows.forEach { row ->
-                val decision = PetMatcher.decide(
-                    FaceEmbeddingCodec.decode(row.embedding, row.dimension),
-                    row.species,
-                    templates,
-                )
-                if (decision.state == PetMatcher.MATCHED) matched += 1
-                db.update(
-                    "photo_pets",
-                    ContentValues().apply {
-                        put("match_state", decision.state)
-                        if (decision.identityId == null) putNull("matched_identity_id")
-                        else put("matched_identity_id", decision.identityId)
-                        if (decision.similarity == null) putNull("similarity")
-                        else put("similarity", decision.similarity)
-                        put("threshold", decision.threshold)
-                        put("indexed_at", Instant.now().toString())
-                    },
-                    "pet_id = ?",
-                    arrayOf(row.id.toString()),
-                )
-            }
-            db.setTransactionSuccessful()
-            return matched
-        } finally {
-            db.endTransaction()
-        }
-    }
-
-    @Synchronized
-    fun deletePetIdentity(identityId: Long, modelName: String): Int {
-        val db = writableDatabase
-        val deleted: Int
-        db.beginTransaction()
-        try {
-            db.update(
-                "photo_pets",
-                ContentValues().apply {
-                    put("match_state", PetMatcher.UNKNOWN)
-                    putNull("matched_identity_id")
-                },
-                "matched_identity_id = ?",
-                arrayOf(identityId.toString()),
-            )
-            deleted = db.delete("pet_identities", "identity_id = ?", arrayOf(identityId.toString()))
-            db.setTransactionSuccessful()
-        } finally {
-            db.endTransaction()
-        }
-        if (deleted > 0) rematchPetObservations(modelName)
-        return deleted
-    }
-
-    private data class PetObservationEmbedding(
-        val id: Long,
-        val species: String,
-        val embedding: ByteArray,
-        val dimension: Int,
-    )
-
-    @Synchronized
-    fun matchedPeople(photoId: String): List<RecognizedSubject> = readableDatabase.rawQuery(
-        """
-        SELECT DISTINCT identity.name
-        FROM photo_faces AS face
-        JOIN person_identities AS identity ON identity.identity_id = face.matched_identity_id
-        WHERE face.photo_id = ? AND face.match_state = 'matched'
-        ORDER BY identity.name COLLATE NOCASE
-        """.trimIndent(),
-        arrayOf(photoId),
-    ).use { cursor ->
-        buildList {
-            while (cursor.moveToNext()) add(RecognizedSubject(cursor.getString(0), "人物"))
-        }
-    }
-
-    @Synchronized
-    fun matchedPets(photoId: String): List<RecognizedSubject> = readableDatabase.rawQuery(
-        """
-        SELECT DISTINCT identity.name
-        FROM photo_pets AS pet
-        JOIN pet_identities AS identity ON identity.identity_id = pet.matched_identity_id
-        WHERE pet.photo_id = ? AND pet.match_state = 'matched'
-        ORDER BY identity.name COLLATE NOCASE
-        """.trimIndent(),
-        arrayOf(photoId),
-    ).use { cursor ->
-        buildList {
-            while (cursor.moveToNext()) add(RecognizedSubject(cursor.getString(0), "宠物"))
-        }
-    }
-
-    @Synchronized
-    fun subjectMarkers(photoId: String): List<LocalSubjectMarker> {
-        val people = readableDatabase.rawQuery(
-            """
-            SELECT face.face_index, face.bounding_box_json, face.matched_identity_id, identity.name
-            FROM photo_faces AS face
-            LEFT JOIN person_identities AS identity ON identity.identity_id = face.matched_identity_id
-            WHERE face.photo_id = ? AND face.model_name = ?
-            ORDER BY face.face_index
-            """.trimIndent(),
-            arrayOf(photoId, LocalFaceEngine.EMBEDDING_MODEL_NAME),
-        ).use { cursor ->
-            buildList {
-                while (cursor.moveToNext()) {
-                    val index = cursor.getInt(0)
-                    add(
-                        LocalSubjectMarker(
-                            marker = "P${index + 1}",
-                            kind = LocalIdentityKind.PERSON,
-                            observationIndex = index,
-                            box = parseFaceBox(cursor.getString(1)),
-                            matchedIdentityId = if (cursor.isNull(2)) null else cursor.getLong(2),
-                            matchedName = if (cursor.isNull(3)) null else cursor.getString(3),
-                        ),
-                    )
-                }
-            }
-        }
-        val pets = readableDatabase.rawQuery(
-            """
-            SELECT pet.pet_index, pet.bounding_box_json, pet.matched_identity_id, identity.name
-            FROM photo_pets AS pet
-            LEFT JOIN pet_identities AS identity ON identity.identity_id = pet.matched_identity_id
-            WHERE pet.photo_id = ? AND pet.model_name = ?
-            ORDER BY pet.pet_index
-            """.trimIndent(),
-            arrayOf(photoId, LocalPetEngine.EMBEDDING_MODEL_NAME),
-        ).use { cursor ->
-            buildList {
-                while (cursor.moveToNext()) {
-                    val index = cursor.getInt(0)
-                    add(
-                        LocalSubjectMarker(
-                            marker = "PET${index + 1}",
-                            kind = LocalIdentityKind.PET,
-                            observationIndex = index,
-                            box = parseFaceBox(cursor.getString(1)),
-                            matchedIdentityId = if (cursor.isNull(2)) null else cursor.getLong(2),
-                            matchedName = if (cursor.isNull(3)) null else cursor.getString(3),
-                        ),
-                    )
-                }
-            }
-        }
-        return people + pets
     }
 
     @Synchronized
@@ -1731,7 +523,7 @@ class ApmDatabase(
                 put("visible_text", valid.visibleText)
                 put("recognized_subjects_json", "[]")
                 put("subject_mentions_json", serialized.getJSONArray("subject_mentions").toString())
-                put("provider", "ollama")
+                put("provider", "openai-compatible")
                 put("model_name", modelName)
                 put("prompt_version", promptVersion)
                 put("created_at", Instant.now().toString())
@@ -1766,7 +558,8 @@ class ApmDatabase(
                 annotation.subject_mentions_json,
                 annotation.model_name,
                 annotation.prompt_version,
-                annotation.created_at
+                annotation.created_at,
+                annotation.recognized_subjects_json
             FROM chosen_location AS chosen
             JOIN media_locations AS location ON location.uri = chosen.uri
             LEFT JOIN latest ON latest.photo_id = location.photo_id
@@ -1784,15 +577,14 @@ class ApmDatabase(
                     val annotation = if (cursor.isNull(4)) {
                         null
                     } else {
-                        val parsed = AnnotationContract.parse(
-                            JSONObject()
+                        val stored = JSONObject()
                                 .put("caption", cursor.getString(5))
                                 .put("tags", JSONArray(cursor.getString(6)))
                                 .put("facets", JSONObject(cursor.getString(7)))
                                 .put("visible_text", cursor.getString(8))
-                                .put("subject_mentions", JSONArray(cursor.getString(9))),
-                        )
-                        SubjectMarkerPipeline.compose(parsed, subjectMarkers(photoId))
+                                .put("subject_mentions", JSONArray(cursor.getString(9)))
+                        val parsed = parseStoredAnnotation(stored, cursor.getString(13))
+                        legacyAnnotation(photoId, parsed)
                     }
                     add(
                         GalleryPhotoCard(
@@ -1924,8 +716,8 @@ class ApmDatabase(
             .put("facets", JSONObject(getString(5)))
             .put("visible_text", getString(6))
             .put("subject_mentions", JSONArray(getString(8)))
-        val parsed = AnnotationContract.parse(combined)
-        val composed = SubjectMarkerPipeline.compose(parsed, subjectMarkers(photoId))
+        val parsed = parseStoredAnnotation(combined, getString(7))
+        val composed = legacyAnnotation(photoId, parsed)
         return PhotoCard(
             photoId = photoId,
             uri = getString(1),
@@ -1939,23 +731,48 @@ class ApmDatabase(
         )
     }
 
+    private fun parseStoredAnnotation(value: JSONObject, legacySubjects: String): PhotoAnnotation {
+        val parsed = AnnotationContract.parse(value)
+        if (parsed.subjectMentions.isNotEmpty()) return parsed
+        value.remove("subject_mentions")
+        value.put("recognized_subjects", JSONArray(legacySubjects))
+        return AnnotationContract.parse(value)
+    }
+
+    // Read compatibility only: never detect, match, register, or rewrite retired records.
+    private fun legacyAnnotation(photoId: String, annotation: PhotoAnnotation): PhotoAnnotation {
+        if (annotation.subjectMentions.isEmpty()) return annotation
+        val names = mutableMapOf<String, String>()
+        val subjects = mutableListOf<RecognizedSubject>()
+        fun read(table: String, identities: String, index: String, prefix: String, kind: String, model: String) {
+            readableDatabase.rawQuery(
+                "SELECT observation.$index, identity.name FROM $table AS observation " +
+                    "LEFT JOIN $identities AS identity ON identity.identity_id = observation.matched_identity_id " +
+                    "WHERE observation.photo_id = ? AND observation.model_name = ? ORDER BY observation.$index",
+                arrayOf(photoId, model),
+            ).use { cursor ->
+                while (cursor.moveToNext()) {
+                    val number = cursor.getInt(0) + 1
+                    val name = if (cursor.isNull(1)) null else cursor.getString(1)
+                    names["$prefix$number"] = name ?: "$kind$number"
+                    if (name != null) subjects += RecognizedSubject(name, kind)
+                }
+            }
+        }
+        read("photo_faces", "person_identities", "face_index", "P", "人物", "opencv-sface-2021dec@0ba9fbfa01b5")
+        read("photo_pets", "pet_identities", "pet_index", "PET", "宠物", "litert-mobilenet-v3-small-float32-imagenet")
+        val pattern = Regex("(?<![A-Z0-9])(?:PET[1-9][0-9]*|P[1-9][0-9]*)(?![A-Z0-9])")
+        fun substitute(text: String) = pattern.replace(text) { names[it.value] ?: it.value }
+        return FacetRules.validate(annotation.copy(
+            caption = substitute(annotation.caption),
+            subjectMentions = annotation.subjectMentions.map { it.copy(description = substitute(it.description)) },
+            recognizedSubjects = subjects.distinctBy { "${it.kind}:${it.name.lowercase()}" },
+        ))
+    }
+
     private fun escapeLike(value: String): String = value
         .replace("\\", "\\\\")
         .replace("%", "\\%")
         .replace("_", "\\_")
 
-    private fun faceBoxJson(box: FaceBox): JSONObject = JSONObject()
-        .put("left", box.left)
-        .put("top", box.top)
-        .put("right", box.right)
-        .put("bottom", box.bottom)
-
-    private fun parseFaceBox(value: String): FaceBox = JSONObject(value).let { box ->
-        FaceBox(
-            left = box.getDouble("left").toFloat(),
-            top = box.getDouble("top").toFloat(),
-            right = box.getDouble("right").toFloat(),
-            bottom = box.getDouble("bottom").toFloat(),
-        )
-    }
 }

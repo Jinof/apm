@@ -10,11 +10,10 @@ from apm.model import (
     Annotation,
     CountedObject,
     ModelError,
-    OllamaClient,
+    ChatCompletionsClient,
     PhotoFacets,
     PresentedPeople,
     RecognizedSubject,
-    RecognitionProfile,
     annotation_schema,
     validate_annotation,
 )
@@ -213,43 +212,20 @@ class APMTest(unittest.TestCase):
 
     def test_remote_model_endpoint_requires_explicit_permission(self) -> None:
         with self.assertRaisesRegex(ValueError, "--allow-remote"):
-            OllamaClient(base_url="http://192.0.2.2:11434")
+            ChatCompletionsClient(model="vision", base_url="http://192.0.2.2/v1")
 
-        client = OllamaClient(
-            base_url="http://192.0.2.2:11434",
+        client = ChatCompletionsClient(
+            model="vision",
+            base_url="http://192.0.2.2/v1",
             allow_remote=True,
         )
-        self.assertEqual(client.base_url, "http://192.0.2.2:11434")
+        self.assertEqual(client.base_url, "http://192.0.2.2/v1")
 
-    def test_recognized_subject_must_match_preset_kind(self) -> None:
-        profile = RecognitionProfile.normalize(("小明",), ("旺财",))
-        payload = {
-            "caption": "旺财在公园",
-            "tags": ["狗", "公园"],
-            "visible_text": "",
-            "facets": {
-                "daylight": "天亮",
-                "sky": [],
-                "objects": [{"name": "狗", "count": 1, "attributes": []}],
-                "people": [],
-                "actions": [],
-                "scenes": ["公园"],
-                "weather": [],
-            },
-            "recognized_subjects": [{"name": "旺财", "kind": "宠物"}],
-        }
+    def test_schema_has_no_identity_recognition(self) -> None:
+        schema = annotation_schema()
+        self.assertNotIn("recognized_subjects", schema["properties"])
+        self.assertEqual(set(schema["required"]), {"caption", "tags", "visible_text", "facets"})
 
-        annotation = validate_annotation(payload, profile)
-
-        self.assertEqual(annotation.recognized_subjects[0].name, "旺财")
-        payload["recognized_subjects"] = [{"name": "陌生人", "kind": "人物"}]
-        with self.assertRaisesRegex(ModelError, "不在对应的预设候选"):
-            validate_annotation(payload, profile)
-
-    def test_empty_profile_schema_forbids_recognized_subjects(self) -> None:
-        schema = annotation_schema(RecognitionProfile())
-
-        self.assertEqual(schema["properties"]["recognized_subjects"]["maxItems"], 0)
 
 
 if __name__ == "__main__":

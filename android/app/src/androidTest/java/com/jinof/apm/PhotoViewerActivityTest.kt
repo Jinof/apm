@@ -113,7 +113,23 @@ class PhotoViewerActivityTest {
             captureViewerScreenshot()
         } finally {
             scenario?.close()
-            photos.forEach { photo -> context.contentResolver.delete(android.net.Uri.parse(photo.uri), null, null) }
+            try {
+                ApmDatabase(context).use { database ->
+                    val sql = database.writableDatabase
+                    sql.beginTransaction()
+                    try {
+                        photos.forEach { photo ->
+                            sql.delete("media_locations", "photo_id = ? AND uri = ?", arrayOf(photo.photoId, photo.uri))
+                            sql.delete("photo_assets", "photo_id = ?", arrayOf(photo.photoId))
+                        }
+                        sql.setTransactionSuccessful()
+                    } finally {
+                        sql.endTransaction()
+                    }
+                }
+            } finally {
+                photos.forEach { photo -> context.contentResolver.delete(android.net.Uri.parse(photo.uri), null, null) }
+            }
         }
     }
 
@@ -134,13 +150,17 @@ class PhotoViewerActivityTest {
 
     private fun createTemporaryPhotos(context: Context): List<ScannedPhoto> {
         val resolver = context.contentResolver
-        val baseCaptureTime = System.currentTimeMillis() + 7L * 24L * 60L * 60L * 1_000L
+        val latestCaptureTime = ApmDatabase(context).use { database ->
+            database.galleryPhotos().mapNotNull { it.dateTakenMillis }.maxOrNull() ?: 0L
+        }
+        val baseCaptureTime = maxOf(System.currentTimeMillis(), latestCaptureTime) + 7L * 24L * 60L * 60L * 1_000L
         val fixtures = listOf(
             Triple(Color.rgb(31, 112, 170), 3_072, 2_048),
             Triple(Color.rgb(198, 101, 48), 2_560, 1_440),
         )
         return fixtures.mapIndexed { index, (color, width, height) ->
-            val displayName = "apm-viewer-test-${UUID.randomUUID()}-$index.png"
+            val fixtureId = UUID.randomUUID().toString()
+            val displayName = "apm-viewer-test-$fixtureId-$index.png"
             val uri = requireNotNull(
                 resolver.insert(
                     MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
@@ -157,6 +177,10 @@ class PhotoViewerActivityTest {
                 val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
                 try {
                     bitmap.eraseColor(color)
+                    // The bytes, and therefore the real SHA-256, must be unique on every run.
+                    fixtureId.toByteArray(Charsets.UTF_8).forEachIndexed { pixelIndex, value ->
+                        bitmap.setPixel(pixelIndex, 0, Color.rgb(value.toInt() and 0xff, index, 255))
+                    }
                     check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, output))
                 } finally {
                     bitmap.recycle()

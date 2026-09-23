@@ -21,6 +21,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextReplacement
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeDown
 import androidx.compose.ui.test.swipeLeft
@@ -168,12 +169,6 @@ class PhotoWallHeatmapActivityTest {
             assertOnlyMainActivityResumed()
 
             composeRule.onNodeWithTag("dock_page_swipe_heatmap").performTouchInput { swipeLeft() }
-            waitForSettledPage("dock_page_swipe_people")
-            composeRule.onNodeWithTag("dock_identity").assertIsSelected()
-            composeRule.onNodeWithTag("identity_back").assertDoesNotExist()
-            assertOnlyMainActivityResumed()
-
-            composeRule.onNodeWithTag("dock_page_swipe_people").performTouchInput { swipeLeft() }
             waitForSettledPage("dock_page_swipe_agent")
             composeRule.onNodeWithTag("dock_agent").assertIsSelected()
             composeRule.onNodeWithTag("agent_back").assertDoesNotExist()
@@ -190,10 +185,6 @@ class PhotoWallHeatmapActivityTest {
             composeRule.onNodeWithTag("dock_agent").assertIsSelected()
 
             composeRule.onNodeWithTag("dock_page_swipe_agent").performTouchInput { swipeRight() }
-            waitForSettledPage("dock_page_swipe_people")
-            composeRule.onNodeWithTag("dock_identity").assertIsSelected()
-
-            composeRule.onNodeWithTag("dock_page_swipe_people").performTouchInput { swipeRight() }
             waitForSettledPage("dock_page_swipe_heatmap")
             composeRule.onNodeWithTag("dock_heatmap").assertIsSelected()
 
@@ -218,7 +209,7 @@ class PhotoWallHeatmapActivityTest {
             composeRule.onNodeWithTag("startup_story_continue").performClick()
             composeRule.onNodeWithTag("dock_settings").performClick()
             waitForSettledPage("dock_page_swipe_settings")
-            composeRule.onNodeWithTag("model_input").performTextReplacement("pager-draft-model")
+            composeRule.onNodeWithTag("model_input").performScrollTo().performTextReplacement("pager-draft-model")
 
             composeRule.onNodeWithTag("dock_page_swipe_settings").performTouchInput { swipeRight() }
             waitForSettledPage("dock_page_swipe_agent")
@@ -254,18 +245,19 @@ class PhotoWallHeatmapActivityTest {
             composeRule.onNodeWithTag("photo_wall_heatmap").assertIsNotDisplayed()
             composeRule.onNodeWithTag("bottom_dock").assertExists()
             composeRule.onNodeWithTag("bottom_dock")
-                .assertContentDescriptionEquals("固定底部 Dock：相册、热力图、人、Agent、设置；页面跟随左右滑动并平滑切换")
+                .assertContentDescriptionEquals("固定底部 Dock：相册、热力图、Agent、设置；页面跟随左右滑动并平滑切换")
             composeRule.onNodeWithTag("dock_album")
                 .assertContentDescriptionEquals("相册首页")
             composeRule.onNodeWithTag("dock_heatmap").assertExists()
             composeRule.onNodeWithTag("dock_settings").assertExists()
-            composeRule.onNodeWithTag("dock_identity").assertExists()
+            composeRule.onNodeWithTag("dock_identity").assertDoesNotExist()
+            composeRule.onNodeWithTag("check_similar").assertDoesNotExist()
             composeRule.onNodeWithTag("dock_agent").assertExists()
             composeRule.onNodeWithTag("open_identity").assertDoesNotExist()
             composeRule.onNodeWithTag("open_agent").assertDoesNotExist()
             composeRule.onNodeWithTag("open_settings").assertDoesNotExist()
             composeRule.onNodeWithTag("open_heatmap_page").assertDoesNotExist()
-            assertDockOrder("dock_album", "dock_heatmap", "dock_identity", "dock_agent", "dock_settings")
+            assertDockOrder("dock_album", "dock_heatmap", "dock_agent", "dock_settings")
             composeRule.onNodeWithTag("photo_wall_gesture_edge")
                 .assertContentDescriptionEquals("从左边缘向右滑动打开年度照片热力图")
                 .performTouchInput {
