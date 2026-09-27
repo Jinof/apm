@@ -71,6 +71,7 @@ internal fun AppDockPager(
     requestedDestination: DockDestination,
     busy: Boolean,
     searchEnabled: Boolean,
+    onExit: () -> Unit,
     onDestinationSettled: (DockDestination) -> Unit,
     pageContent: @Composable (DockDestination, (DockDestination) -> Unit) -> Unit,
 ) {
@@ -110,8 +111,12 @@ internal fun AppDockPager(
         }
     }
     LaunchedEffect(settled) { onDestinationSettled(settled) }
-    BackHandler(enabled = pagerState.currentPage != DockDestination.ALBUM.ordinal) {
-        navigate(DockDestination.ALBUM)
+    BackHandler {
+        if (pagerState.currentPage == DockDestination.ALBUM.ordinal) {
+            onExit()
+        } else {
+            navigate(DockDestination.ALBUM)
+        }
     }
 
     Scaffold(

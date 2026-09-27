@@ -71,8 +71,18 @@ make check PROMISE_CLI=/path/to/promise-cli
 
 `android-check` 使用全新的 `/private/tmp/apm-build-<UUID>` 目录，执行 JVM 测试、lint、主 APK 和测试 APK 构建，并检查 APK 不包含模型权重或推理运行库。可指定尚不存在的 `APM_BUILD_DIR=/private/tmp/<unique-name>`。仪器测试仅在模拟器上运行，使用本地 mock API。
 
-Android 版本为 **0.0.5（7）**。仓库唯一交付 APK 仍为 `android/APM-0.0.2-debug.apk`，文件名按 [AGENTS.md](AGENTS.md) 保持不变，通过验证后才更新。真实手机只对已安装的 `com.jinof.apm` 执行 `adb install -r` 保留数据更新，安装前后核对版本与数据库。
+Android 版本为 **0.0.6（8）**。仓库唯一交付 APK 仍为 `android/APM-0.0.2-debug.apk`，文件名按 [AGENTS.md](AGENTS.md) 保持不变，通过验证后才更新。真实手机只对已安装的 `com.jinof.apm` 执行 `adb install -r` 保留数据更新，安装前后核对版本与数据库。
 
-下载与变更见 [0.0.5 发布说明](docs/release-0.0.5.md) 和 [GitHub Release](https://github.com/Jinof/apm/releases/tag/v0.0.5)。
+下载与变更见 [0.0.6 发布说明](docs/release-0.0.6.md) 和 [GitHub Release](https://github.com/Jinof/apm/releases/tag/v0.0.6)。
 
-本版检查结果见 [0.0.5 验收记录](docs/roadmap-0.0.5-validation.md)。此前的 [API 设置验收](docs/api-connections-validation.md) 和 [API-only 精简验收](docs/api-only-validation.md) 是历史记录，包含本版已移除的功能。
+本版检查结果见 [0.0.6 验收记录](docs/roadmap-0.0.6-validation.md)。此前版本见 [0.0.5 验收记录](docs/roadmap-0.0.5-validation.md)。此前的 [API 设置验收](docs/api-connections-validation.md) 和 [API-only 精简验收](docs/api-only-validation.md) 是历史记录，包含本版已移除的功能。
+
+
+## Roadmap 0.0.6
+
+- [x] 重新打开应用时清空“标注所选”的选择，显示 0 并禁用按钮。
+- [x] 首页返回退出、划掉任务或进程重启后开始新会话；切后台、旋转、页面切换和查看器返回保留本次选择。
+- [x] 选图完成替换本次范围；取消选图不改变已有选择。清空不影响照片授权、目录、历史标注及 API 设置。
+- [x] 已标注照片的缩略图右下角显示醒目的绿色勾，支持相册缩略图、详情和本地搜索结果。
+- [x] 正在标注的图片右下角显示旋转圆圈，结束后恢复已标注或未标注状态。
+- [x] 全量标注改为任务卡片，展示当前图片、阶段日志、完成／失败／跳过数量、耗时与 ETA。

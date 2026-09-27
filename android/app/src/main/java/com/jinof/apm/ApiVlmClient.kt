@@ -84,13 +84,15 @@ class ApiVlmClient(
     private val api = ExternalApiClient(candidateConfig)
     val config: InferenceConfig = api.config
 
-    fun annotate(uri: Uri): PhotoAnnotation {
+    fun annotate(uri: Uri, onStage: (String) -> Unit = {}): PhotoAnnotation {
         // Validate the destination and consent before loading photo bytes.
         var contextOverflow: ApiRequestException? = null
         for ((attemptIndex, maxEdge) in VlmInferencePolicy.maxEdgeAttempts.withIndex()) {
+            onStage(if (attemptIndex == 0) "准备图片缩略图" else "缩小图片后重试")
             val image = resizedJpegBase64(uri, maxEdge)
             Log.i(VLM_LOG_TAG, "request attempt=${attemptIndex + 1} thumbnail=${image.width}x${image.height}")
             val parsed = try {
+                onStage("请求模型，等待响应")
                 api.complete(AnnotationRequestFactory.create(config.modelName, image.base64))
             } catch (error: ApiRequestException) {
                 if (attemptIndex != 0 || error.status !in setOf(400, 413) || !error.contextOverflow) throw error
@@ -98,6 +100,7 @@ class ApiVlmClient(
                 continue
             }
             return try {
+                onStage("校验标注结构")
                 AnnotationContract.parseVlm(parsed)
             } catch (_: Exception) {
                 throw IllegalStateException("API 返回的照片标注不符合约定，原有数据已保留")

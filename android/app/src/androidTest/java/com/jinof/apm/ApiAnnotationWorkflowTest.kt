@@ -9,6 +9,9 @@ import android.graphics.Color
 import android.os.Build
 import android.provider.MediaStore
 import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertTextContains
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
@@ -58,7 +61,6 @@ class ApiAnnotationWorkflowTest {
         try {
             photo = createPhoto(context, id)
             database.upsertAccessiblePhotos(listOf(photo))
-            database.replaceAnnotationSelection(listOf(photo.photoId))
             MockChatApi().use { server ->
                 val config = InferenceConfig(server.endpoint, model, true, server.apiKey)
                 SettingsStore(context).save(config)
@@ -67,11 +69,19 @@ class ApiAnnotationWorkflowTest {
                         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK),
                 )
                 composeRule.onNodeWithTag("startup_story_continue").performClick()
+                database.replaceAnnotationSelection(listOf(photo.photoId))
+                requireNotNull(scenario).moveToState(androidx.lifecycle.Lifecycle.State.CREATED)
+                requireNotNull(scenario).moveToState(androidx.lifecycle.Lifecycle.State.RESUMED)
                 waitUntilAnnotationEnabled()
                 composeRule.onNodeWithTag("annotate_selected").performClick()
+                composeRule.waitUntil(10_000) { server.requests.isNotEmpty() }
+                composeRule.onNodeWithTag("annotation_current_photo").assertTextContains(photo.displayName, substring = true)
+                composeRule.onNodeWithTag("annotation_task_eta").assertTextContains("首张完成后估算", substring = true)
+                server.release.countDown()
                 val photoId = photo.photoId
                 composeRule.waitUntil(30_000) { annotationRows(database, photoId).size == 1 }
                 waitUntilAnnotationEnabled()
+                composeRule.onNodeWithTag("annotation_task_counts").assertTextContains("成功 1 · 失败 0", substring = true)
                 val beforeFailure = annotationRows(database, photoId)
                 assertEquals("一个人站在室内", beforeFailure.single()["caption"])
                 assertEquals(model, beforeFailure.single()["model_name"])
@@ -90,6 +100,7 @@ class ApiAnnotationWorkflowTest {
                 composeRule.onNodeWithTag("annotate_selected").performClick()
                 composeRule.waitUntil(30_000) { server.requests.size == 2 }
                 waitUntilAnnotationEnabled()
+                composeRule.onNodeWithTag("annotation_task_counts").assertTextContains("成功 0 · 失败 1", substring = true)
                 assertEquals(beforeFailure, annotationRows(database, photoId))
                 assertEquals(listOf("/v1/chat/completions", "/v1/chat/completions"), server.requests.map { it.path })
             }
@@ -188,6 +199,7 @@ class ApiAnnotationWorkflowTest {
         val endpoint = "$origin/v1"
         val apiKey = "mock-chat-api-test-key"
         val requests: MutableList<Request> = Collections.synchronizedList(mutableListOf())
+        val release = CountDownLatch(1)
         @Volatile var status = 200
         private val worker = thread(name = "apm-chat-api-workflow") {
             try {
@@ -213,6 +225,7 @@ class ApiAnnotationWorkflowTest {
                     }
                     requests += Request(path, String(bytes, Charsets.UTF_8))
                     check(path != "/v1/chat/completions" || lines.any { it.equals("Authorization: Bearer $apiKey", true) })
+                    check(release.await(30, TimeUnit.SECONDS))
                     val responseStatus = if (path == "/v1/chat/completions") status else 503
                     val body = if (responseStatus == 200) response() else JSONObject().put("error", JSONObject().put("code", "invalid_api_key")).toString()
                     val output = body.toByteArray(Charsets.UTF_8)
@@ -239,6 +252,7 @@ class ApiAnnotationWorkflowTest {
                 .put("message", JSONObject().put("role", "assistant").put("content", annotation.toString())))).toString()
         }
         override fun close() {
+            release.countDown()
             server.close()
             worker.join(3_000)
             check(!worker.isAlive)
