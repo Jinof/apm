@@ -93,4 +93,5 @@ data class GalleryUiState(
     val selectedCount: Int = 0,
     val busy: Boolean = false,
     val status: String = "准备就绪",
+    val annotationTask: AnnotationTaskProgress? = null,
 )

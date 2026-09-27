@@ -1,11 +1,11 @@
 meta:
   title "AI Photo Manager System Promise"
   domain photo_management
-  version v36
+  version v39
   status active
   owner product
-  summary "Roadmap 0.0.5: read-only photo browsing, heatmaps, full-resolution viewing, external multimodal annotation and local or Agent search, with one model settings card and no duplicate detection or person/pet recognition."
-  source "README Roadmap 0.0.5 and user request 2026-09-22"
+  summary "Roadmap 0.0.6: session-scoped annotation selection, read-only photo browsing, heatmaps, full-resolution viewing, external multimodal annotation and local or Agent search, with one model settings card and no duplicate detection or person/pet recognition."
+  source "README Roadmap 0.0.6 and approved session lifecycle plan 2026-09-24"
 
 resource User kind actor:
   label "用户"
@@ -147,9 +147,13 @@ field AndroidPhotoWallFieldPromise for AndroidPhotoWall:
   field heatmapGranularity type string required true nullable false default day semantic "User-selected annual aggregation unit: day, week, or month; changing it changes only heatmap aggregation and selection scope." mutable true system false readers browse writers browse
   field selectedRange type json required false nullable true default null semantic "Optional inclusive device-local capture-date range selected from one non-empty heatmap cell; it is one date for day mode, the in-year part of a Sunday-through-Saturday calendar week for week mode, or one calendar month for month mode; null shows every day group." mutable true system false readers browse writers browse
   field dailyCounts type json required true nullable false default "{}" semantic "Map from real local capture date to the count of distinct currently accessible photoIds captured that day." mutable true system true readers browse writers browse
+  field annotationTask type json required false nullable true default null semantic "Ephemeral task projection: scope, scanning/running/completed/failed phase, monotonic start and finish times, pending total, attempted/succeeded/failed/skipped counts, current photo identity/name, completed-attempt duration sum and at most 40 sanitized recent stage logs." mutable true system true readers browse,annotate writers annotate
   field dockDestination type string required true nullable false default album semantic "The settled top-level pager destination: album, heatmap, Agent search, or settings, exactly matching the selected anchored Dock item." mutable true system false readers browse writers browse
   invariant AndroidPhotoWall.accessible_distinct statement "photoIds contains every and only distinct currently accessible AndroidMediaLocation.photoId exactly once, including unannotated photos and libraries larger than search limits." refs AndroidPhotoWall.photoIds,AndroidMediaLocation.photoId,AndroidMediaLocation.accessible
   invariant AndroidPhotoWall.real_capture_day statement "A dated photo day is derived only by converting dateTakenMillis through the device time zone; null dateTakenMillis belongs only to the unknown group and never uses modified, discovered, indexed, or annotation time as a fallback." refs AndroidPhotoWall.dayGroups,AndroidMediaLocation.dateTakenMillis
+  invariant AndroidPhotoWall.annotation_badge statement "Photo thumbnails in album grid, album detail and local search show a large green check at the image bottom-right if a stored annotation exists and that photo is not currently being annotated. The indicator describes any saved annotation, not a selection or current-model freshness; a failed re-annotation keeps the prior badge, and successful annotation refreshes the visible badge without restart. It has the accessible description 已标注, preserves photo navigation and does not modify pixels or database state." refs AndroidPhotoWall.photoIds,PhotoAnnotation.photoId,PhotoAnnotation.id
+  invariant AndroidPhotoWall.annotation_progress statement "Only the currently processed photo displays a rotating circle in the bottom-right, taking precedence over its saved check. Success refreshes the saved annotation immediately and restores the check; failure restores the old check or no indicator. The full-annotation action is a task card showing scope, phase, current filename, completed/total, success/failure/skipped counts, elapsed time, estimated remaining time and the latest sanitized logs; it also reflects selected-photo tasks." refs AndroidPhotoWall.annotationTask,PhotoAnnotation.photoId,PhotoAnnotation.id
+  invariant AndroidPhotoWall.honest_eta statement "Use monotonic time and the mean duration of completed attempts over the pending queue only, subtracting the current attempt elapsed time. Before a completed sample or while scanning ETA is unavailable; an exceeded estimate is recalculating, never a negative or false zero. Completion stops the clock and clears the active photo, including zero-work and fatal-error cases. Logs never expose credentials, request bodies, response bodies or raw exception messages." refs AndroidPhotoWall.annotationTask
   invariant AndroidPhotoWall.mode_preserves_membership statement "Switching displayMode or heatmapGranularity across the dedicated photo-wall and heatmap pages preserves photoIds, day membership, descending order, displayedYear, and dailyCounts exactly; changing heatmap granularity clears only selectedRange, while returning from heatmap preserves the selected range for the photo wall." refs AndroidPhotoWall.displayMode,AndroidPhotoWall.heatmapGranularity,AndroidPhotoWall.photoIds,AndroidPhotoWall.dayGroups,AndroidPhotoWall.displayedYear,AndroidPhotoWall.selectedRange,AndroidPhotoWall.dailyCounts
   invariant AndroidPhotoWall.page_ownership statement "One stable top-level host owns an anchored bottom Dock ordered as 相册, heatmap, Agent search, settings at the right edge and four horizontally arranged exclusive page surfaces; dockDestination exactly matches the settled page, drag offset follows the finger between adjacent pages, release uses a velocity-aware non-oscillating snap to at most one adjacent page, a Dock tap uses the same low-latency horizontal settling grammar, and the latest programmatic destination replaces an in-flight programmatic settle instead of waiting in a queue. The heatmap, Agent search, and settings surfaces show no redundant top-left back arrow, Android system Back from any of those three surfaces animates to album, and no Dock transition starts, finishes, or recreates another top-level Activity. The photo-wall surface additionally shows the story introduction only at startup, keeps the home content compact, and includes photo display controls, optional selected-range summary, a left-edge route, and photo cards but no annual heatmap; the one-screen heatmap surface places year and granularity in a compact integrated horizontal control bar and expands a borderless full-area quarter-by-month grid, guide, and selected-range controls through the remaining width and height without photo cards." refs AndroidPhotoWall.dockDestination,AndroidPhotoWall.displayMode,AndroidPhotoWall.displayedYear,AndroidPhotoWall.heatmapGranularity,AndroidPhotoWall.selectedRange
   invariant AndroidPhotoWall.heatmap_exact_counts statement "For displayedYear, day mode exposes every calendar date, week mode exposes every intersecting Sunday-through-Saturday week clipped to that year, and month mode exposes all twelve calendar months; every cell count is the exact sum of distinct dailyCounts in its inclusive range and each mode independently maps zero through its annual maximum to monotonic discrete levels zero through four, reserving zero for empty cells." refs AndroidPhotoWall.displayedYear,AndroidPhotoWall.heatmapGranularity,AndroidPhotoWall.dailyCounts
@@ -173,11 +177,13 @@ field AndroidPhotoViewerFieldPromise for AndroidPhotoViewer:
 
 field AndroidAnnotationSelectionFieldPromise for AndroidAnnotationSelection:
   label "Android 标注选择字段 Promise"
-  summary "Persists the latest explicit system-picker selection used by selected-photo annotation."
+  summary "Stores explicit system-picker selection only for the current MainActivity session; the existing selection table is cleared before a new session reads it."
   field photoIds type json required true nullable false default "[]" semantic "Deduplicated content identities returned by the latest completed 选择照片 flow." mutable true system false readers select,annotate writers select
   field selectedAt type datetime required false nullable true default null semantic "Completion time of the latest non-empty system photo-picker selection." mutable true system true readers select,annotate writers select
   field source type string required true nullable false default system_photo_picker semantic "Authorization source; selected-photo annotation accepts only the Android system photo picker." mutable false system true readers select,annotate writers select
   invariant AndroidAnnotationSelection.explicit_picker_only statement "Every selected photoId comes from the latest completed Android system photo-picker result and maps to a currently readable content URI." refs AndroidAnnotationSelection.photoIds,AndroidAnnotationSelection.source,AndroidMediaLocation.uri,AndroidMediaLocation.accessible
+  invariant AndroidAnnotationSelection.session_scope statement "A new MainActivity ViewModel session clears only annotation_selection before UI reads, annotation actions or picker callbacks. Configuration recreation retains the session; background return, Dock navigation and viewer return preserve selection. Ending the task or process starts a fresh empty session, even with saved instance state." refs AndroidAnnotationSelection.photoIds,AndroidAnnotationSelection.selectedAt
+  invariant AndroidAnnotationSelection.reset_preserves_data statement "Session reset never changes photo catalog, annotation history, legacy identity or feature rows, URI grants or encrypted API settings; SQLite schema remains 8." refs AndroidAnnotationSelection.photoIds,PhotoAsset.id,PhotoAnnotation.id,AndroidMediaLocation.uri,InferenceConfiguration.endpoint
   invariant AndroidAnnotationSelection.replace_not_union statement "A completed non-empty selection replaces the previous selected-photo scope instead of silently unioning old photos." refs AndroidAnnotationSelection.photoIds,AndroidAnnotationSelection.selectedAt
   forbid AndroidAnnotationSelection.no_implicit_selection statement "Scanning the full accessible library, viewing search results, or opening a photo cannot add it to selected-photo annotation scope." refs AndroidAnnotationSelection.photoIds,AndroidMediaLocation.accessible
 
@@ -304,11 +310,12 @@ function SelectAndroidPhotosForAnnotationFunctionPromise action select:
   label "选择 Android 待标注照片 Function Promise"
   summary "Uses the Android system multi-photo picker to grant read access, catalog only the returned URIs, and replace the selected-photo annotation scope."
   depends PhotoAssetFieldPromise,AndroidMediaLocationFieldPromise,AndroidAnnotationSelectionFieldPromise
-  trigger "User taps 选择照片 and completes the Android system photo picker."
+  trigger "A new MainActivity session starts, the user exits the album with system Back, or the user completes the Android system photo picker."
   precondition SelectAndroidPhotosForAnnotation.system_result statement "The returned URI list comes from the registered Android system photo-picker contract." refs AndroidAnnotationSelection.source
   reads AndroidMediaLocation.uri,AndroidMediaLocation.photoId,AndroidMediaLocation.accessible,AndroidAnnotationSelection.photoIds
   writes PhotoAsset.id,PhotoAsset.mediaType,PhotoAsset.byteSize,PhotoAsset.discoveredAt,AndroidMediaLocation.uri,AndroidMediaLocation.mediaStoreId,AndroidMediaLocation.photoId,AndroidMediaLocation.displayName,AndroidMediaLocation.accessible,AndroidMediaLocation.modifiedSeconds,AndroidMediaLocation.lastSeenAt,AndroidAnnotationSelection.photoIds,AndroidAnnotationSelection.selectedAt
   ensure SelectAndroidPhotosForAnnotation.content_hash statement "Every returned readable URI is content-addressed by streaming SHA-256 without modifying the original." refs PhotoAsset.id,AndroidMediaLocation.uri,AndroidMediaLocation.photoId
+  ensure SelectAndroidPhotosForAnnotation.session_lifecycle statement "Initialize selection once per retained MainActivity ViewModel before any selection read; album Back finishes the activity, Home only backgrounds it, and onResume never clears selection. A closed session cannot write a delayed picker import into a later session." refs AndroidAnnotationSelection.photoIds,AndroidAnnotationSelection.selectedAt
   ensure SelectAndroidPhotosForAnnotation.exact_scope statement "After a non-empty picker result, photoIds contains exactly the deduplicated readable selected photos and no previously selected extras." refs AndroidAnnotationSelection.photoIds,AndroidAnnotationSelection.selectedAt
   ensure SelectAndroidPhotosForAnnotation.preserve_other_access statement "Cataloging a selected set does not mark other previously authorized locations inaccessible." refs AndroidMediaLocation.accessible
   reject SelectAndroidPhotosForAnnotation.cancelled statement "A cancelled or empty picker result starts no annotation and does not silently select the full library." refs AndroidAnnotationSelection.photoIds
@@ -357,7 +364,7 @@ function AnnotateAndroidPhotosFunctionPromise action annotate:
   trigger "User explicitly chooses selected or all authorized photos."
   precondition AnnotateAndroidPhotos.authorized statement "Configuration and consent are validated before pixels are read; selected scope requires a nonempty explicit selection." refs InferenceConfiguration.allowRemote,AndroidMediaLocation.accessible
   reads AndroidMediaLocation.uri,AndroidMediaLocation.photoId,AndroidMediaLocation.accessible,InferenceConfiguration.endpoint,InferenceConfiguration.modelName
-  writes PhotoAnnotation.id,PhotoAnnotation.photoId,PhotoAnnotation.caption,PhotoAnnotation.tags,PhotoAnnotation.visibleText,PhotoAnnotation.facets,PhotoAnnotation.modelProvider,PhotoAnnotation.modelName,PhotoAnnotation.promptVersion,PhotoAnnotation.createdAt
+  writes AndroidPhotoWall.annotationTask,PhotoAnnotation.id,PhotoAnnotation.photoId,PhotoAnnotation.caption,PhotoAnnotation.tags,PhotoAnnotation.visibleText,PhotoAnnotation.facets,PhotoAnnotation.modelProvider,PhotoAnnotation.modelName,PhotoAnnotation.promptVersion,PhotoAnnotation.createdAt
   ensure AnnotateAndroidPhotos.direct_api statement "Use Chat Completions with a JPEG thumbnail at most 1024px, one context-overflow-only retry at 768px and strict schema validation. No anonymous boxes, identity candidates or secondary visual API requests exist." refs PhotoAnnotation.caption,PhotoAnnotation.facets
   ensure AnnotateAndroidPhotos.scope statement "Selected processing stays within explicit selection; full processing covers all accessible pending photos without a hidden batch limit. Existing provider/model/prompt output is skipped and successful re-annotation appends history." refs PhotoAnnotation.photoId,PhotoAnnotation.promptVersion
   reject AnnotateAndroidPhotos.invalid_output statement "Network, auth, timeout, refusal, truncation and invalid-schema failures preserve previous rows and report a redacted error." refs PhotoAnnotation.id
@@ -390,3 +397,27 @@ verify Roadmap005Verification kind cross-cutting:
     guard "APKs build only into a fresh isolated directory; real-device updates use adb install -r only for the confirmed existing package, never uninstall or clear; versions and database rows are compared before and after."
   evidence "Promise checks, Python/JVM tests, emulator UI and HTTP workflow tests, lint, APK inspection and real-device preservation snapshots."
   fail "A retired feature remains active, an original or old row is lost, API settings implicitly transmit data, or tests modify the real device package destructively."
+
+verify Roadmap006Verification kind cross-cutting:
+  label "0.0.6 标注选择会话验证"
+  claim "Annotation selection resets on reopening without losing user data or selection during ordinary navigation."
+  verifies AndroidAnnotationSelectionFieldPromise,SelectAndroidPhotosForAnnotationFunctionPromise,AndroidPhotoWallFieldPromise
+  methods unit,integration,review
+  scenario "selection lifetime":
+    covers AndroidAnnotationSelection.session_scope,AndroidAnnotationSelection.reset_preserves_data,SelectAndroidPhotosForAnnotation.session_lifecycle,SelectAndroidPhotosForAnnotation.exact_scope
+    given "An emulator with old selected rows, existing catalog and annotations, settings and generated picker photos."
+    when "Starting, selecting and cancelling, recreating, backgrounding, viewing, finishing, removing the task and restarting the process."
+    then "New sessions show a disabled zero-count action; continuing sessions retain selection; only the selection table changes on reset and late closed-session imports cannot restore old selection."
+    guard "Use fresh isolated APK builds; instrumentation and process-stop tests run only on an emulator. Real-device updates preserve the installed package and all data except the explicitly temporary selection."
+  scenario "saved annotation badge":
+    covers AndroidPhotoWall.annotation_badge
+    given "Annotated and unannotated photos, including a previous successful annotation followed by API failure."
+    when "Browsing album thumbnails, detail rows and local search, or completing annotation."
+    then "Only photos with saved annotations show a green bottom-right check labelled 已标注; live state updates show the badge, existing navigation works and stored data stays unchanged."
+  scenario "annotation task progress":
+    covers AndroidPhotoWall.annotation_progress,AndroidPhotoWall.honest_eta
+    given "A slow controlled mock API, pending and already annotated photos, empty queues and failures."
+    when "Running selected or all-photo annotation, completing a request or receiving a failure."
+    then "The active photo alone spins, task logs and counters track actual work, ETA follows measured samples, completion clears running indicators and failures preserve old annotations."
+  evidence "Progress arithmetic, controlled mock API, lifecycle and annotation badge regression tests, data snapshots, mock API workflow, Promise gates, JVM tests, lint and APK inspection."
+  fail "A restart restores stale selection, ordinary navigation clears selection, or a reset changes persistent catalog, history, grants or API configuration."

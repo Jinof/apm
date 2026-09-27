@@ -8,9 +8,11 @@ import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.SystemClock
 import android.util.Log
 import android.util.Size
 import androidx.activity.ComponentActivity
+import androidx.lifecycle.ViewModelProvider
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -44,9 +46,11 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.outlined.AddPhotoAlternate
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.CheckCircle
@@ -59,6 +63,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -85,6 +90,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -124,6 +130,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var settingsStore: SettingsStore
     private lateinit var scanner: MediaStoreScanner
     private lateinit var agentController: AgentSearchController
+    private lateinit var selectionSession: AnnotationSelectionSession
     private val executor = Executors.newSingleThreadExecutor()
     private val busy = AtomicBoolean(false)
     private var uiState by mutableStateOf(GalleryUiState())
@@ -143,7 +150,10 @@ class MainActivity : ComponentActivity() {
 
     private val selectedPhotoLauncher = registerForActivityResult(
         ActivityResultContracts.PickMultipleVisualMedia(),
-    ) { uris ->
+        ::onPhotosSelected,
+    )
+
+    internal fun onPhotosSelected(uris: List<Uri>) {
         if (uris.isEmpty()) {
             updateStatus("没有选择新照片，当前所选范围保持不变。")
         } else {
@@ -157,6 +167,8 @@ class MainActivity : ComponentActivity() {
         requestedDockDestination = intent.dockDestination()
         enableEdgeToEdge()
         database = ApmDatabase(applicationContext)
+        selectionSession = ViewModelProvider(this)[AnnotationSelectionSession::class.java]
+        selectionSession.initialize(database)
         settingsStore = SettingsStore(applicationContext)
         scanner = MediaStoreScanner(applicationContext, database)
         agentController = AgentSearchController(this)
@@ -167,6 +179,7 @@ class MainActivity : ComponentActivity() {
                     requestedDestination = requestedDockDestination,
                     busy = uiState.busy || agentController.state.busy,
                     searchEnabled = uiState.search.enabled,
+                    onExit = { finish() },
                     onDestinationSettled = { destination ->
                         requestedDockDestination = destination
                         when (destination) {
@@ -260,6 +273,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        if (!isChangingConfigurations) selectionSession.closeSession()
         executor.shutdownNow()
         agentController.close()
         database.close()
@@ -313,7 +327,7 @@ class MainActivity : ComponentActivity() {
                 val result = scanner.scanSelected(uris) { processed, total, name ->
                     updateStatus("读取所选照片 $processed / $total · $name")
                 }
-                database.replaceAnnotationSelection(result.photoIds)
+                if (!selectionSession.replaceSelection(database, result.photoIds)) return@execute
                 val report = result.scan
                 val errorSuffix = if (report.errors.isEmpty()) {
                     ""
@@ -366,78 +380,89 @@ class MainActivity : ComponentActivity() {
         return config
     }
 
+    private fun publishAnnotationTask(task: AnnotationTaskProgress, photos: List<GalleryPhotoCard>? = null) {
+        runOnUiThread {
+            if (!isDestroyed && !isFinishing) {
+                uiState = uiState.copy(annotationTask = task, galleryPhotos = photos ?: uiState.galleryPhotos)
+            }
+        }
+    }
+
     private fun startAnnotation(scope: AnnotationScope) {
         if (scope == AnnotationScope.SELECTED && database.annotationSelectionCount() == 0) {
             updateStatus("请先通过“选择照片”授权并选择要标注的照片。")
             return
         }
         val config = validatedInferenceConfig() ?: return
-        val initialStatus = if (scope == AnnotationScope.ALL) {
-            "正在扫描全量已授权照片…"
-        } else {
-            "正在连接 ${config.modelName}，准备标注所选照片…"
-        }
+        val initialStatus = if (scope == AnnotationScope.ALL) "正在扫描全量已授权照片…" else "准备标注所选照片…"
         if (!beginWork(initialStatus)) return
+        var task = AnnotationTaskProgress(scope.label, SystemClock.elapsedRealtime())
+            .log(initialStatus, SystemClock.elapsedRealtime())
+        publishAnnotationTask(task)
         executor.execute {
             try {
                 val scanReport = if (scope == AnnotationScope.ALL) {
-                    scanner.scan { processed, total, name ->
+                    task = task.copy(phase = "扫描中")
+                    publishAnnotationTask(task)
+                    scanner.scan { processed, total, _ ->
                         if (processed == total || processed % 10 == 0) {
-                            updateStatus("全量扫描 $processed / $total · $name")
+                            task = task.log("扫描照片 $processed/$total", SystemClock.elapsedRealtime())
+                            publishAnnotationTask(task)
                         }
                     }
-                } else {
-                    null
-                }
+                } else null
                 val client = ApiVlmClient(contentResolver, config)
-                updateStatus("${scope.label}标注 · 正在连接 ${config.modelName}…")
-                val scopeCount = if (scope == AnnotationScope.SELECTED) {
-                    database.annotationSelectionCount()
-                } else {
-                    database.accessibleCount()
-                }
+                val scopeCount = if (scope == AnnotationScope.SELECTED) database.annotationSelectionCount() else database.accessibleCount()
                 val pending = if (scope == AnnotationScope.SELECTED) {
                     database.pendingSelectedPhotos(config.modelName, AnnotationContract.PROMPT_VERSION)
-                } else {
-                    database.pendingAllPhotos(config.modelName, AnnotationContract.PROMPT_VERSION)
-                }
-                if (pending.isEmpty()) {
-                    completeWork("${scope.label}范围 $scopeCount 张照片均已有当前模型标注。")
-                    return@execute
-                }
-                val errors = mutableListOf<String>()
-                var completed = 0
-                pending.forEachIndexed { index, photo ->
-                    updateStatus("${scope.label}标注 ${index + 1} / ${pending.size} · ${photo.displayName}")
+                } else database.pendingAllPhotos(config.modelName, AnnotationContract.PROMPT_VERSION)
+                var gallery = database.galleryPhotos()
+                task = task.copy(total = pending.size, skipped = (scopeCount - pending.size).coerceAtLeast(0), phase = "标注中")
+                    .log("待标注 ${pending.size} 张，跳过 ${scopeCount - pending.size} 张", SystemClock.elapsedRealtime())
+                publishAnnotationTask(task, gallery)
+                for (photo in pending) {
+                    if (Thread.currentThread().isInterrupted) throw InterruptedException()
+                    task = task.startPhoto(photo, SystemClock.elapsedRealtime())
+                    publishAnnotationTask(task)
                     try {
-                        database.insertAnnotation(
-                            photoId = photo.photoId,
-                            annotation = client.annotate(
-                                Uri.parse(photo.uri),
-                            ),
-                            modelName = config.modelName,
-                            promptVersion = AnnotationContract.PROMPT_VERSION,
-                        )
-                        completed += 1
+                        val annotation = client.annotate(Uri.parse(photo.uri)) { stage ->
+                            task = task.log(stage, SystemClock.elapsedRealtime())
+                            publishAnnotationTask(task)
+                        }
+                        if (Thread.currentThread().isInterrupted) throw InterruptedException()
+                        task = task.log("写入本地标注", SystemClock.elapsedRealtime())
+                        publishAnnotationTask(task)
+                        database.insertAnnotation(photo.photoId, annotation, config.modelName, AnnotationContract.PROMPT_VERSION)
+                        val annotatedAt = Instant.now().toString()
+                        gallery = gallery.map { card ->
+                            if (card.photoId != photo.photoId) card else card.copy(annotation = annotation,
+                                modelName = config.modelName, promptVersion = AnnotationContract.PROMPT_VERSION, annotatedAt = annotatedAt)
+                        }
+                        runOnUiThread {
+                            if (!isDestroyed && !isFinishing) uiState = uiState.copy(results = uiState.results.map { card ->
+                                if (card.photoId != photo.photoId) card else card.copy(annotation = annotation, caption = annotation.caption,
+                                    modelName = config.modelName, promptVersion = AnnotationContract.PROMPT_VERSION, annotatedAt = annotatedAt)
+                            })
+                        }
+                        task = task.log("标注成功 · ${task.currentPhotoName}", SystemClock.elapsedRealtime())
+                            .finishPhoto(true, SystemClock.elapsedRealtime())
                     } catch (error: Exception) {
-                        Log.e(
-                            ANNOTATION_LOG_TAG,
-                            "${scope.label} photo ${index + 1}/${pending.size} failed",
-                            error,
-                        )
-                        errors += "${photo.displayName}：${error.message ?: error.javaClass.simpleName}"
+                        if (error is InterruptedException || Thread.currentThread().isInterrupted) throw InterruptedException()
+                        task = task.log("标注失败 · ${task.currentPhotoName} · ${annotationFailureMessage(error)}", SystemClock.elapsedRealtime())
+                            .finishPhoto(false, SystemClock.elapsedRealtime())
                     }
+                    publishAnnotationTask(task, gallery)
                 }
-                val details = if (errors.isEmpty()) "" else " · 失败 ${errors.size} · ${errors.first()}"
-                val scanSuffix = scanReport?.let {
-                    " · 扫描可见 ${it.visible} 张${if (it.errors.isEmpty()) "" else "、读取失败 ${it.errors.size}"}"
-                }.orEmpty()
-                completeWork(
-                    "${scope.label}范围 $scopeCount 张 · 待处理 ${pending.size} 张 · 成功标注 $completed$scanSuffix$details",
-                )
+                task = task.log(if (pending.isEmpty()) "无需重复标注" else "任务结束", SystemClock.elapsedRealtime())
+                    .finish(SystemClock.elapsedRealtime())
+                publishAnnotationTask(task, gallery)
+                val scanSuffix = scanReport?.let { " · 扫描可见 ${it.visible} 张 · 读取失败 ${it.errors.size}" }.orEmpty()
+                completeWork("${scope.label}范围 $scopeCount 张 · 成功 ${task.succeeded} · 失败 ${task.failed} · 跳过 ${task.skipped}$scanSuffix")
             } catch (error: Exception) {
-                Log.e(ANNOTATION_LOG_TAG, "${scope.label} annotation pipeline failed", error)
-                failWork("${scope.label}标注失败：${error.message}")
+                val message = annotationFailureMessage(error)
+                task = task.log(message, SystemClock.elapsedRealtime()).finish(SystemClock.elapsedRealtime(), fatal = true)
+                publishAnnotationTask(task)
+                failWork("${scope.label}标注失败：$message")
             }
         }
     }
@@ -633,6 +658,7 @@ private fun GalleryScreen(
                 AnnotationActions(
                     busy = state.busy,
                     selectedCount = state.selectedCount,
+                    task = state.annotationTask,
                     onSelectPhotos = onSelectPhotos,
                     onAnnotateSelected = onAnnotateSelected,
                     onAnnotateAll = onAnnotateAll,
@@ -678,6 +704,7 @@ private fun GalleryScreen(
                     ) { photo ->
                         PhotoResultCard(
                             photo = photo,
+                            annotating = state.annotationTask?.currentPhotoId == photo.photoId,
                             onClick = { onPhoto(photo.photoId, photo.uri) },
                         )
                     }
@@ -714,6 +741,7 @@ private fun GalleryScreen(
                         ) { photo ->
                             PhotoWallThumbnail(
                                 photo = photo,
+                                annotating = state.annotationTask?.currentPhotoId == photo.photoId,
                                 onClick = { onPhoto(photo.photoId, photo.uri) },
                             )
                         }
@@ -725,6 +753,7 @@ private fun GalleryScreen(
                         ) { photo ->
                             PhotoWallDetailCard(
                                 photo = photo,
+                                annotating = state.annotationTask?.currentPhotoId == photo.photoId,
                                 onClick = { onPhoto(photo.photoId, photo.uri) },
                             )
                         }
@@ -813,6 +842,7 @@ private fun StartupStoryDialog(onDismiss: () -> Unit) {
 private fun AnnotationActions(
     busy: Boolean,
     selectedCount: Int,
+    task: AnnotationTaskProgress?,
     onSelectPhotos: () -> Unit,
     onAnnotateSelected: () -> Unit,
     onAnnotateAll: () -> Unit,
@@ -831,31 +861,17 @@ private fun AnnotationActions(
             Spacer(Modifier.width(8.dp))
             Text("选择照片")
         }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        Button(
+            onClick = onAnnotateSelected,
+            enabled = !busy && selectedCount > 0,
+            modifier = Modifier.fillMaxWidth().height(52.dp).testTag("annotate_selected"),
+            shape = MaterialTheme.shapes.medium,
         ) {
-            Button(
-                onClick = onAnnotateSelected,
-                enabled = !busy && selectedCount > 0,
-                modifier = Modifier.weight(1f).height(52.dp).testTag("annotate_selected"),
-                shape = MaterialTheme.shapes.medium,
-            ) {
-                Icon(Icons.Outlined.AutoAwesome, contentDescription = null)
-                Spacer(Modifier.width(8.dp))
-                Text("标注所选 ($selectedCount)")
-            }
-            FilledTonalButton(
-                onClick = onAnnotateAll,
-                enabled = !busy,
-                modifier = Modifier.weight(1f).height(52.dp).testTag("annotate_all"),
-                shape = MaterialTheme.shapes.medium,
-            ) {
-                Icon(Icons.Outlined.PhotoLibrary, contentDescription = null)
-                Spacer(Modifier.width(8.dp))
-                Text("全量标注")
-            }
+            Icon(Icons.Outlined.AutoAwesome, contentDescription = null)
+            Spacer(Modifier.width(8.dp))
+            Text("标注所选 ($selectedCount)")
         }
+        AnnotationTaskCard(task, busy, onAnnotateAll)
     }
 }
 
@@ -1001,7 +1017,7 @@ private fun PhotoDayHeader(group: PhotoDayGroup) {
 }
 
 @Composable
-private fun PhotoWallThumbnail(photo: GalleryPhotoCard, onClick: () -> Unit) {
+internal fun PhotoWallThumbnail(photo: GalleryPhotoCard, annotating: Boolean = false, onClick: () -> Unit) {
     ElevatedCard(
         modifier = Modifier
             .fillMaxWidth()
@@ -1016,13 +1032,16 @@ private fun PhotoWallThumbnail(photo: GalleryPhotoCard, onClick: () -> Unit) {
             modifier = Modifier.fillMaxSize(),
             requestSize = 300,
             contentDescription = photo.displayName,
+            annotated = photo.annotation != null,
+            annotating = annotating,
         )
     }
 }
 
 @Composable
-private fun PhotoWallDetailCard(
+internal fun PhotoWallDetailCard(
     photo: GalleryPhotoCard,
+    annotating: Boolean = false,
     onClick: () -> Unit,
 ) {
     ElevatedCard(
@@ -1034,7 +1053,7 @@ private fun PhotoWallDetailCard(
         elevation = CardDefaults.elevatedCardElevation(defaultElevation = 1.dp),
     ) {
         Row(Modifier.padding(12.dp)) {
-            Thumbnail(photo.uri, contentDescription = photo.displayName)
+            Thumbnail(photo.uri, contentDescription = photo.displayName, annotated = photo.annotation != null, annotating = annotating)
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
                 val annotation = photo.annotation
@@ -1158,14 +1177,14 @@ private fun EmptyState(
 }
 
 @Composable
-private fun PhotoResultCard(photo: PhotoCard, onClick: () -> Unit) {
+private fun PhotoResultCard(photo: PhotoCard, annotating: Boolean = false, onClick: () -> Unit) {
     ElevatedCard(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
         shape = MaterialTheme.shapes.large,
         elevation = CardDefaults.elevatedCardElevation(defaultElevation = 1.dp),
     ) {
         Row(Modifier.padding(12.dp)) {
-            Thumbnail(photo.uri, contentDescription = photo.displayName)
+            Thumbnail(photo.uri, contentDescription = photo.displayName, annotated = true, annotating = annotating)
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
                 Text(
@@ -1221,6 +1240,8 @@ private fun Thumbnail(
     modifier: Modifier = Modifier.size(116.dp),
     requestSize: Int = 360,
     contentDescription: String = "照片缩略图",
+    annotated: Boolean = false,
+    annotating: Boolean = false,
 ) {
     val context = LocalContext.current
     val bitmap by produceState<Bitmap?>(initialValue = null, key1 = uriText, key2 = requestSize) {
@@ -1252,6 +1273,27 @@ private fun Thumbnail(
                 contentDescription = contentDescription,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
+            )
+        }
+        if (annotating) {
+            CircularProgressIndicator(
+                modifier = Modifier.align(Alignment.BottomEnd).padding(6.dp).size(32.dp)
+                    .background(Color.White, CircleShape).padding(3.dp)
+                    .semantics { this.contentDescription = "正在标注" }
+                    .testTag("photo_annotation_running"),
+                color = Color(0xFF15803D), strokeWidth = 3.dp,
+            )
+        } else if (annotated) {
+            Icon(
+                Icons.Filled.CheckCircle,
+                contentDescription = "已标注",
+                tint = Color(0xFF15803D),
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(6.dp)
+                    .size(32.dp)
+                    .background(Color.White, CircleShape)
+                    .testTag("photo_annotation_badge"),
             )
         }
     }
