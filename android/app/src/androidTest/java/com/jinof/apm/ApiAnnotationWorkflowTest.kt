@@ -8,6 +8,7 @@ import android.graphics.Bitmap
 import android.graphics.Color
 import android.os.Build
 import android.provider.MediaStore
+import androidx.compose.ui.test.*
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertTextContains
 import java.util.concurrent.CountDownLatch
@@ -77,6 +78,9 @@ class ApiAnnotationWorkflowTest {
                 composeRule.waitUntil(10_000) { server.requests.isNotEmpty() }
                 composeRule.onNodeWithTag("annotation_current_photo").assertTextContains(photo.displayName, substring = true)
                 composeRule.onNodeWithTag("annotation_task_eta").assertTextContains("首张完成后估算", substring = true)
+                val profiles = SettingsStore(context)
+                profiles.saveProfile("workflow-away", "外出测试", InferenceConfig("http://127.0.0.1:1/v1", "other-model", false, "other-key"))
+                profiles.activateProfile("workflow-away")
                 server.release.countDown()
                 val photoId = photo.photoId
                 composeRule.waitUntil(30_000) { annotationRows(database, photoId).size == 1 }
@@ -94,7 +98,22 @@ class ApiAnnotationWorkflowTest {
                 assertTrue(content.getJSONObject(1).getJSONObject("image_url").getString("url").startsWith("data:image/jpeg;base64,"))
                 assertEquals("json_schema", request.getJSONObject("response_format").getString("type"))
 
+                assertEquals("other-model", profiles.load().modelName)
+                val encryptedBeforeDetails = File(context.noBackupFilesDir, "external-api.enc").readBytes()
+                composeRule.onNodeWithTag("photo_wall_gesture_surface")
+                    .performScrollToNode(hasTestTag("photo_wall_thumbnail_$photoId"))
+                composeRule.onNode(hasTestTag("photo_annotation_badge") and
+                    hasAnyAncestor(hasTestTag("photo_wall_thumbnail_$photoId")), useUnmergedTree = true).performClick()
+                composeRule.onNodeWithTag("annotation_detail_caption").assertTextEquals("一个人站在室内")
+                composeRule.onNodeWithTag("annotation_detail_model").performScrollTo().assertTextEquals(model)
+                composeRule.onNodeWithTag("close_annotation_details").performClick()
+                assertEquals(beforeFailure, annotationRows(database, photoId))
+                assertTrue(encryptedBeforeDetails.contentEquals(File(context.noBackupFilesDir, "external-api.enc").readBytes()))
+                assertEquals(1, server.requests.size)
+
                 // A different model makes the existing photo pending without deleting its annotation.
+                profiles.activateProfile("default")
+                composeRule.onNodeWithTag("photo_wall_gesture_surface").performScrollToNode(hasTestTag("annotate_selected"))
                 server.status = 401
                 SettingsStore(context).save(config.copy(modelName = "$model-retry"))
                 composeRule.onNodeWithTag("annotate_selected").performClick()

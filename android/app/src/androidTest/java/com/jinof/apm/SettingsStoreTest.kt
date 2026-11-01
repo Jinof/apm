@@ -96,6 +96,60 @@ class SettingsStoreTest {
         assertThrows(IllegalArgumentException::class.java) { EndpointPolicy.validate(store.load()) }
     }
 
+    @Test
+    fun profilesKeepIndependentSecretsAndConsentAcrossSwitchSaveAndDelete() = withIsolatedStore { context, store ->
+        val home = InferenceConfig("http://192.168.2.10:3000/v1", "home-model", true, "home-secret")
+        val away = InferenceConfig("https://device.example.ts.net/v1", "away-model", false, "away-secret")
+        store.save(home)
+        store.saveProfile("away", "外出", away)
+        assertEquals(home, store.load())
+        val inFlight = store.load()
+        store.activateProfile("away")
+        assertEquals(away, SettingsStore(context).load())
+        assertThrows(IllegalArgumentException::class.java) { EndpointPolicy.validate(store.load()) }
+        val editedAway = store.save(away.copy(modelName = "edited-away"))
+        assertEquals(2, store.loadProfiles().profiles.size)
+        assertEquals(home, store.loadProfiles().profiles.single { it.id == "default" }.config)
+        assertEquals(editedAway, store.loadProfiles().active.config)
+        assertEquals(home, inFlight)
+        assertThrows(IllegalArgumentException::class.java) { store.deleteProfile("away") }
+        store.activateProfile("default")
+        assertEquals(home, store.load())
+        val encrypted = File(context.noBackupFilesDir, "external-api.enc").readText()
+        for (value in listOf(home.endpoint, home.apiKey, home.modelName, away.endpoint, away.apiKey, "edited-away")) {
+            assertFalse(encrypted.contains(value))
+        }
+        store.deleteProfile("away")
+        assertEquals(ApiProfiles.single(home), SettingsStore(context).loadProfiles())
+        assertThrows(IllegalArgumentException::class.java) { store.activateProfile("missing") }
+    }
+
+    @Test
+    fun oldEncryptedConfigurationRemainsByteIdenticalUntilExplicitEdit() = withIsolatedStore { context, store ->
+        val old = InferenceConfig("https://old.example.test/proxy/v1", "old-model", true, "old-secret")
+        store.save(old) // Ensure the same installed Keystore key exists for a v1 fixture.
+        val keyStore = java.security.KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+        val cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding").apply {
+            init(javax.crypto.Cipher.ENCRYPT_MODE, keyStore.getKey("apm-external-api-v1", null))
+        }
+        val plain = org.json.JSONObject().put("endpoint", old.endpoint).put("model", old.modelName)
+            .put("key", old.apiKey).put("consent", old.allowRemote).toString()
+        val wrapper = org.json.JSONObject().put("iv", android.util.Base64.encodeToString(cipher.iv, android.util.Base64.NO_WRAP))
+            .put("data", android.util.Base64.encodeToString(cipher.doFinal(plain.toByteArray()), android.util.Base64.NO_WRAP))
+        val file = File(context.noBackupFilesDir, "external-api.enc")
+        file.writeText(wrapper.toString())
+        val originalBytes = file.readBytes()
+        repeat(2) {
+            assertEquals(ApiProfiles.single(old), SettingsStore(context).loadProfiles())
+            assertTrue(originalBytes.contentEquals(file.readBytes()))
+        }
+        store.saveProfile("away", "外出", InferenceConfig())
+        assertEquals(old, store.load())
+        assertEquals(InferenceConfig(), store.loadProfiles().profiles.single { it.id == "away" }.config)
+        assertFalse(originalBytes.contentEquals(file.readBytes()))
+        assertEquals(2, SettingsStore(context).loadProfiles().profiles.size)
+    }
+
     private fun withIsolatedStore(test: (IsolatedSettingsContext, SettingsStore) -> Unit) {
         val base = InstrumentationRegistry.getInstrumentation().targetContext
         val id = UUID.randomUUID().toString()
