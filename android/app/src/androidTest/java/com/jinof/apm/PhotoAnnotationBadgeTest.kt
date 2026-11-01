@@ -47,7 +47,7 @@ class PhotoAnnotationBadgeTest {
         for (mode in listOf("thumbnail", "detail")) {
             val badge = rule.onNode(hasTestTag("photo_annotation_badge") and
                 hasAnyAncestor(hasTestTag("photo_wall_${mode}_badge-photo")), useUnmergedTree = true)
-            badge.assertIsDisplayed().assertContentDescriptionEquals("已标注")
+            badge.assertIsDisplayed().assertContentDescriptionEquals("已标注，查看详情")
             if (mode == "thumbnail") {
                 val image = rule.onNodeWithTag("photo_wall_thumbnail_badge-photo").fetchSemanticsNode().boundsInRoot
                 val check = badge.fetchSemanticsNode().boundsInRoot
@@ -62,6 +62,15 @@ class PhotoAnnotationBadgeTest {
             }
             assertTrue("Badge must visibly contain green pixels", green > 100)
             badge.performTouchInput { click() }
+            rule.onNodeWithTag("annotation_details_dialog").assertIsDisplayed()
+            rule.onNodeWithTag("annotation_detail_caption").assertTextEquals(annotation.caption)
+            rule.onNodeWithTag("annotation_detail_model").performScrollTo().assertTextEquals("older-model")
+            rule.onNodeWithTag("annotation_detail_prompt").performScrollTo().assertTextEquals("older-prompt")
+            rule.onNodeWithTag("annotation_detail_time").performScrollTo().assertTextEquals("未记录")
+            rule.runOnIdle { assertEquals(if (mode == "thumbnail") 0 else 1, opened) }
+            rule.onNodeWithTag("close_annotation_details").performClick()
+            rule.onNodeWithTag("annotation_details_dialog").assertDoesNotExist()
+            rule.onNodeWithTag("photo_wall_${mode}_badge-photo").performClick()
         }
         rule.runOnIdle { assertEquals(2, opened); dark.value = true }
         badges().assertCountEquals(2)

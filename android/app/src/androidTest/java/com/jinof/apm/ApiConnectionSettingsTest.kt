@@ -27,13 +27,19 @@ class ApiConnectionSettingsTest {
 
     @Test fun testsUnsavedDraftWithGeneratedImageAndBlocksDuplicateRequests() = withSettings { saved ->
         MockChatConnectionServer(holdResponse = true).use { server ->
-            ActivityScenario.launch(SettingsActivity::class.java).use {
+            ActivityScenario.launch(SettingsActivity::class.java).use { activity ->
                 fillDraft(server)
                 assertEquals(0, server.requests.size)
                 reveal("test_model_api").performClick()
                 rule.waitUntil(5_000) { server.requests.size == 1 }
                 rule.onNodeWithTag("test_model_api").assertIsNotEnabled()
                 reveal("model_input").assertIsNotEnabled()
+                reveal("add_api_profile").assertIsNotEnabled()
+                reveal("edit_profile_default").assertIsNotEnabled()
+                activity.recreate()
+                reveal("test_model_api").assertIsNotEnabled()
+                reveal("add_api_profile").assertIsNotEnabled()
+                assertEquals(1, server.requests.size)
                 server.release()
                 awaitResult("连接成功：draft-model")
                 assertEquals(saved, SettingsStore(context).load())
@@ -103,6 +109,81 @@ class ApiConnectionSettingsTest {
         }
     }
 
+    @Test fun namedProfilesRequireExplicitSwitchAndKeepDraftAcrossRotation() = withSettings {
+        MockChatConnectionServer().use { home ->
+            MockChatConnectionServer().use { away ->
+                val store = SettingsStore(context)
+                val homeConfig = InferenceConfig(home.endpoint, "home-model", true, "home-test-key")
+                store.save(homeConfig)
+                ActivityScenario.launch(SettingsActivity::class.java).use { activity ->
+                    reveal("add_api_profile").performClick()
+                    reveal("endpoint_input").assert(SemanticsMatcher.expectValue(
+                        androidx.compose.ui.semantics.SemanticsProperties.EditableText, androidx.compose.ui.text.AnnotatedString("")))
+                    reveal("api_key_input").assert(SemanticsMatcher.expectValue(
+                        androidx.compose.ui.semantics.SemanticsProperties.EditableText, androidx.compose.ui.text.AnnotatedString("")))
+                    reveal("remote_consent").assertIsOff()
+                    reveal("profile_name_input").performTextReplacement("外出")
+                    reveal("endpoint_input").performTextReplacement(away.endpoint)
+                    reveal("model_input").performTextReplacement("away-model")
+                    reveal("api_key_input").performTextReplacement("away-test-key")
+                    reveal("remote_consent").performClick()
+                    activity.recreate()
+                    reveal("profile_name_input").assertTextContains("外出")
+                    reveal("model_input").assertTextContains("away-model")
+                    reveal("remote_consent").assertIsOn()
+                    reveal("save_settings").performClick()
+                    val profile = store.loadProfiles().profiles.single { it.name == "外出" }
+                    assertEquals("away-test-key", profile.config.apiKey)
+                    assertEquals(homeConfig, store.load())
+                    assertEquals(0, home.requests.size + away.requests.size)
+                    reveal("activate_profile_${profile.id}").performClick()
+                    assertEquals(profile.config, SettingsStore(context).load())
+                    reveal("active_api_profile").assertTextEquals("当前使用：外出")
+                    rule.onRoot().saveRoadmapScreenshot("api-profiles.png")
+                    reveal("test_model_api").performClick()
+                    awaitResult("连接成功：away-model")
+                    assertEquals(0, home.requests.size)
+                    assertEquals(1, away.requests.size)
+                    assertTrue(away.requests.single().header.contains("Authorization: Bearer away-test-key"))
+                    assertEquals("away-model", JSONObject(away.requests.single().body).getString("model"))
+                    reveal("delete_api_profile").assertIsNotEnabled()
+                    reveal("activate_profile_default").performClick()
+                    reveal("test_model_api").performClick()
+                    awaitResult("连接成功：home-model")
+                    assertEquals(1, home.requests.size)
+                    assertTrue(home.requests.single().header.contains("Authorization: Bearer home-test-key"))
+                    reveal("edit_profile_${profile.id}").performClick()
+                    reveal("delete_api_profile").performClick()
+                    rule.onNodeWithTag("confirm_delete_profile").performClick()
+                    assertEquals(ApiProfiles.single(homeConfig), store.loadProfiles())
+                }
+                ActivityScenario.launch(SettingsActivity::class.java).use {
+                    reveal("active_api_profile").assertTextEquals("当前使用：默认配置")
+                }
+            }
+        }
+    }
+
+    @Test fun switchingWithUnsavedEditsNeedsExplicitDiscardAndNeverSavesOrSends() = withSettings { saved ->
+        val store = SettingsStore(context)
+        store.saveProfile("away", "外出", InferenceConfig("https://example.test/v1", "away", false, "away-key"))
+        ActivityScenario.launch(SettingsActivity::class.java).use {
+            reveal("model_input").performTextReplacement("unsaved-model")
+            reveal("activate_profile_away").performClick()
+            rule.onNodeWithTag("keep_profile_changes").performClick()
+            reveal("model_input").assertTextContains("unsaved-model")
+            assertEquals(saved, store.load())
+            reveal("activate_profile_away").performClick()
+            rule.onNodeWithTag("discard_profile_changes").performClick()
+            reveal("remote_consent").assertIsOff()
+            assertEquals("away", store.load().modelName)
+            assertEquals(saved, store.loadProfiles().profiles.single { it.id == "default" }.config)
+            reveal("activate_profile_default").performClick()
+            assertEquals(saved, store.load())
+            reveal("model_input").assertTextContains(saved.modelName)
+        }
+    }
+
     private fun fillDraft(server: MockChatConnectionServer, consent: Boolean = true) {
         reveal("endpoint_input").performTextReplacement(server.endpoint)
         reveal("model_input").performTextReplacement("draft-model")
@@ -122,10 +203,13 @@ class ApiConnectionSettingsTest {
 
     private fun withSettings(block: (InferenceConfig) -> Unit) {
         val store = SettingsStore(context)
-        val original = store.load()
+        val file = java.io.File(context.noBackupFilesDir, "external-api.enc")
+        val original = file.takeIf { it.exists() }?.readBytes()
         val saved = InferenceConfig("http://127.0.0.1:1/v1", "saved-model", false, "saved-key")
         store.save(saved)
-        try { block(saved) } finally { store.save(original) }
+        try { block(saved) } finally {
+            if (original != null) file.writeBytes(original) else file.delete()
+        }
     }
 }
 
@@ -153,7 +237,7 @@ private class MockChatConnectionServer(holdResponse: Boolean = false) : Closeabl
                 var read = 0
                 while (read < length) { val n = input.read(body, read, length - read); check(n > 0); read += n }
                 requests += Request(header.toString(), String(body, Charsets.UTF_8))
-                check(gate.await(15, TimeUnit.SECONDS))
+                check(gate.await(45, TimeUnit.SECONDS))
                 val response = if (status != 200) "secret-server-body" else JSONObject().put("choices", JSONArray()
                     .put(JSONObject().put("finish_reason", "stop").put("message", JSONObject().put("content", content)))).toString()
                 val bytes = response.toByteArray(Charsets.UTF_8)

@@ -1032,7 +1032,7 @@ internal fun PhotoWallThumbnail(photo: GalleryPhotoCard, annotating: Boolean = f
             modifier = Modifier.fillMaxSize(),
             requestSize = 300,
             contentDescription = photo.displayName,
-            annotated = photo.annotation != null,
+            details = photo.savedDetails(),
             annotating = annotating,
         )
     }
@@ -1053,7 +1053,7 @@ internal fun PhotoWallDetailCard(
         elevation = CardDefaults.elevatedCardElevation(defaultElevation = 1.dp),
     ) {
         Row(Modifier.padding(12.dp)) {
-            Thumbnail(photo.uri, contentDescription = photo.displayName, annotated = photo.annotation != null, annotating = annotating)
+            Thumbnail(photo.uri, contentDescription = photo.displayName, details = photo.savedDetails(), annotating = annotating)
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
                 val annotation = photo.annotation
@@ -1177,14 +1177,14 @@ private fun EmptyState(
 }
 
 @Composable
-private fun PhotoResultCard(photo: PhotoCard, annotating: Boolean = false, onClick: () -> Unit) {
+internal fun PhotoResultCard(photo: PhotoCard, annotating: Boolean = false, onClick: () -> Unit) {
     ElevatedCard(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
         shape = MaterialTheme.shapes.large,
         elevation = CardDefaults.elevatedCardElevation(defaultElevation = 1.dp),
     ) {
         Row(Modifier.padding(12.dp)) {
-            Thumbnail(photo.uri, contentDescription = photo.displayName, annotated = true, annotating = annotating)
+            Thumbnail(photo.uri, contentDescription = photo.displayName, details = photo.savedDetails(), annotating = annotating)
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
                 Text(
@@ -1240,9 +1240,10 @@ private fun Thumbnail(
     modifier: Modifier = Modifier.size(116.dp),
     requestSize: Int = 360,
     contentDescription: String = "照片缩略图",
-    annotated: Boolean = false,
+    details: StoredAnnotationDetails? = null,
     annotating: Boolean = false,
 ) {
+    var detailsOpen by remember(uriText) { mutableStateOf(false) }
     val context = LocalContext.current
     val bitmap by produceState<Bitmap?>(initialValue = null, key1 = uriText, key2 = requestSize) {
         value = withContext(Dispatchers.IO) {
@@ -1283,20 +1284,16 @@ private fun Thumbnail(
                     .testTag("photo_annotation_running"),
                 color = Color(0xFF15803D), strokeWidth = 3.dp,
             )
-        } else if (annotated) {
-            Icon(
-                Icons.Filled.CheckCircle,
-                contentDescription = "已标注",
-                tint = Color(0xFF15803D),
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(6.dp)
-                    .size(32.dp)
-                    .background(Color.White, CircleShape)
-                    .testTag("photo_annotation_badge"),
-            )
+        } else if (details != null) {
+            IconButton(onClick = { detailsOpen = true }, modifier = Modifier.align(Alignment.BottomEnd)
+                .padding(2.dp).size(40.dp).semantics { this.contentDescription = "已标注，查看详情" }
+                .testTag("photo_annotation_badge")) {
+                Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = Color(0xFF15803D),
+                    modifier = Modifier.size(32.dp).background(Color.White, CircleShape))
+            }
         }
     }
+    if (detailsOpen && details != null) PhotoAnnotationDetailsDialog(details) { detailsOpen = false }
 }
 
 @Composable
