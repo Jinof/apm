@@ -18,6 +18,7 @@ import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextReplacement
@@ -62,8 +63,8 @@ class PhotoWallHeatmapActivityTest {
                 Intent(context, MainActivity::class.java)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK),
             )
-            composeRule.onNodeWithTag("startup_story_continue").performClick()
             waitForDisplayedTag("dock_page_swipe_album")
+            composeRule.onRoot().saveRoadmapScreenshot("startup-home.png")
             val pagerBounds = composeRule.onNodeWithTag("dock_horizontal_pager")
                 .fetchSemanticsNode().boundsInRoot
             val dockBefore = composeRule.onNodeWithTag("bottom_dock")
@@ -120,7 +121,7 @@ class PhotoWallHeatmapActivityTest {
                 Intent(context, MainActivity::class.java)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK),
             )
-            composeRule.onNodeWithTag("startup_story_continue").performClick()
+            waitForDisplayedTag("dock_page_swipe_album")
             waitForSettledPage("dock_page_swipe_album")
             val dockBefore = composeRule.onNodeWithTag("bottom_dock")
                 .fetchSemanticsNode().boundsInRoot
@@ -159,7 +160,7 @@ class PhotoWallHeatmapActivityTest {
                 Intent(context, MainActivity::class.java)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK),
             )
-            composeRule.onNodeWithTag("startup_story_continue").performClick()
+            waitForDisplayedTag("dock_page_swipe_album")
             composeRule.onNodeWithTag("dock_album").assertIsSelected()
 
             composeRule.onNodeWithTag("dock_page_swipe_album").performTouchInput { swipeLeft() }
@@ -206,7 +207,7 @@ class PhotoWallHeatmapActivityTest {
                 Intent(context, MainActivity::class.java)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK),
             )
-            composeRule.onNodeWithTag("startup_story_continue").performClick()
+            waitForDisplayedTag("dock_page_swipe_album")
             composeRule.onNodeWithTag("dock_settings").performClick()
             waitForSettledPage("dock_page_swipe_settings")
             composeRule.onNodeWithTag("edit_profile_default").performClick()
@@ -256,8 +257,7 @@ class PhotoWallHeatmapActivityTest {
                 Intent(context, MainActivity::class.java)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK),
             )
-            composeRule.onNodeWithTag("startup_story_dialog").assertExists()
-            composeRule.onNodeWithTag("startup_story_continue").performClick()
+            waitForDisplayedTag("dock_page_swipe_album")
             composeRule.onNodeWithTag("startup_story_dialog").assertDoesNotExist()
             composeRule.onNodeWithTag("photo_wall_heatmap").assertIsNotDisplayed()
             composeRule.onNodeWithTag("bottom_dock").assertExists()

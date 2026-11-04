@@ -1,11 +1,11 @@
 meta:
   title "AI Photo Manager System Promise"
   domain photo_management
-  version v41
+  version v42
   status active
   owner product
-  summary "Roadmap 0.0.8: list-first API settings with top add action, right-side edit/activate controls and a separate editor, read-only saved annotation details, session-scoped annotation selection, read-only photo browsing, heatmaps, full-resolution viewing, external multimodal annotation and local or Agent search, with one model settings card and no duplicate detection or person/pet recognition."
-  source "README Roadmap 0.0.8 and user request 2026-11-03"
+  summary "Roadmap 0.0.9: automatic entry after local startup loading, list-first API settings with top add action, right-side edit/activate controls and a separate editor, read-only saved annotation details, session-scoped annotation selection, read-only photo browsing, heatmaps, full-resolution viewing, external multimodal annotation and local or Agent search, with one model settings card and no duplicate detection or person/pet recognition."
+  source "README Roadmap 0.0.9 and user request 2026-11-04"
 
 resource User kind actor:
   label "用户"
@@ -149,6 +149,8 @@ field AndroidPhotoWallFieldPromise for AndroidPhotoWall:
   field dailyCounts type json required true nullable false default "{}" semantic "Map from real local capture date to the count of distinct currently accessible photoIds captured that day." mutable true system true readers browse writers browse
   field annotationTask type json required false nullable true default null semantic "Ephemeral task projection: scope, scanning/running/completed/failed phase, monotonic start and finish times, pending total, attempted/succeeded/failed/skipped counts, current photo identity/name, completed-attempt duration sum and at most 40 sanitized recent stage logs." mutable true system true readers browse,annotate writers annotate
   field dockDestination type string required true nullable false default album semantic "The settled top-level pager destination: album, heatmap, Agent search, or settings, exactly matching the selected anchored Dock item." mutable true system false readers browse writers browse
+  field startupLoading type boolean required true nullable false default true semantic "Activity-local pending first catalog read; later foreground refreshes and page changes do not re-enter startup loading." mutable true system true readers browse writers browse
+  invariant AndroidPhotoWall.automatic_startup statement "During the first catalog read, the app shows 让照片，说出自己的故事 as a loading surface with no continue or skip action. When data is ready, normal launch enters the album automatically; a read failure exits loading and shows the existing error status. There is no fixed delay, countdown, network request, model dependency or additional permission prompt. The old story dialog never appears over the homepage." refs AndroidPhotoWall.startupLoading,AndroidPhotoWall.photoIds,AndroidPhotoWall.dockDestination
   invariant AndroidPhotoWall.accessible_distinct statement "photoIds contains every and only distinct currently accessible AndroidMediaLocation.photoId exactly once, including unannotated photos and libraries larger than search limits." refs AndroidPhotoWall.photoIds,AndroidMediaLocation.photoId,AndroidMediaLocation.accessible
   invariant AndroidPhotoWall.real_capture_day statement "A dated photo day is derived only by converting dateTakenMillis through the device time zone; null dateTakenMillis belongs only to the unknown group and never uses modified, discovered, indexed, or annotation time as a fallback." refs AndroidPhotoWall.dayGroups,AndroidMediaLocation.dateTakenMillis
   invariant AndroidPhotoWall.annotation_badge statement "Photo thumbnails in album grid, album detail and local search show a large green check at the image bottom-right if a stored annotation exists and that photo is not currently being annotated. The indicator describes any saved annotation, not a selection or current-model freshness; a failed re-annotation keeps the prior badge, and successful annotation refreshes the visible badge without restart. It has the accessible description 已标注，查看详情, preserves ordinary photo navigation and does not modify pixels or database state." refs AndroidPhotoWall.photoIds,PhotoAnnotation.photoId,PhotoAnnotation.id
@@ -277,12 +279,13 @@ function ScanAndroidGalleryFunctionPromise action scan:
 
 function BrowseAndroidPhotoWallFunctionPromise action browse:
   label "浏览 Android 按日照片墙 Function Promise"
-  summary "Shows a startup-only story introduction, then loads every distinct currently accessible photo into a compact lazy day-grouped photo-wall surface inside one top-level horizontal pager with an anchored bottom Dock ordered 相册, heatmap, Agent search, settings-rightmost, and renders an exclusive one-screen heatmap surface whose borderless full-area grid stacks Q1 through Q4 vertically, places each quarter's three months horizontally, fuses a compact year/granularity control bar above it, and derives GitHub-style annual daily, weekly, and monthly views from exact daily counts."
+  summary "Shows the story tagline while the first local catalog read is pending, then automatically displays every distinct currently accessible photo into a compact lazy day-grouped photo-wall surface inside one top-level horizontal pager with an anchored bottom Dock ordered 相册, heatmap, Agent search, settings-rightmost, and renders an exclusive one-screen heatmap surface whose borderless full-area grid stacks Q1 through Q4 vertically, places each quarter's three months horizontally, fuses a compact year/granularity control bar above it, and derives GitHub-style annual daily, weekly, and monthly views from exact daily counts."
   depends AndroidMediaLocationFieldPromise,AndroidPhotoWallFieldPromise,PhotoAnnotationFieldPromise
   trigger "The top-level pager host opens, the user taps a Dock destination, directly drags a page surface left or right, uses the photo wall's left-edge heatmap route, accessible catalog state changes, the display mode or heatmap granularity changes, the displayed year changes, or the user selects or clears a heatmap range or opens/closes saved annotation details."
   precondition BrowseAndroidPhotoWall.catalog_available statement "The app-private catalog may be empty, but any projected row must have one currently accessible MediaStore location." refs AndroidMediaLocation.photoId,AndroidMediaLocation.accessible
   reads AndroidMediaLocation.photoId,AndroidMediaLocation.uri,AndroidMediaLocation.displayName,AndroidMediaLocation.dateTakenMillis,AndroidMediaLocation.accessible,PhotoAnnotation.photoId,PhotoAnnotation.caption,PhotoAnnotation.tags,PhotoAnnotation.facets,PhotoAnnotation.visibleText,PhotoAnnotation.subjectMentions,PhotoAnnotation.recognizedSubjects,PhotoAnnotation.modelName,PhotoAnnotation.promptVersion,PhotoAnnotation.createdAt
-  writes AndroidPhotoWall.photoIds,AndroidPhotoWall.dayGroups,AndroidPhotoWall.displayMode,AndroidPhotoWall.displayedYear,AndroidPhotoWall.heatmapGranularity,AndroidPhotoWall.selectedRange,AndroidPhotoWall.dailyCounts,AndroidPhotoWall.dockDestination
+  writes AndroidPhotoWall.startupLoading,AndroidPhotoWall.photoIds,AndroidPhotoWall.dayGroups,AndroidPhotoWall.displayMode,AndroidPhotoWall.displayedYear,AndroidPhotoWall.heatmapGranularity,AndroidPhotoWall.selectedRange,AndroidPhotoWall.dailyCounts,AndroidPhotoWall.dockDestination
+  ensure BrowseAndroidPhotoWall.startup_completion statement "The first background catalog read completes the loading phase before the normal homepage can be used; its failure also clears loading and exposes an error status. No tap or minimum display duration gates homepage entry. Startup and navigation preserve the existing session-selection and persistent-data rules." refs AndroidPhotoWall.startupLoading,AndroidPhotoWall.photoIds,AndroidPhotoWall.dockDestination
   ensure BrowseAndroidPhotoWall.all_accessible_photos statement "The wall query has no search-result limit, includes annotated and unannotated photos, chooses one currently accessible URI per distinct photoId, and excludes inaccessible locations." refs AndroidPhotoWall.photoIds,AndroidMediaLocation.photoId,AndroidMediaLocation.uri,AndroidMediaLocation.accessible
   ensure BrowseAndroidPhotoWall.day_sections statement "Photos are grouped by device-local date derived only from dateTakenMillis, dated groups and photos are newest first, and null capture times appear once in a final unknown-time group." refs AndroidPhotoWall.dayGroups,AndroidMediaLocation.dateTakenMillis
   ensure BrowseAndroidPhotoWall.thumbnail_mode statement "Thumbnail mode renders a lazy three-column square grid with one tappable thumbnail per projected photo." refs AndroidPhotoWall.displayMode,AndroidPhotoWall.photoIds
@@ -461,3 +464,17 @@ verify Roadmap008Verification kind cross-cutting:
     guard "Existing settings and business rows are preserved. APKs build in fresh isolated directories; real-device delivery only uses a verified same-package data-preserving update."
   evidence "Promise, JVM, lint, Python, API-only APK checks, emulator settings/navigation regressions and screenshots; live device preservation checks if connected."
   fail "List actions are misplaced or inaccessible, editing implicitly activates a profile, an unsaved form changes saved data, or Back from a hidden editor hijacks another page."
+
+verify Roadmap009Verification kind cross-cutting:
+  label "0.0.9 启动加载与自动进入首页"
+  claim "Startup branding is confined to actual initial loading and never requires dismissal."
+  verifies AndroidPhotoWallFieldPromise,BrowseAndroidPhotoWallFunctionPromise
+  methods integration,review
+  scenario "loading to homepage without user input":
+    covers AndroidPhotoWall.automatic_startup,BrowseAndroidPhotoWall.startup_completion
+    given "A pending initial catalog read, including an empty library, and existing photos, saved annotations and encrypted API settings."
+    when "The first local read completes or fails, the Activity is recreated, or the user returns from the background, another Dock page or the viewer."
+    then "The loading tagline is replaced automatically by the normal page with no story dialog, continue button, skip button, countdown or artificial delay. Existing selection-session rules and all persistent data remain intact."
+    guard "Build only into fresh isolated directories and verify the tested APK before canonical delivery or a same-package data-preserving phone update."
+  evidence "Controlled loading-surface UI checks, automatic cold-launch and navigation regression, Promise/JVM/lint/API-only gates, screenshots and connected-device preservation checks."
+  fail "A manual introduction still blocks entry, loading is tied to an external model or timer, or startup changes persistent photos, annotations or API settings."

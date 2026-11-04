@@ -59,7 +59,6 @@ import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Shield
 import androidx.compose.material.icons.outlined.ViewAgenda
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.CardDefaults
@@ -84,7 +83,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -134,6 +132,7 @@ class MainActivity : ComponentActivity() {
     private val executor = Executors.newSingleThreadExecutor()
     private val busy = AtomicBoolean(false)
     private var uiState by mutableStateOf(GalleryUiState())
+    private var startupLoading by mutableStateOf(true)
     private var selectedPhotoRange by mutableStateOf<PhotoHeatmapSelection?>(null)
     private var requestedDockDestination by mutableStateOf(DockDestination.ALBUM)
     private var initialized = false
@@ -175,63 +174,64 @@ class MainActivity : ComponentActivity() {
         initialized = true
         setContent {
             ApmTheme {
-                AppDockPager(
-                    requestedDestination = requestedDockDestination,
-                    busy = uiState.busy || agentController.state.busy,
-                    searchEnabled = uiState.search.enabled,
-                    onExit = { finish() },
-                    onDestinationSettled = { destination ->
-                        requestedDockDestination = destination
+                AppStartupContent(loading = startupLoading) {
+                    AppDockPager(
+                        requestedDestination = requestedDockDestination,
+                        busy = uiState.busy || agentController.state.busy,
+                        searchEnabled = uiState.search.enabled,
+                        onExit = { finish() },
+                        onDestinationSettled = { destination ->
+                            requestedDockDestination = destination
+                            when (destination) {
+                                DockDestination.AGENT -> agentController.refreshAvailability()
+                                else -> Unit
+                            }
+                        },
+                    ) { destination, navigate ->
                         when (destination) {
-                            DockDestination.AGENT -> agentController.refreshAvailability()
-                            else -> Unit
+                            DockDestination.ALBUM -> GalleryScreen(
+                                state = uiState,
+                                onQueryChange = { query ->
+                                    val activeSearchQuery = uiState.activeSearchQuery
+                                        ?.takeIf { it == query.trim() }
+                                    uiState = uiState.copy(
+                                        query = query,
+                                        activeSearchQuery = activeSearchQuery,
+                                        results = if (activeSearchQuery == null) emptyList() else uiState.results,
+                                    )
+                                },
+                                onSearch = ::submitSearch,
+                                onSuggestion = { suggestion ->
+                                    uiState = uiState.copy(query = suggestion)
+                                    submitSearch()
+                                },
+                                onSelectPhotos = ::selectPhotosForAnnotation,
+                                onAnnotateSelected = { startAnnotation(AnnotationScope.SELECTED) },
+                                onAnnotateAll = ::onAnnotateAllRequested,
+                                onHeatmap = { navigate(DockDestination.HEATMAP) },
+                                initialSelectedRange = selectedPhotoRange,
+                                onPhoto = ::openPhoto,
+                            )
+
+                            DockDestination.HEATMAP -> PhotoHeatmapPage(
+                                photos = uiState.galleryPhotos,
+                                onViewPhotos = { selection ->
+                                    selectedPhotoRange = selection
+                                    navigate(DockDestination.ALBUM)
+                                },
+                            )
+
+                            DockDestination.AGENT -> AgentSearchScreen(
+                                state = agentController.state,
+                                onRequestChange = agentController::changeRequest,
+                                onRun = agentController::runAgent,
+                                onPhoto = { photo ->
+                                    startActivity(PhotoViewerActivity.intent(this, photo.photoId, photo.uri))
+                                },
+                            )
+
+                            DockDestination.SETTINGS -> ModelSettingsScreen(isActive = requestedDockDestination == DockDestination.SETTINGS)
                         }
-                    },
-                ) { destination, navigate ->
-                    when (destination) {
-                        DockDestination.ALBUM -> GalleryScreen(
-                            state = uiState,
-                            onQueryChange = { query ->
-                                val activeSearchQuery = uiState.activeSearchQuery
-                                    ?.takeIf { it == query.trim() }
-                                uiState = uiState.copy(
-                                    query = query,
-                                    activeSearchQuery = activeSearchQuery,
-                                    results = if (activeSearchQuery == null) emptyList() else uiState.results,
-                                )
-                            },
-                            onSearch = ::submitSearch,
-                            onSuggestion = { suggestion ->
-                                uiState = uiState.copy(query = suggestion)
-                                submitSearch()
-                            },
-                            onSelectPhotos = ::selectPhotosForAnnotation,
-                            onAnnotateSelected = { startAnnotation(AnnotationScope.SELECTED) },
-                            onAnnotateAll = ::onAnnotateAllRequested,
-                            onHeatmap = { navigate(DockDestination.HEATMAP) },
-                            initialSelectedRange = selectedPhotoRange,
-                            startupStoryEnabled = requestedDockDestination == DockDestination.ALBUM,
-                            onPhoto = ::openPhoto,
-                        )
-
-                        DockDestination.HEATMAP -> PhotoHeatmapPage(
-                            photos = uiState.galleryPhotos,
-                            onViewPhotos = { selection ->
-                                selectedPhotoRange = selection
-                                navigate(DockDestination.ALBUM)
-                            },
-                        )
-
-                        DockDestination.AGENT -> AgentSearchScreen(
-                            state = agentController.state,
-                            onRequestChange = agentController::changeRequest,
-                            onRun = agentController::runAgent,
-                            onPhoto = { photo ->
-                                startActivity(PhotoViewerActivity.intent(this, photo.photoId, photo.uri))
-                            },
-                        )
-
-                        DockDestination.SETTINGS -> ModelSettingsScreen(isActive = requestedDockDestination == DockDestination.SETTINGS)
                     }
                 }
             }
@@ -525,9 +525,13 @@ class MainActivity : ComponentActivity() {
                         selectedCount = selected,
                         status = message ?: uiState.status,
                     )
+                    startupLoading = false
                 }
             } catch (error: Exception) {
-                updateStatus("读取本地索引失败：${error.message}")
+                runOnUiThread {
+                    uiState = uiState.copy(status = "读取本地索引失败：${error.message}")
+                    startupLoading = false
+                }
             }
         }
     }
@@ -597,7 +601,6 @@ private fun GalleryScreen(
     onAnnotateAll: () -> Unit,
     onHeatmap: () -> Unit,
     initialSelectedRange: PhotoHeatmapSelection?,
-    startupStoryEnabled: Boolean,
     onPhoto: (String, String) -> Unit,
 ) {
     val zoneId = ZoneId.systemDefault()
@@ -613,7 +616,6 @@ private fun GalleryScreen(
     }
     val searchActive = state.activeSearchQuery != null
     val density = LocalDensity.current
-    var showStartupStory by rememberSaveable { mutableStateOf(true) }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -802,40 +804,6 @@ private fun GalleryScreen(
         )
         }
     }
-        if (startupStoryEnabled && showStartupStory) {
-        StartupStoryDialog(onDismiss = { showStartupStory = false })
-    }
-}
-
-@Composable
-private fun StartupStoryDialog(onDismiss: () -> Unit) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        modifier = Modifier.testTag("startup_story_dialog"),
-        icon = {
-            Icon(Icons.Outlined.AutoAwesome, contentDescription = null)
-        },
-        title = { Text("让照片，自己说出故事") },
-        text = {
-            Text("VLM 在授权范围内理解画面，描述与标签只存放在你的设备。")
-        },
-        confirmButton = {
-            Button(
-                onClick = onDismiss,
-                modifier = Modifier.testTag("startup_story_continue"),
-            ) {
-                Text("开始探索")
-            }
-        },
-        dismissButton = {
-            TextButton(
-                onClick = onDismiss,
-                modifier = Modifier.testTag("startup_story_skip"),
-            ) {
-                Text("稍后再看")
-            }
-        },
-    )
 }
 
 @Composable
