@@ -13,6 +13,8 @@ class ApiSettingsEditor : ViewModel() {
         private set
     var draft by mutableStateOf(profiles.active)
         private set
+    var editing by mutableStateOf(false)
+        private set
     var apiTesting by mutableStateOf(false)
         private set
     var apiTestStatus by mutableStateOf("")
@@ -31,10 +33,13 @@ class ApiSettingsEditor : ViewModel() {
     fun rename(name: String) { select(draft.copy(name = name)) }
     fun edit(config: InferenceConfig) { select(draft.copy(config = config)) }
     fun select(profile: ApiProfile) { draft = profile; apiTestStatus = "" }
-    fun add() { select(ApiProfile(UUID.randomUUID().toString(), "新配置", InferenceConfig())) }
+    fun open(profile: ApiProfile) { select(profile); editing = true }
+    fun add() { open(ApiProfile(UUID.randomUUID().toString(), "新配置", InferenceConfig())) }
+    fun closeEditor() { select(profiles.active); editing = false }
     fun save(store: SettingsStore) {
         profiles = store.saveProfile(draft.id, draft.name, draft.config)
         draft = profiles.profiles.single { it.id == draft.id }
+        editing = false
     }
     fun activate(store: SettingsStore, id: String) {
         profiles = store.activateProfile(id)
@@ -42,7 +47,7 @@ class ApiSettingsEditor : ViewModel() {
     }
     fun delete(store: SettingsStore, id: String) {
         profiles = store.deleteProfile(id)
-        select(profiles.active)
+        closeEditor()
     }
     fun testConnection() {
         if (apiTesting) return

@@ -34,11 +34,11 @@ class ApiConnectionSettingsTest {
                 rule.waitUntil(5_000) { server.requests.size == 1 }
                 rule.onNodeWithTag("test_model_api").assertIsNotEnabled()
                 reveal("model_input").assertIsNotEnabled()
-                reveal("add_api_profile").assertIsNotEnabled()
-                reveal("edit_profile_default").assertIsNotEnabled()
+                rule.onNodeWithTag("add_api_profile").assertDoesNotExist()
+                reveal("api_editor_back").assertIsNotEnabled()
                 activity.recreate()
                 reveal("test_model_api").assertIsNotEnabled()
-                reveal("add_api_profile").assertIsNotEnabled()
+                reveal("api_editor_back").assertIsNotEnabled()
                 assertEquals(1, server.requests.size)
                 server.release()
                 awaitResult("连接成功：draft-model")
@@ -104,7 +104,7 @@ class ApiConnectionSettingsTest {
                 rule.onNodeWithTag("visual_model_recommendations").assertDoesNotExist()
                 rule.onNodeWithTag("open_identity_settings").assertDoesNotExist()
                 rule.onNodeWithText("功能类别：多模态模型").performScrollTo().assertIsDisplayed()
-                rule.onNodeWithText("用途：生成描述、标签、识别图片文字，规划自然语言搜索").assertIsDisplayed()
+                rule.onNodeWithText("用途：生成描述、标签、识别图片文字，规划自然语言搜索").performScrollTo().assertIsDisplayed()
             }
         }
     }
@@ -129,9 +129,11 @@ class ApiConnectionSettingsTest {
                     reveal("remote_consent").performClick()
                     activity.recreate()
                     reveal("profile_name_input").assertTextContains("外出")
+                    rule.onRoot().saveRoadmapScreenshot("api-editor.png")
                     reveal("model_input").assertTextContains("away-model")
                     reveal("remote_consent").assertIsOn()
                     reveal("save_settings").performClick()
+                    rule.onNodeWithTag("api_profile_editor").assertDoesNotExist()
                     val profile = store.loadProfiles().profiles.single { it.name == "外出" }
                     assertEquals("away-test-key", profile.config.apiKey)
                     assertEquals(homeConfig, store.load())
@@ -140,6 +142,7 @@ class ApiConnectionSettingsTest {
                     assertEquals(profile.config, SettingsStore(context).load())
                     reveal("active_api_profile").assertTextEquals("当前使用：外出")
                     rule.onRoot().saveRoadmapScreenshot("api-profiles.png")
+                    reveal("edit_profile_${profile.id}").performClick()
                     reveal("test_model_api").performClick()
                     awaitResult("连接成功：away-model")
                     assertEquals(0, home.requests.size)
@@ -147,11 +150,14 @@ class ApiConnectionSettingsTest {
                     assertTrue(away.requests.single().header.contains("Authorization: Bearer away-test-key"))
                     assertEquals("away-model", JSONObject(away.requests.single().body).getString("model"))
                     reveal("delete_api_profile").assertIsNotEnabled()
+                    reveal("api_editor_back").performClick()
                     reveal("activate_profile_default").performClick()
+                    reveal("edit_profile_default").performClick()
                     reveal("test_model_api").performClick()
                     awaitResult("连接成功：home-model")
                     assertEquals(1, home.requests.size)
                     assertTrue(home.requests.single().header.contains("Authorization: Bearer home-test-key"))
+                    reveal("api_editor_back").performClick()
                     reveal("edit_profile_${profile.id}").performClick()
                     reveal("delete_api_profile").performClick()
                     rule.onNodeWithTag("confirm_delete_profile").performClick()
@@ -164,27 +170,81 @@ class ApiConnectionSettingsTest {
         }
     }
 
-    @Test fun switchingWithUnsavedEditsNeedsExplicitDiscardAndNeverSavesOrSends() = withSettings { saved ->
+    @Test fun returningWithUnsavedEditsNeedsExplicitDiscardAndNeverSavesOrSends() = withSettings { saved ->
         val store = SettingsStore(context)
         store.saveProfile("away", "外出", InferenceConfig("https://example.test/v1", "away", false, "away-key"))
-        ActivityScenario.launch(SettingsActivity::class.java).use {
+        val original = java.io.File(context.noBackupFilesDir, "external-api.enc").readBytes()
+        ActivityScenario.launch(SettingsActivity::class.java).use { activity ->
+            reveal("edit_profile_default").performClick()
             reveal("model_input").performTextReplacement("unsaved-model")
-            reveal("activate_profile_away").performClick()
+            activity.onActivity { it.onBackPressedDispatcher.onBackPressed() }
             rule.onNodeWithTag("keep_profile_changes").performClick()
             reveal("model_input").assertTextContains("unsaved-model")
             assertEquals(saved, store.load())
-            reveal("activate_profile_away").performClick()
+            reveal("api_editor_back").performClick()
             rule.onNodeWithTag("discard_profile_changes").performClick()
-            reveal("remote_consent").assertIsOff()
+            rule.onNodeWithTag("api_profile_editor").assertDoesNotExist()
+            assertTrue(original.contentEquals(java.io.File(context.noBackupFilesDir, "external-api.enc").readBytes()))
+            reveal("activate_profile_away").performClick()
+            assertFalse(store.load().allowRemote)
             assertEquals("away", store.load().modelName)
             assertEquals(saved, store.loadProfiles().profiles.single { it.id == "default" }.config)
             reveal("activate_profile_default").performClick()
             assertEquals(saved, store.load())
+            reveal("edit_profile_default").performClick()
             reveal("model_input").assertTextContains(saved.modelName)
         }
     }
 
+    @Test fun listPlacesAddAtTopAndEditActivateAtRightWithoutExposingSecrets() = withSettings { saved ->
+        val store = SettingsStore(context)
+        repeat(14) { index -> store.saveProfile("list-$index", "外出配置 $index 很长的名字",
+            InferenceConfig("https://long-host-$index.example.test/proxy/path/v1", "long-model-name-$index", false, "private-secret-$index")) }
+        val before = java.io.File(context.noBackupFilesDir, "external-api.enc").readBytes()
+        ActivityScenario.launch(SettingsActivity::class.java).use {
+            rule.onNodeWithTag("api_profile_editor").assertDoesNotExist()
+            rule.onNodeWithTag("endpoint_input").assertDoesNotExist()
+            val add = reveal("add_api_profile").fetchSemanticsNode().boundsInRoot
+            val name = rule.onNodeWithTag("api_profile_name_default", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+            val edit = reveal("edit_profile_default").fetchSemanticsNode().boundsInRoot
+            val activate = reveal("activate_profile_default").fetchSemanticsNode().boundsInRoot
+            assertTrue(add.bottom < name.top)
+            assertTrue(edit.left >= name.right && activate.left >= edit.right)
+            reveal("activate_profile_default").assertIsNotEnabled().assertTextContains("已启用")
+            rule.onAllNodes(hasText("private-secret", substring = true)).assertCountEquals(0)
+            reveal("edit_profile_list-13").assertIsDisplayed()
+            reveal("add_api_profile").assertIsDisplayed() // Fixed above the scrollable list.
+            reveal("edit_profile_list-13").performClick()
+            reveal("endpoint_input").assertTextContains("https://long-host-13.example.test/proxy/path/v1")
+            assertEquals(saved, store.load())
+            reveal("api_editor_back").performClick()
+            assertTrue(before.contentEquals(java.io.File(context.noBackupFilesDir, "external-api.enc").readBytes()))
+        }
+    }
+
+    @Test fun invalidAddStaysInEditorAndCancelPreservesSavedConfiguration() = withSettings { saved ->
+        val file = java.io.File(context.noBackupFilesDir, "external-api.enc")
+        val before = file.readBytes()
+        ActivityScenario.launch(SettingsActivity::class.java).use {
+            reveal("add_api_profile").performClick()
+            rule.onNodeWithTag("api_settings_list").assertDoesNotExist()
+            reveal("endpoint_input").performTextReplacement("not a URL")
+            reveal("model_input").performTextReplacement("draft-model")
+            reveal("remote_consent").performClick()
+            reveal("save_settings").performClick()
+            rule.onNodeWithTag("api_profile_editor").assertExists()
+            reveal("api_settings_status").assertTextContains("保存失败", substring = true)
+            assertEquals(saved, SettingsStore(context).load())
+            assertTrue(before.contentEquals(file.readBytes()))
+            reveal("api_editor_back").performClick()
+            rule.onNodeWithTag("discard_profile_changes").performClick()
+            assertEquals(1, SettingsStore(context).loadProfiles().profiles.size)
+            assertTrue(before.contentEquals(file.readBytes()))
+        }
+    }
+
     private fun fillDraft(server: MockChatConnectionServer, consent: Boolean = true) {
+        reveal("edit_profile_default").performClick()
         reveal("endpoint_input").performTextReplacement(server.endpoint)
         reveal("model_input").performTextReplacement("draft-model")
         reveal("api_key_input").performTextReplacement("draft-test-key")
@@ -192,7 +252,11 @@ class ApiConnectionSettingsTest {
     }
 
     private fun reveal(tag: String): SemanticsNodeInteraction {
-        return rule.onNodeWithTag(tag).performScrollTo()
+        val node = rule.onNodeWithTag(tag)
+        if (runCatching { node.assertIsDisplayed() }.isSuccess) return node
+        if (rule.onAllNodesWithTag("api_profile_editor").fetchSemanticsNodes().isNotEmpty()) node.performScrollTo()
+        else rule.onNodeWithTag("api_settings_list").performScrollToNode(hasTestTag(tag))
+        return node
     }
 
     private fun awaitResult(text: String) {

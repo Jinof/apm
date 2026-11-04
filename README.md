@@ -30,4 +30,10 @@ APM 提供 Android 相册和 Python 命令行。照片目录、标注和搜索�
 
 实现和验证见 [0.0.7 验收记录](docs/roadmap-0.0.7-validation.md)。
 
-Roadmap 0.0.8
+## Roadmap 0.0.8
+
+- [x] API 设置默认展示列表，支持保存多套配置并切换当前使用的 API。
+- [x] 顶部固定显示“新增 API”，独立表单支持录入地址、模型名称和 API 密钥。
+- [x] API 条目右侧放置“编辑”和“启用”按钮，当前配置显示“已启用”。
+
+实现和验证见 [0.0.8 验收记录](docs/roadmap-0.0.8-validation.md)。

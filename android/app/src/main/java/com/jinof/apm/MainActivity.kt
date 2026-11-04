@@ -231,7 +231,7 @@ class MainActivity : ComponentActivity() {
                             },
                         )
 
-                        DockDestination.SETTINGS -> ModelSettingsScreen()
+                        DockDestination.SETTINGS -> ModelSettingsScreen(isActive = requestedDockDestination == DockDestination.SETTINGS)
                     }
                 }
             }

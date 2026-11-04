@@ -1,5 +1,11 @@
 # APM Repository Agent Rules
 
+## Roadmap delivery and Git
+
+- After each requested Roadmap is implemented and its relevant checks pass, commit the completed changes and push the working branch automatically. This is standing user authorization; do not ask again for each Roadmap.
+- Include the matching Promise, tests, and documentation in the commit. Preserve unrelated edits, use normal non-force pushes, and report the commit and pushed branch.
+- Creating version tags or GitHub Releases still requires a release request from the user.
+
 ## Preserve APKs and real-device app state
 
 - Treat every APK artifact, installed Android package, and its app-private data as user-owned persistent state.
