@@ -36,7 +36,7 @@ class AnnotationSelectionLifecycleTest {
         val settings = settingsBytes()
         val grants = context.contentResolver.persistedUriPermissions.map { it.uri.toString() }.sorted()
         launch().use {
-            dismissStory()
+            awaitHome()
             assertCount(0)
             assertEquals(rows, persistentRows(db))
             assertEquals(settings, settingsBytes())
@@ -47,7 +47,7 @@ class AnnotationSelectionLifecycleTest {
 
     @Test fun pickerCancelRecreationBackgroundDockAndViewerKeepCurrentSelection() = withPhoto { db, photo ->
         launch().use { scenario ->
-            dismissStory()
+            awaitHome()
             scenario.onActivity { it.onPhotosSelected(listOf(Uri.parse(photo.uri))) }
             assertCount(1)
             val selected = selectedRows(db)
@@ -73,21 +73,21 @@ class AnnotationSelectionLifecycleTest {
 
     @Test fun albumBackAndTaskRemovalStartNewEmptySessions() = withPhoto { _, photo ->
         launch().use { scenario ->
-            dismissStory()
+            awaitHome()
             scenario.onActivity { it.onPhotosSelected(listOf(Uri.parse(photo.uri))) }
             assertCount(1)
             scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
             rule.waitUntil(5_000) { scenario.state == Lifecycle.State.DESTROYED }
         }
         launch().use { scenario ->
-            dismissStory()
+            awaitHome()
             assertCount(0)
             scenario.onActivity { it.onPhotosSelected(listOf(Uri.parse(photo.uri))) }
             assertCount(1)
             scenario.onActivity { it.finishAndRemoveTask() }
             rule.waitUntil(5_000) { scenario.state == Lifecycle.State.DESTROYED }
         }
-        launch().use { dismissStory(); assertCount(0) }
+        launch().use { awaitHome(); assertCount(0) }
     }
 
     @Test fun sessionInitializesOnceAndRejectsClosedSessionImports() = withPhoto { db, photo ->
@@ -110,8 +110,14 @@ class AnnotationSelectionLifecycleTest {
         Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK),
     )
 
-    private fun dismissStory() {
-        rule.onNodeWithTag("startup_story_continue").performClick()
+    private fun awaitHome() {
+        rule.waitUntil(10_000) {
+            rule.onAllNodesWithTag("annotate_selected").fetchSemanticsNodes().isNotEmpty()
+        }
+        rule.onNodeWithTag("startup_loading").assertDoesNotExist()
+        rule.onNodeWithTag("startup_story_dialog").assertDoesNotExist()
+        rule.onNodeWithTag("startup_story_continue").assertDoesNotExist()
+        rule.onNodeWithTag("startup_story_skip").assertDoesNotExist()
     }
 
     private fun assertCount(count: Int) {

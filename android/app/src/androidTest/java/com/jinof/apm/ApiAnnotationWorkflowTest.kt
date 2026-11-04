@@ -69,7 +69,9 @@ class ApiAnnotationWorkflowTest {
                     Intent(context, MainActivity::class.java)
                         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK),
                 )
-                composeRule.onNodeWithTag("startup_story_continue").performClick()
+                composeRule.waitUntil(10_000) {
+                    composeRule.onAllNodesWithTag("annotate_selected").fetchSemanticsNodes().isNotEmpty()
+                }
                 database.replaceAnnotationSelection(listOf(photo.photoId))
                 requireNotNull(scenario).moveToState(androidx.lifecycle.Lifecycle.State.CREATED)
                 requireNotNull(scenario).moveToState(androidx.lifecycle.Lifecycle.State.RESUMED)

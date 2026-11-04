@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="startup_story">让照片，\n说出自己的故事</string>
+    <string name="startup_loading">正在加载相册…</string>
     <string name="app_name">APM 相册智能管家</string>
 </resources>
