@@ -12,7 +12,7 @@ APM 提供 Android 相册和 Python 命令行。照片目录、标注和搜索�
 
 要求 Android 10（API 29）及以上。选择照片后即可浏览，无需先配置模型。
 
-在“设置”中添加命名配置，再填写多模态模型卡片。每个地址独立保存以下内容：
+“设置”默认展示 API 列表。点击顶部“新增 API”，或点击条目右侧“编辑”，进入独立表单；保存后返回列表。每个地址独立保存以下内容：
 
 | 配置 | 说明 |
 |---|---|
@@ -23,7 +23,7 @@ APM 提供 Android 相册和 Python 命令行。照片目录、标注和搜索�
 
 接口为 `POST <基础地址>/chat/completions`。新安装不预填服务或模型。旧版明确保存的 Ollama 配置迁移到同一主机的兼容 `/v1` 路径，保留原模型名和许可。配置和密钥使用 Android Keystore 加密，存于禁止备份目录。
 
-点击“切换使用”选择当前 API。保存其他配置不会自动切换；新增配置不继承密钥或许可。家中使用 xspark 的内网地址，外出使用自己的 Tailscale Funnel HTTPS 地址。手机上的 `localhost` 指手机本身。
+点击条目右侧“启用”选择当前 API，当前条目显示“已启用”。保存其他配置不会自动切换；新增配置不继承密钥或许可。家中使用 xspark 的内网地址，外出使用自己的 Tailscale Funnel HTTPS 地址。手机上的 `localhost` 指手机本身。
 
 保存设置不会发起请求。标注只发送内存缩略图，不附加身份候选或匿名框；Agent 只发送用户输入与搜索工具约定，不上传照片或本地身份目录。关闭许可后不能开始新任务；运行中的任务继续使用启动时的配置。
 
@@ -65,11 +65,11 @@ make check PROMISE_CLI=/path/to/promise-cli
 
 `android-check` 使用全新的 `/private/tmp/apm-build-<UUID>` 目录，执行 JVM 测试、lint、主 APK 和测试 APK 构建，并检查 APK 不包含模型权重或推理运行库。可指定尚不存在的 `APM_BUILD_DIR=/private/tmp/<unique-name>`。仪器测试仅在模拟器上运行，使用本地 mock API。
 
-Android 版本为 **0.0.7（9）**。仓库唯一交付 APK 仍为 `android/APM-0.0.2-debug.apk`，文件名按 [AGENTS.md](../AGENTS.md) 保持不变，通过验证后才更新。真实手机只对已安装的 `com.jinof.apm` 执行 `adb install -r` 保留数据更新，安装前后核对版本与数据库。
+Android 版本为 **0.0.8（10）**。仓库唯一交付 APK 仍为 `android/APM-0.0.2-debug.apk`，文件名按 [AGENTS.md](../AGENTS.md) 保持不变，通过验证后才更新。真实手机只对已安装的 `com.jinof.apm` 执行 `adb install -r` 保留数据更新，安装前后核对版本与数据库。
 
-已发布版本的下载与变更见 [0.0.6 发布说明](release-0.0.6.md) 和 [GitHub Release](https://github.com/Jinof/apm/releases/tag/v0.0.6)。
+当前版本的下载与变更见 [0.0.8 发布说明](release-0.0.8.md) 和 [GitHub Release](https://github.com/Jinof/apm/releases/tag/v0.0.8)。此前版本见 [0.0.6 发布说明](release-0.0.6.md)。
 
-本版检查结果见 [0.0.7 验收记录](roadmap-0.0.7-validation.md)。此前版本见 [0.0.6 验收记录](roadmap-0.0.6-validation.md) 和 [0.0.5 验收记录](roadmap-0.0.5-validation.md)。此前的 [API 设置验收](api-connections-validation.md) 和 [API-only 精简验收](api-only-validation.md) 是历史记录，包含本版已移除的功能。
+本版检查结果见 [0.0.8 验收记录](roadmap-0.0.8-validation.md)。此前版本见 [0.0.7 验收记录](roadmap-0.0.7-validation.md)、[0.0.6 验收记录](roadmap-0.0.6-validation.md) 和 [0.0.5 验收记录](roadmap-0.0.5-validation.md)。此前的 [API 设置验收](api-connections-validation.md) 和 [API-only 精简验收](api-only-validation.md) 是历史记录，包含本版已移除的功能。
 
 [返回项目首页](../README.md)
 

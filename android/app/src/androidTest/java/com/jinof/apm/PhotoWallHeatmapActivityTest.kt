@@ -209,6 +209,7 @@ class PhotoWallHeatmapActivityTest {
             composeRule.onNodeWithTag("startup_story_continue").performClick()
             composeRule.onNodeWithTag("dock_settings").performClick()
             waitForSettledPage("dock_page_swipe_settings")
+            composeRule.onNodeWithTag("edit_profile_default").performClick()
             composeRule.onNodeWithTag("model_input").performScrollTo().performTextReplacement("pager-draft-model")
 
             composeRule.onNodeWithTag("dock_page_swipe_settings").performTouchInput { swipeRight() }
@@ -219,6 +220,22 @@ class PhotoWallHeatmapActivityTest {
             composeRule.onNodeWithTag("model_input").assertTextContains("pager-draft-model")
             composeRule.onNodeWithTag("dock_settings").assertIsSelected()
             assertOnlyMainActivityResumed()
+            // Swipe remains available when Agent's Dock button is disabled before annotation.
+            // The retained editor must not handle Back while another Dock page is visible.
+            composeRule.onNodeWithTag("dock_page_swipe_settings").performTouchInput { swipeRight() }
+            waitForSettledPage("dock_page_swipe_agent")
+            scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+            waitForSettledPage("dock_page_swipe_album")
+            composeRule.onNodeWithTag("discard_profile_changes").assertDoesNotExist()
+            composeRule.onNodeWithTag("dock_settings").performClick()
+            waitForSettledPage("dock_page_swipe_settings")
+            composeRule.onNodeWithTag("model_input").assertTextContains("pager-draft-model")
+            scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+            composeRule.onNodeWithTag("discard_profile_changes").performClick()
+            composeRule.onNodeWithTag("add_api_profile").assertIsDisplayed()
+            composeRule.onNodeWithTag("dock_settings").assertIsSelected()
+            scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+            waitForSettledPage("dock_page_swipe_album")
         } finally {
             scenario?.close()
         }
