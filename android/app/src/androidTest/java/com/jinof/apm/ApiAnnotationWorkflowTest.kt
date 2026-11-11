@@ -152,6 +152,171 @@ class ApiAnnotationWorkflowTest {
         }
     }
 
+    @Test fun eightConcurrentPhotosKeepScopeIdentityFailuresAndConfigSnapshot() = parallelWorkflow(cancel = false)
+    @Test fun destroyingActivityCancelsParallelRequestsWithoutLateWrites() = parallelWorkflow(cancel = true)
+
+    private fun parallelWorkflow(cancel: Boolean) {
+        assumeTrue(InstrumentationRegistry.getArguments().getString("apmApiWorkflowEmulator") == "true" &&
+            (Build.FINGERPRINT.startsWith("generic") || Build.HARDWARE in setOf("ranchu", "goldfish")))
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val saved = SavedApiSettings(context)
+        val db = ApmDatabase(context)
+        val photos = mutableListOf<ScannedPhoto>()
+        var scenario: ActivityScenario<MainActivity>? = null
+        val oldSelection = db.readableDatabase.rawQuery("SELECT photo_id FROM annotation_selection", null).use { c ->
+            buildList { while (c.moveToNext()) add(c.getString(0)) }
+        }
+        try {
+            repeat(10) { index -> photos += createPhoto(context, UUID.randomUUID().toString(), Color.rgb(index * 20, 40, 60)) }
+            db.upsertAccessiblePhotos(photos)
+            val history = PhotoAnnotation("保留旧标注", emptyList(), "", PhotoFacets("不确定", emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), emptyList()))
+            for (index in listOf(1, 2)) db.insertAnnotation(photos[index].photoId, history, "old-model", "old-prompt")
+            val oldRows = listOf(1, 2).associateWith { annotationRows(db, photos[it].photoId) }
+            ParallelChatApi().use { api ->
+                val limit = if (cancel) 2 else 8
+                val model = "parallel-${UUID.randomUUID()}"
+                val config = InferenceConfig(api.endpoint, model, true, concurrency = limit)
+                SettingsStore(context).save(config)
+                scenario = ActivityScenario.launch(Intent(context, MainActivity::class.java)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK))
+                composeRule.waitUntil(10_000) { composeRule.onAllNodesWithTag("annotate_selected").fetchSemanticsNodes().isNotEmpty() }
+                db.replaceAnnotationSelection(photos.take(9).map { it.photoId })
+                scenario!!.moveToState(androidx.lifecycle.Lifecycle.State.CREATED)
+                scenario!!.moveToState(androidx.lifecycle.Lifecycle.State.RESUMED)
+                waitUntilAnnotationEnabled()
+                composeRule.onNodeWithTag("annotate_selected").performClick()
+                composeRule.waitUntil(15_000) { api.ids.size == limit }
+                composeRule.onNodeWithTag("annotation_task_concurrency").assertTextEquals("并发 $limit/$limit")
+                assertEquals(limit, api.peak.get())
+                if (cancel) {
+                    scenario!!.close(); scenario = null
+                    api.cancelRelease()
+                    composeRule.waitUntil(10_000) { api.running.get() == 0 }
+                    assertEquals(2, api.ids.size)
+                    for (index in photos.indices) assertEquals(oldRows[index] ?: emptyList<Map<String, String?>>(), annotationRows(db, photos[index].photoId))
+                } else {
+                    // Every request, including the ninth refill, must use the original snapshot.
+                    SettingsStore(context).save(config.copy(endpoint = "http://127.0.0.1:1/v1", modelName = "changed", concurrency = 1))
+                    val active = synchronized(api.ids) { api.ids.toList() }
+                    for (index in listOf(active.first(), active.last())) {
+                        composeRule.onNodeWithTag("photo_wall_gesture_surface")
+                            .performScrollToNode(hasTestTag("photo_wall_thumbnail_${photos[index].photoId}"))
+                        composeRule.onNode(hasTestTag("photo_annotation_running") and hasAnyAncestor(
+                            hasTestTag("photo_wall_thumbnail_${photos[index].photoId}")), useUnmergedTree = true).assertExists()
+                    }
+                    composeRule.onRoot().saveRoadmapScreenshot("parallel-annotation.png")
+                    composeRule.onNodeWithTag("photo_wall_gesture_surface").performScrollToNode(hasTestTag("annotate_selected"))
+                    api.release.countDown()
+                    waitUntilAnnotationEnabled()
+                    composeRule.onNodeWithTag("annotation_task_counts").assertTextContains("成功 7 · 失败 2", substring = true)
+                    composeRule.onNodeWithTag("annotation_task_concurrency").assertTextEquals("并发 0/8")
+                    assertEquals((0..8).toSet(), api.ids.toSet())
+                    assertEquals(9, api.ids.size)
+                    assertEquals(8, api.peak.get())
+                    assertTrue(api.models.all { it == model })
+                    for (index in photos.indices) {
+                        val rows = annotationRows(db, photos[index].photoId)
+                        when (index) {
+                            1, 2 -> assertEquals(oldRows[index], rows)
+                            9 -> assertTrue(rows.isEmpty())
+                            else -> {
+                                assertEquals("测试照片 $index", rows.single()["caption"])
+                                assertEquals(model, rows.single()["model_name"])
+                            }
+                        }
+                    }
+                }
+            }
+        } finally {
+            scenario?.close()
+            val sql = db.writableDatabase
+            sql.beginTransaction()
+            try {
+                for (photo in photos) {
+                    listOf("annotation_selection", "photo_annotations", "photo_faces", "photo_face_index", "media_locations")
+                        .forEach { sql.delete(it, "photo_id = ?", arrayOf(photo.photoId)) }
+                    sql.delete("photo_assets", "photo_id = ?", arrayOf(photo.photoId))
+                }
+                sql.setTransactionSuccessful()
+            } finally { sql.endTransaction() }
+            db.replaceAnnotationSelection(oldSelection)
+            photos.forEach { context.contentResolver.delete(android.net.Uri.parse(it.uri), null, null) }
+            db.close(); saved.restore()
+        }
+    }
+
+    private class ParallelChatApi : Closeable {
+        private val server = ServerSocket(0, 16, InetAddress.getByName("127.0.0.1"))
+        val endpoint = "http://127.0.0.1:${server.localPort}/v1"
+        val ids = Collections.synchronizedList(mutableListOf<Int>())
+        val models = Collections.synchronizedList(mutableListOf<String>())
+        val running = java.util.concurrent.atomic.AtomicInteger()
+        val peak = java.util.concurrent.atomic.AtomicInteger()
+        val release = CountDownLatch(1)
+        private val later = CountDownLatch(1)
+        private val workers = Collections.synchronizedList(mutableListOf<Thread>())
+        private val failure = AtomicReference<Throwable?>()
+        private val acceptor = thread {
+            try {
+                while (!server.isClosed) {
+                    val socket = server.accept()
+                    workers += thread {
+                        socket.use {
+                            var counted = false
+                            try {
+                                socket.soTimeout = 5000
+                                val input = socket.getInputStream()
+                                val head = StringBuilder()
+                                while (!head.endsWith("\r\n\r\n")) {
+                                    val byte = input.read(); check(byte >= 0 && head.length < 16384); head.append(byte.toChar())
+                                }
+                                check(head.startsWith("POST /v1/chat/completions "))
+                                val length = head.lines().first { it.startsWith("Content-Length:", true) }.substringAfter(':').trim().toInt()
+                                check(length in 1..2097152)
+                                val bytes = ByteArray(length)
+                                java.io.DataInputStream(input).readFully(bytes)
+                                val body = JSONObject(String(bytes, Charsets.UTF_8))
+                                val url = body.getJSONArray("messages").getJSONObject(0).getJSONArray("content")
+                                    .getJSONObject(1).getJSONObject("image_url").getString("url")
+                                val jpeg = android.util.Base64.decode(url.substringAfter(','), android.util.Base64.NO_WRAP)
+                                val bitmap = android.graphics.BitmapFactory.decodeByteArray(jpeg, 0, jpeg.size)
+                                val id = try { (Color.red(bitmap.getPixel(0, 0)) + 10) / 20 } finally { bitmap.recycle() }
+                                models += body.getString("model")
+                                peak.accumulateAndGet(running.incrementAndGet(), ::maxOf); counted = true
+                                ids += id
+                                check(release.await(60, TimeUnit.SECONDS))
+                                if (id == 0) check(later.await(20, TimeUnit.SECONDS))
+                                val status = if (id == 1) 429 else 200
+                                val content = if (id == 2) "{}" else JSONObject().put("caption", "测试照片 $id")
+                                    .put("tags", JSONArray()).put("visible_text", "")
+                                    .put("facets", JSONObject().put("daylight", "不确定").put("sky", JSONArray())
+                                        .put("objects", JSONArray()).put("people", JSONArray()).put("actions", JSONArray())
+                                        .put("scenes", JSONArray()).put("weather", JSONArray())).toString()
+                                val response = if (status != 200) "{\"error\":{\"code\":\"rate_limit\"}}" else JSONObject()
+                                    .put("choices", JSONArray().put(JSONObject().put("finish_reason", "stop")
+                                        .put("message", JSONObject().put("content", content)))).toString()
+                                val data = response.toByteArray(Charsets.UTF_8)
+                                socket.getOutputStream().apply {
+                                    write("HTTP/1.1 $status Mock\r\nContent-Type: application/json\r\nContent-Length: ${data.size}\r\nConnection: close\r\n\r\n".toByteArray())
+                                    write(data); flush()
+                                }
+                                if (id == 8) later.countDown()
+                            } catch (_: java.io.IOException) { /* Client cancellation closes its connection. */ }
+                            catch (error: Throwable) { failure.compareAndSet(null, error) }
+                            finally { if (counted) running.decrementAndGet() }
+                        }
+                    }
+                }
+            } catch (error: SocketException) { if (!server.isClosed) failure.set(error) }
+        }
+        fun cancelRelease() { release.countDown(); later.countDown() }
+        override fun close() {
+            release.countDown(); later.countDown(); server.close(); acceptor.join(3000)
+            synchronized(workers) { workers.toList() }.forEach { it.join(3000) }
+            failure.get()?.let { throw AssertionError("Parallel API fixture failed", it) }
+        }
+    }
+
     private fun waitUntilAnnotationEnabled() {
         composeRule.waitUntil(30_000) {
             runCatching { composeRule.onNodeWithTag("annotate_selected").assertIsEnabled() }.isSuccess
@@ -165,7 +330,7 @@ class ApiAnnotationWorkflowTest {
             }) }
         }
 
-    private fun createPhoto(context: Context, id: String): ScannedPhoto {
+    private fun createPhoto(context: Context, id: String, color: Int = Color.rgb(70, 130, 170)): ScannedPhoto {
         val resolver = context.contentResolver
         val uri = requireNotNull(resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, ContentValues().apply {
             put(MediaStore.Images.Media.DISPLAY_NAME, "api-workflow-$id.png")
@@ -176,7 +341,7 @@ class ApiAnnotationWorkflowTest {
         try {
             val bitmap = Bitmap.createBitmap(320, 320, Bitmap.Config.ARGB_8888)
             try {
-                bitmap.eraseColor(Color.rgb(70, 130, 170))
+                bitmap.eraseColor(color)
                 resolver.openOutputStream(uri).use { check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, requireNotNull(it))) }
             } finally { bitmap.recycle() }
             resolver.update(uri, ContentValues().apply { put(MediaStore.Images.Media.IS_PENDING, 0) }, null, null)

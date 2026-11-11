@@ -1,5 +1,7 @@
 package com.jinof.apm
 
+data class ActiveAnnotationPhoto(val name: String, val startedAt: Long)
+
 /** A memory-only projection; timestamps are monotonic milliseconds, never wall-clock dates. */
 data class AnnotationTaskProgress(
     val scope: String,
@@ -9,13 +11,15 @@ data class AnnotationTaskProgress(
     val succeeded: Int = 0,
     val failed: Int = 0,
     val skipped: Int = 0,
-    val currentPhotoId: String? = null,
-    val currentPhotoName: String? = null,
-    val currentStartedAt: Long? = null,
+    val concurrency: Int = 1,
+    val activePhotos: Map<String, ActiveAnnotationPhoto> = emptyMap(),
     val attemptMillis: Long = 0,
     val finishedAt: Long? = null,
     val logs: List<String> = emptyList(),
 ) {
+    val currentPhotoId: String? get() = activePhotos.keys.firstOrNull()
+    val currentPhotoName: String? get() = activePhotos.values.firstOrNull()?.name
+    val activePhotoIds: Set<String> get() = activePhotos.keys
     val active: Boolean get() = finishedAt == null
     val completed: Int get() = succeeded + failed
 
@@ -24,8 +28,9 @@ data class AnnotationTaskProgress(
     fun etaSeconds(now: Long): Long? {
         val remaining = total?.minus(completed) ?: return null
         if (!active || remaining <= 0 || completed == 0) return null
-        val currentElapsed = currentStartedAt?.let { (now - it).coerceAtLeast(0) } ?: 0
-        val estimate = attemptMillis.toDouble() / completed * remaining - currentElapsed
+        val activeElapsed = activePhotos.values.sumOf { (now - it.startedAt).coerceAtLeast(0) }
+        val estimate = (attemptMillis.toDouble() / completed * remaining - activeElapsed) /
+            minOf(concurrency, remaining).coerceAtLeast(1)
         return if (estimate > 0) kotlin.math.ceil(estimate / 1000).toLong() else null
     }
 
@@ -33,23 +38,28 @@ data class AnnotationTaskProgress(
         logs = (logs + "${formatAnnotationDuration(elapsedMillis(now) / 1000)} · $message").takeLast(40),
     )
 
-    fun startPhoto(photo: PendingPhoto, now: Long): AnnotationTaskProgress = copy(
-        phase = "标注中", currentPhotoId = photo.photoId,
-        currentPhotoName = photo.displayName.replace(Regex("[\\r\\n\\t]"), " ").take(120),
-        currentStartedAt = now,
-    ).log("${completed + 1}/${total ?: 0} · ${photo.displayName.take(120)}", now)
+    fun startPhoto(photo: PendingPhoto, now: Long): AnnotationTaskProgress {
+        check(active && photo.photoId !in activePhotos && activePhotos.size < concurrency)
+        val name = photo.displayName.replace(Regex("[\\r\\n\\t]"), " ").take(120)
+        return copy(phase = "标注中", activePhotos = activePhotos + (photo.photoId to ActiveAnnotationPhoto(name, now)))
+            .log("开始 · $name", now)
+    }
 
-    fun finishPhoto(success: Boolean, now: Long): AnnotationTaskProgress = copy(
-        succeeded = succeeded + if (success) 1 else 0,
-        failed = failed + if (success) 0 else 1,
-        attemptMillis = attemptMillis + (now - (currentStartedAt ?: now)).coerceAtLeast(1),
-        currentPhotoId = null, currentPhotoName = null, currentStartedAt = null,
-    )
+    fun finishPhoto(photoId: String, success: Boolean, now: Long): AnnotationTaskProgress {
+        val photo = requireNotNull(activePhotos[photoId])
+        return copy(
+            succeeded = succeeded + if (success) 1 else 0,
+            failed = failed + if (success) 0 else 1,
+            attemptMillis = attemptMillis + (now - photo.startedAt).coerceAtLeast(1),
+            activePhotos = activePhotos - photoId,
+        )
+    }
 
     fun finish(now: Long, fatal: Boolean = false): AnnotationTaskProgress = copy(
         phase = if (fatal) "任务失败" else if (failed > 0) "完成（有失败）" else "已完成",
-        finishedAt = now, currentPhotoId = null, currentPhotoName = null, currentStartedAt = null,
+        finishedAt = now, activePhotos = emptyMap(),
     )
+
 }
 
 internal fun formatAnnotationDuration(seconds: Long): String = when {

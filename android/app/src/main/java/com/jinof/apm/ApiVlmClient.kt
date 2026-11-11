@@ -80,14 +80,17 @@ internal object VlmThumbnailEncoder {
 class ApiVlmClient(
     private val resolver: ContentResolver,
     candidateConfig: InferenceConfig,
-) {
+) : java.io.Closeable {
     private val api = ExternalApiClient(candidateConfig)
     val config: InferenceConfig = api.config
+
+    override fun close() = api.close()
 
     fun annotate(uri: Uri, onStage: (String) -> Unit = {}): PhotoAnnotation {
         // Validate the destination and consent before loading photo bytes.
         var contextOverflow: ApiRequestException? = null
         for ((attemptIndex, maxEdge) in VlmInferencePolicy.maxEdgeAttempts.withIndex()) {
+            if (Thread.currentThread().isInterrupted) throw InterruptedException()
             onStage(if (attemptIndex == 0) "准备图片缩略图" else "缩小图片后重试")
             val image = resizedJpegBase64(uri, maxEdge)
             Log.i(VLM_LOG_TAG, "request attempt=${attemptIndex + 1} thumbnail=${image.width}x${image.height}")

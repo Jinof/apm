@@ -131,6 +131,9 @@ class MainActivity : ComponentActivity() {
     private lateinit var selectionSession: AnnotationSelectionSession
     private val executor = Executors.newSingleThreadExecutor()
     private val busy = AtomicBoolean(false)
+    private val annotationLifetime = Any()
+    private var annotationDisposed = false
+    private var annotationClient: ApiVlmClient? = null
     private var uiState by mutableStateOf(GalleryUiState())
     private var startupLoading by mutableStateOf(true)
     private var selectedPhotoRange by mutableStateOf<PhotoHeatmapSelection?>(null)
@@ -274,9 +277,13 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         if (!isChangingConfigurations) selectionSession.closeSession()
-        executor.shutdownNow()
         agentController.close()
-        database.close()
+        synchronized(annotationLifetime) {
+            annotationDisposed = true
+            executor.shutdownNow()
+            annotationClient?.close()
+            database.close()
+        }
         super.onDestroy()
     }
 
@@ -396,7 +403,7 @@ class MainActivity : ComponentActivity() {
         val config = validatedInferenceConfig() ?: return
         val initialStatus = if (scope == AnnotationScope.ALL) "正在扫描全量已授权照片…" else "准备标注所选照片…"
         if (!beginWork(initialStatus)) return
-        var task = AnnotationTaskProgress(scope.label, SystemClock.elapsedRealtime())
+        var task = AnnotationTaskProgress(scope.label, SystemClock.elapsedRealtime(), concurrency = config.concurrency)
             .log(initialStatus, SystemClock.elapsedRealtime())
         publishAnnotationTask(task)
         executor.execute {
@@ -411,7 +418,10 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 } else null
-                val client = ApiVlmClient(contentResolver, config)
+                val client = synchronized(annotationLifetime) {
+                    if (annotationDisposed || Thread.currentThread().isInterrupted) throw InterruptedException()
+                    ApiVlmClient(contentResolver, config).also { annotationClient = it }
+                }
                 val scopeCount = if (scope == AnnotationScope.SELECTED) database.annotationSelectionCount() else database.accessibleCount()
                 val pending = if (scope == AnnotationScope.SELECTED) {
                     database.pendingSelectedPhotos(config.modelName, AnnotationContract.PROMPT_VERSION)
@@ -420,39 +430,48 @@ class MainActivity : ComponentActivity() {
                 task = task.copy(total = pending.size, skipped = (scopeCount - pending.size).coerceAtLeast(0), phase = "标注中")
                     .log("待标注 ${pending.size} 张，跳过 ${scopeCount - pending.size} 张", SystemClock.elapsedRealtime())
                 publishAnnotationTask(task, gallery)
-                for (photo in pending) {
-                    if (Thread.currentThread().isInterrupted) throw InterruptedException()
-                    task = task.startPhoto(photo, SystemClock.elapsedRealtime())
-                    publishAnnotationTask(task)
-                    try {
-                        val annotation = client.annotate(Uri.parse(photo.uri)) { stage ->
-                            task = task.log(stage, SystemClock.elapsedRealtime())
-                            publishAnnotationTask(task)
-                        }
-                        if (Thread.currentThread().isInterrupted) throw InterruptedException()
-                        task = task.log("写入本地标注", SystemClock.elapsedRealtime())
+                ParallelAnnotationRunner(config.concurrency).run(
+                    items = pending,
+                    onStart = { photo ->
+                        task = task.startPhoto(photo, SystemClock.elapsedRealtime())
                         publishAnnotationTask(task)
-                        database.insertAnnotation(photo.photoId, annotation, config.modelName, AnnotationContract.PROMPT_VERSION)
-                        val annotatedAt = Instant.now().toString()
-                        gallery = gallery.map { card ->
-                            if (card.photoId != photo.photoId) card else card.copy(annotation = annotation,
-                                modelName = config.modelName, promptVersion = AnnotationContract.PROMPT_VERSION, annotatedAt = annotatedAt)
+                    },
+                    work = { photo, onStage -> client.annotate(Uri.parse(photo.uri), onStage) },
+                    onStage = { photo, stage ->
+                        val name = task.activePhotos[photo.photoId]?.name.orEmpty()
+                        task = task.log("$name · $stage", SystemClock.elapsedRealtime())
+                        publishAnnotationTask(task)
+                    },
+                    onComplete = { photo, result ->
+                        synchronized(annotationLifetime) {
+                            if (annotationDisposed || Thread.currentThread().isInterrupted) throw InterruptedException()
+                            val name = task.activePhotos[photo.photoId]?.name.orEmpty()
+                            try {
+                                val annotation = result.getOrThrow()
+                                task = task.log("写入本地标注 · $name", SystemClock.elapsedRealtime())
+                                database.insertAnnotation(photo.photoId, annotation, config.modelName, AnnotationContract.PROMPT_VERSION)
+                                val annotatedAt = Instant.now().toString()
+                                gallery = gallery.map { card ->
+                                    if (card.photoId != photo.photoId) card else card.copy(annotation = annotation,
+                                        modelName = config.modelName, promptVersion = AnnotationContract.PROMPT_VERSION, annotatedAt = annotatedAt)
+                                }
+                                runOnUiThread {
+                                    if (!isDestroyed && !isFinishing) uiState = uiState.copy(results = uiState.results.map { card ->
+                                        if (card.photoId != photo.photoId) card else card.copy(annotation = annotation, caption = annotation.caption,
+                                            modelName = config.modelName, promptVersion = AnnotationContract.PROMPT_VERSION, annotatedAt = annotatedAt)
+                                    })
+                                }
+                                task = task.log("标注成功 · $name", SystemClock.elapsedRealtime())
+                                    .finishPhoto(photo.photoId, true, SystemClock.elapsedRealtime())
+                            } catch (error: Exception) {
+                                if (error is InterruptedException || Thread.currentThread().isInterrupted) throw InterruptedException()
+                                task = task.log("标注失败 · $name · ${annotationFailureMessage(error)}", SystemClock.elapsedRealtime())
+                                    .finishPhoto(photo.photoId, false, SystemClock.elapsedRealtime())
+                            }
+                            publishAnnotationTask(task, gallery)
                         }
-                        runOnUiThread {
-                            if (!isDestroyed && !isFinishing) uiState = uiState.copy(results = uiState.results.map { card ->
-                                if (card.photoId != photo.photoId) card else card.copy(annotation = annotation, caption = annotation.caption,
-                                    modelName = config.modelName, promptVersion = AnnotationContract.PROMPT_VERSION, annotatedAt = annotatedAt)
-                            })
-                        }
-                        task = task.log("标注成功 · ${task.currentPhotoName}", SystemClock.elapsedRealtime())
-                            .finishPhoto(true, SystemClock.elapsedRealtime())
-                    } catch (error: Exception) {
-                        if (error is InterruptedException || Thread.currentThread().isInterrupted) throw InterruptedException()
-                        task = task.log("标注失败 · ${task.currentPhotoName} · ${annotationFailureMessage(error)}", SystemClock.elapsedRealtime())
-                            .finishPhoto(false, SystemClock.elapsedRealtime())
-                    }
-                    publishAnnotationTask(task, gallery)
-                }
+                    },
+                )
                 task = task.log(if (pending.isEmpty()) "无需重复标注" else "任务结束", SystemClock.elapsedRealtime())
                     .finish(SystemClock.elapsedRealtime())
                 publishAnnotationTask(task, gallery)
@@ -463,6 +482,11 @@ class MainActivity : ComponentActivity() {
                 task = task.log(message, SystemClock.elapsedRealtime()).finish(SystemClock.elapsedRealtime(), fatal = true)
                 publishAnnotationTask(task)
                 failWork("${scope.label}标注失败：$message")
+            } finally {
+                synchronized(annotationLifetime) {
+                    annotationClient?.close()
+                    annotationClient = null
+                }
             }
         }
     }
@@ -706,7 +730,7 @@ private fun GalleryScreen(
                     ) { photo ->
                         PhotoResultCard(
                             photo = photo,
-                            annotating = state.annotationTask?.currentPhotoId == photo.photoId,
+                            annotating = state.annotationTask?.activePhotoIds?.contains(photo.photoId) == true,
                             onClick = { onPhoto(photo.photoId, photo.uri) },
                         )
                     }
@@ -743,7 +767,7 @@ private fun GalleryScreen(
                         ) { photo ->
                             PhotoWallThumbnail(
                                 photo = photo,
-                                annotating = state.annotationTask?.currentPhotoId == photo.photoId,
+                                annotating = state.annotationTask?.activePhotoIds?.contains(photo.photoId) == true,
                                 onClick = { onPhoto(photo.photoId, photo.uri) },
                             )
                         }
@@ -755,7 +779,7 @@ private fun GalleryScreen(
                         ) { photo ->
                             PhotoWallDetailCard(
                                 photo = photo,
-                                annotating = state.annotationTask?.currentPhotoId == photo.photoId,
+                                annotating = state.annotationTask?.activePhotoIds?.contains(photo.photoId) == true,
                                 onClick = { onPhoto(photo.photoId, photo.uri) },
                             )
                         }

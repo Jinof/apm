@@ -70,6 +70,7 @@ class SettingsStore(context: Context) {
 
     fun saveProfile(id: String, name: String, candidate: InferenceConfig): ApiProfiles = synchronized(LOCK) {
         require(id.isNotBlank())
+        require(candidate.concurrency in 1..8) { "并发度需为 1 至 8" }
         val label = name.trim()
         require(label.isNotEmpty() && label.length <= 60) { "配置名称需为 1 至 60 个字符" }
         val normalized = candidate.copy(endpoint = candidate.endpoint.trim().trimEnd('/'), modelName = candidate.modelName.trim(), apiKey = candidate.apiKey.trim())
@@ -97,12 +98,13 @@ class SettingsStore(context: Context) {
 
     private fun configFromJson(value: JSONObject) = InferenceConfig(
         value.getString("endpoint"), value.getString("model"), value.getBoolean("consent"), value.getString("key"),
+        (value.opt("concurrency") as? Int)?.takeIf { it in 1..8 } ?: 8,
     )
 
     private fun persist(state: ApiProfiles) {
         val entries = state.profiles.map { p -> JSONObject().put("id", p.id).put("name", p.name)
             .put("endpoint", p.config.endpoint).put("model", p.config.modelName)
-            .put("consent", p.config.allowRemote).put("key", p.config.apiKey) }
+            .put("consent", p.config.allowRemote).put("key", p.config.apiKey).put("concurrency", p.config.concurrency) }
         val value = JSONObject().put("version", 2).put("activeProfileId", state.activeProfileId)
             .put("profiles", JSONArray(entries)).toString()
         val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply { init(Cipher.ENCRYPT_MODE, key()) }

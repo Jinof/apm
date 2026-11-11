@@ -4,6 +4,19 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class EndpointPolicyTest {
+    @org.junit.Test fun concurrencyDefaultsToEightAndRejectsOutOfRange() {
+        org.junit.Assert.assertEquals(8, InferenceConfig().concurrency)
+        for (value in listOf(0, 9, -1)) {
+            org.junit.Assert.assertThrows(IllegalArgumentException::class.java) {
+                EndpointPolicy.validate(InferenceConfig("http://localhost/v1", "model", true, concurrency = value))
+            }
+        }
+        for (value in listOf(1, 2, 8)) {
+            org.junit.Assert.assertEquals(value, EndpointPolicy.validate(
+                InferenceConfig("http://localhost/v1", "model", true, concurrency = value)).concurrency)
+        }
+    }
+
     @Test fun defaultIsUnconfiguredAndCannotSendRequests() {
         val config = InferenceConfig()
         assertEquals("", config.endpoint)
