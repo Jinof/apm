@@ -1,5 +1,7 @@
 package com.jinof.apm
 
+data class ActiveAnnotationBatch(val photos: Map<String, String>, val startedAt: Long)
+
 data class ActiveAnnotationPhoto(val name: String, val startedAt: Long)
 
 /** A memory-only projection; timestamps are monotonic milliseconds, never wall-clock dates. */
@@ -12,11 +14,17 @@ data class AnnotationTaskProgress(
     val failed: Int = 0,
     val skipped: Int = 0,
     val concurrency: Int = 1,
-    val activePhotos: Map<String, ActiveAnnotationPhoto> = emptyMap(),
+    val mergeCount: Int = 1,
+    val activeBatches: Map<String, ActiveAnnotationBatch> = emptyMap(),
+    val completedRequests: Int = succeeded + failed,
     val attemptMillis: Long = 0,
     val finishedAt: Long? = null,
     val logs: List<String> = emptyList(),
 ) {
+    init { require(concurrency in 1..8 && mergeCount in 1..8) }
+    val activePhotos = activeBatches.values.flatMap { batch ->
+        batch.photos.map { (id, name) -> id to ActiveAnnotationPhoto(name, batch.startedAt) }
+    }.toMap()
     val currentPhotoId: String? get() = activePhotos.keys.firstOrNull()
     val currentPhotoName: String? get() = activePhotos.values.firstOrNull()?.name
     val activePhotoIds: Set<String> get() = activePhotos.keys
@@ -26,10 +34,10 @@ data class AnnotationTaskProgress(
     fun elapsedMillis(now: Long): Long = ((finishedAt ?: now) - startedAt).coerceAtLeast(0)
 
     fun etaSeconds(now: Long): Long? {
-        val remaining = total?.minus(completed) ?: return null
-        if (!active || remaining <= 0 || completed == 0) return null
-        val activeElapsed = activePhotos.values.sumOf { (now - it.startedAt).coerceAtLeast(0) }
-        val estimate = (attemptMillis.toDouble() / completed * remaining - activeElapsed) /
+        val remaining = total?.let { (it + mergeCount - 1) / mergeCount - completedRequests } ?: return null
+        if (!active || remaining <= 0 || completedRequests == 0) return null
+        val activeElapsed = activeBatches.values.sumOf { (now - it.startedAt).coerceAtLeast(0) }
+        val estimate = (attemptMillis.toDouble() / completedRequests * remaining - activeElapsed) /
             minOf(concurrency, remaining).coerceAtLeast(1)
         return if (estimate > 0) kotlin.math.ceil(estimate / 1000).toLong() else null
     }
@@ -38,26 +46,35 @@ data class AnnotationTaskProgress(
         logs = (logs + "${formatAnnotationDuration(elapsedMillis(now) / 1000)} · $message").takeLast(40),
     )
 
-    fun startPhoto(photo: PendingPhoto, now: Long): AnnotationTaskProgress {
-        check(active && photo.photoId !in activePhotos && activePhotos.size < concurrency)
-        val name = photo.displayName.replace(Regex("[\\r\\n\\t]"), " ").take(120)
-        return copy(phase = "标注中", activePhotos = activePhotos + (photo.photoId to ActiveAnnotationPhoto(name, now)))
-            .log("开始 · $name", now)
+    fun startPhoto(photo: PendingPhoto, now: Long): AnnotationTaskProgress = startBatch(listOf(photo), now)
+
+    fun startBatch(photos: List<PendingPhoto>, now: Long): AnnotationTaskProgress {
+        require(photos.size in 1..mergeCount && photos.map { it.photoId }.distinct().size == photos.size)
+        check(active && activeBatches.size < concurrency && photos.none { it.photoId in activePhotos })
+        val names = photos.associate { it.photoId to it.displayName.replace(Regex("[\\r\\n\\t]"), " ").take(120) }
+        return copy(phase = "标注中", activeBatches = activeBatches + (photos.first().photoId to ActiveAnnotationBatch(names, now)))
+            .log("开始 · ${photos.size} 张 · ${names.values.first()}", now)
     }
 
     fun finishPhoto(photoId: String, success: Boolean, now: Long): AnnotationTaskProgress {
-        val photo = requireNotNull(activePhotos[photoId])
+        require(activeBatches[photoId]?.photos?.size == 1)
+        return finishBatch(photoId, success, now)
+    }
+
+    fun finishBatch(batchId: String, success: Boolean, now: Long): AnnotationTaskProgress {
+        val batch = requireNotNull(activeBatches[batchId])
         return copy(
-            succeeded = succeeded + if (success) 1 else 0,
-            failed = failed + if (success) 0 else 1,
-            attemptMillis = attemptMillis + (now - photo.startedAt).coerceAtLeast(1),
-            activePhotos = activePhotos - photoId,
+            succeeded = succeeded + if (success) batch.photos.size else 0,
+            failed = failed + if (success) 0 else batch.photos.size,
+            completedRequests = completedRequests + 1,
+            attemptMillis = attemptMillis + (now - batch.startedAt).coerceAtLeast(1),
+            activeBatches = activeBatches - batchId,
         )
     }
 
     fun finish(now: Long, fatal: Boolean = false): AnnotationTaskProgress = copy(
         phase = if (fatal) "任务失败" else if (failed > 0) "完成（有失败）" else "已完成",
-        finishedAt = now, activePhotos = emptyMap(),
+        finishedAt = now, activeBatches = emptyMap(),
     )
 
 }

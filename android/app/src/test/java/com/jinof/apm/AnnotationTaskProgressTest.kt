@@ -50,6 +50,23 @@ class AnnotationTaskProgressTest {
         assertTrue(task.finish(15000).activePhotos.isEmpty())
     }
 
+    @Test fun groupedProgressCountsRequestsAndPhotosSeparatelyIncludingShortTail() {
+        val photos = (0..8).map { PendingPhoto("p$it", "content://photo/$it", "$it.jpg") }
+        var task = AnnotationTaskProgress("所选", 0, total = 9, concurrency = 2, mergeCount = 8)
+            .startBatch(photos.take(8), 0).startBatch(photos.takeLast(1), 0)
+        assertEquals(2, task.activeBatches.size); assertEquals(9, task.activePhotos.size)
+        task = task.finishBatch("p8", false, 5000)
+        assertEquals(1, task.failed); assertEquals(1, task.completedRequests)
+        assertEquals(8, task.activePhotos.size)
+        task = task.finishBatch("p0", true, 10000)
+        assertEquals(8, task.succeeded); assertEquals(9, task.completed)
+        assertEquals(2, task.completedRequests); assertTrue(task.activePhotos.isEmpty())
+        assertNull(task.etaSeconds(10000))
+        val serial = AnnotationTaskProgress("全量", 0, total = 9, concurrency = 1, mergeCount = 8)
+            .startBatch(photos.take(8), 0).finishBatch("p0", true, 10000)
+        assertEquals(10L, serial.etaSeconds(10000))
+    }
+
     @Test fun logsAreBoundedAndErrorsDoNotExposeRawMessages() {
         var task = AnnotationTaskProgress("全量", 0)
         repeat(100) { task = task.log("事件 $it", it.toLong()) }

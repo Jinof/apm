@@ -4,6 +4,15 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class EndpointPolicyTest {
+    @Test fun mergeCountDefaultsToOneAndIsBoundedIndependentlyOfConcurrency() {
+        assertEquals(1, InferenceConfig().mergeCount)
+        for (count in listOf(0, 9, -1)) assertThrows(IllegalArgumentException::class.java) {
+            EndpointPolicy.validate(InferenceConfig("http://localhost/v1", "model", true, mergeCount = count))
+        }
+        val c = EndpointPolicy.validate(InferenceConfig("http://localhost/v1", "model", true, concurrency = 2, mergeCount = 8))
+        assertEquals(2, c.concurrency); assertEquals(8, c.mergeCount)
+    }
+
     @org.junit.Test fun concurrencyDefaultsToEightAndRejectsOutOfRange() {
         org.junit.Assert.assertEquals(8, InferenceConfig().concurrency)
         for (value in listOf(0, 9, -1)) {

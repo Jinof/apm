@@ -104,7 +104,7 @@ internal fun ModelSettingsScreen(isActive: Boolean = true) {
                         HorizontalDivider()
                     }
                     item {
-                        Text("每个 API 独立保存模型、密钥、并发度和传输许可。启用后用于下一次任务，正在执行的任务继续使用原配置。",
+                        Text("每个 API 独立保存模型、密钥、并发度、合并张数和传输许可。启用后用于下一次任务，正在执行的任务继续使用原配置。",
                             modifier = Modifier.padding(vertical = 16.dp), style = MaterialTheme.typography.bodySmall)
                     }
                 }
@@ -145,6 +145,8 @@ private fun ApiProfileRow(profile: ApiProfile, active: Boolean, enabled: Boolean
                 maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text("并发度：${profile.config.concurrency}", style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.testTag("profile_concurrency_${profile.id}"))
+            Text("每组 ${profile.config.mergeCount} 张", style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.testTag("profile_merge_count_${profile.id}"))
             Text(if (profile.config.allowRemote) "已允许传输" else "尚未允许传输", style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
@@ -188,7 +190,21 @@ private fun ApiProfileForm(editor: ApiSettingsEditor, status: String, modifier: 
                     onClick = { editor.edit(config.copy(concurrency = config.concurrency + 1)) },
                     modifier = Modifier.testTag("increase_api_concurrency")) { Text("增加") }
             }
-            Text("同时标注 1–8 张照片，默认 8。服务繁忙时可以调低；下次任务生效。",
+            Text("同时发送 1–8 个标注请求，默认 8。每个请求的照片数量由下面的合并张数决定。",
+                style = MaterialTheme.typography.bodySmall)
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("合并张数", modifier = Modifier.weight(1f))
+                OutlinedButton(enabled = enabled && config.mergeCount > 1,
+                    onClick = { editor.edit(config.copy(mergeCount = config.mergeCount - 1)) },
+                    modifier = Modifier.testTag("decrease_merge_count")) { Text("减少") }
+                Text(config.mergeCount.toString(), modifier = Modifier.testTag("api_merge_count"))
+                OutlinedButton(enabled = enabled && config.mergeCount < 8,
+                    onClick = { editor.edit(config.copy(mergeCount = config.mergeCount + 1)) },
+                    modifier = Modifier.testTag("increase_merge_count")) { Text("增加") }
+            }
+            Text("默认 1 张。可将最多 8 张照片合成带编号的缩略图，一次请求分别标注。合并越多，单张细节越少，完整返回也可能更久。",
                 style = MaterialTheme.typography.bodySmall)
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -200,7 +216,7 @@ private fun ApiProfileForm(editor: ApiSettingsEditor, status: String, modifier: 
         Text(status, modifier = Modifier.testTag("api_settings_status"))
         OutlinedButton(enabled = enabled, onClick = editor::testConnection,
             modifier = Modifier.fillMaxWidth().testTag("test_model_api")) { Text(if (editor.apiTesting) "连接中…" else "测试连接") }
-        Text("使用当前填写的配置发送一张生成的小图片，验证图片输入与结构化输出，可能产生 API 费用；不读取相册、不保存设置。",
+        Text("按当前合并张数生成测试图片并发送一次请求，验证对应的图片输入与结构化输出，可能产生 API 费用；不读取相册、不保存设置。",
             style = MaterialTheme.typography.bodySmall)
         Text(editor.apiTestStatus, modifier = Modifier.testTag("model_api_test_status"))
         ElevatedCard(Modifier.fillMaxWidth().testTag("multimodal_model_card")) {

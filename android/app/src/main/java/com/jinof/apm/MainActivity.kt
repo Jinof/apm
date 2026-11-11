@@ -403,7 +403,7 @@ class MainActivity : ComponentActivity() {
         val config = validatedInferenceConfig() ?: return
         val initialStatus = if (scope == AnnotationScope.ALL) "正在扫描全量已授权照片…" else "准备标注所选照片…"
         if (!beginWork(initialStatus)) return
-        var task = AnnotationTaskProgress(scope.label, SystemClock.elapsedRealtime(), concurrency = config.concurrency)
+        var task = AnnotationTaskProgress(scope.label, SystemClock.elapsedRealtime(), concurrency = config.concurrency, mergeCount = config.mergeCount)
             .log(initialStatus, SystemClock.elapsedRealtime())
         publishAnnotationTask(task)
         executor.execute {
@@ -422,51 +422,56 @@ class MainActivity : ComponentActivity() {
                     if (annotationDisposed || Thread.currentThread().isInterrupted) throw InterruptedException()
                     ApiVlmClient(contentResolver, config).also { annotationClient = it }
                 }
+                val promptVersion = if (config.mergeCount == 1) AnnotationContract.PROMPT_VERSION else BatchAnnotationContract.PROMPT_VERSION
                 val scopeCount = if (scope == AnnotationScope.SELECTED) database.annotationSelectionCount() else database.accessibleCount()
                 val pending = if (scope == AnnotationScope.SELECTED) {
-                    database.pendingSelectedPhotos(config.modelName, AnnotationContract.PROMPT_VERSION)
-                } else database.pendingAllPhotos(config.modelName, AnnotationContract.PROMPT_VERSION)
+                    database.pendingSelectedPhotos(config.modelName, BatchAnnotationContract.compatiblePromptVersions)
+                } else database.pendingAllPhotos(config.modelName, BatchAnnotationContract.compatiblePromptVersions)
                 var gallery = database.galleryPhotos()
                 task = task.copy(total = pending.size, skipped = (scopeCount - pending.size).coerceAtLeast(0), phase = "标注中")
                     .log("待标注 ${pending.size} 张，跳过 ${scopeCount - pending.size} 张", SystemClock.elapsedRealtime())
                 publishAnnotationTask(task, gallery)
                 ParallelAnnotationRunner(config.concurrency).run(
-                    items = pending,
-                    onStart = { photo ->
-                        task = task.startPhoto(photo, SystemClock.elapsedRealtime())
+                    items = pending.chunked(config.mergeCount),
+                    onStart = { group ->
+                        task = task.startBatch(group, SystemClock.elapsedRealtime())
                         publishAnnotationTask(task)
                     },
-                    work = { photo, onStage -> client.annotate(Uri.parse(photo.uri), onStage) },
-                    onStage = { photo, stage ->
-                        val name = task.activePhotos[photo.photoId]?.name.orEmpty()
-                        task = task.log("$name · $stage", SystemClock.elapsedRealtime())
+                    work = { group, onStage -> client.annotateGroup(group.map { Uri.parse(it.uri) }, onStage) },
+                    onStage = { group, stage ->
+                        val name = task.activePhotos[group.first().photoId]?.name.orEmpty()
+                        task = task.log("$name · ${group.size} 张 · $stage", SystemClock.elapsedRealtime())
                         publishAnnotationTask(task)
                     },
-                    onComplete = { photo, result ->
+                    onComplete = { group, result ->
                         synchronized(annotationLifetime) {
                             if (annotationDisposed || Thread.currentThread().isInterrupted) throw InterruptedException()
-                            val name = task.activePhotos[photo.photoId]?.name.orEmpty()
+                            val batchId = group.first().photoId
                             try {
-                                val annotation = result.getOrThrow()
-                                task = task.log("写入本地标注 · $name", SystemClock.elapsedRealtime())
-                                database.insertAnnotation(photo.photoId, annotation, config.modelName, AnnotationContract.PROMPT_VERSION)
+                                val annotations = result.getOrThrow()
+                                check(annotations.size == group.size)
+                                val byId = group.mapIndexed { index, photo -> photo.photoId to annotations[index] }.toMap()
+                                task = task.log("写入本地标注 · ${group.size} 张", SystemClock.elapsedRealtime())
+                                database.insertAnnotationGroup(byId.toList(), config.modelName, promptVersion)
                                 val annotatedAt = Instant.now().toString()
                                 gallery = gallery.map { card ->
-                                    if (card.photoId != photo.photoId) card else card.copy(annotation = annotation,
-                                        modelName = config.modelName, promptVersion = AnnotationContract.PROMPT_VERSION, annotatedAt = annotatedAt)
+                                    byId[card.photoId]?.let { annotation -> card.copy(annotation = annotation,
+                                        modelName = config.modelName, promptVersion = promptVersion, annotatedAt = annotatedAt)
+                                    } ?: card
                                 }
                                 runOnUiThread {
                                     if (!isDestroyed && !isFinishing) uiState = uiState.copy(results = uiState.results.map { card ->
-                                        if (card.photoId != photo.photoId) card else card.copy(annotation = annotation, caption = annotation.caption,
-                                            modelName = config.modelName, promptVersion = AnnotationContract.PROMPT_VERSION, annotatedAt = annotatedAt)
+                                        byId[card.photoId]?.let { annotation -> card.copy(annotation = annotation, caption = annotation.caption,
+                                            modelName = config.modelName, promptVersion = promptVersion, annotatedAt = annotatedAt)
+                                        } ?: card
                                     })
                                 }
-                                task = task.log("标注成功 · $name", SystemClock.elapsedRealtime())
-                                    .finishPhoto(photo.photoId, true, SystemClock.elapsedRealtime())
+                                task = task.log("标注成功 · ${group.size} 张", SystemClock.elapsedRealtime())
+                                    .finishBatch(batchId, true, SystemClock.elapsedRealtime())
                             } catch (error: Exception) {
                                 if (error is InterruptedException || Thread.currentThread().isInterrupted) throw InterruptedException()
-                                task = task.log("标注失败 · $name · ${annotationFailureMessage(error)}", SystemClock.elapsedRealtime())
-                                    .finishPhoto(photo.photoId, false, SystemClock.elapsedRealtime())
+                                task = task.log("标注失败 · ${group.size} 张 · ${annotationFailureMessage(error)}", SystemClock.elapsedRealtime())
+                                    .finishBatch(batchId, false, SystemClock.elapsedRealtime())
                             }
                             publishAnnotationTask(task, gallery)
                         }

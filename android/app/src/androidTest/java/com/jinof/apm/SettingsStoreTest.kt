@@ -22,6 +22,7 @@ class SettingsStoreTest {
             assertEquals("", config.apiKey)
             assertFalse(config.allowRemote)
             assertEquals(8, config.concurrency)
+            assertEquals(1, config.mergeCount)
         }
         assertFalse(File(context.noBackupFilesDir, "external-api.enc").exists())
         assertTrue(context.legacyPreferences.all.isEmpty())
@@ -99,8 +100,8 @@ class SettingsStoreTest {
 
     @Test
     fun profilesKeepIndependentSecretsAndConsentAcrossSwitchSaveAndDelete() = withIsolatedStore { context, store ->
-        val home = InferenceConfig("http://192.168.2.10:3000/v1", "home-model", true, "home-secret", concurrency = 2)
-        val away = InferenceConfig("https://device.example.ts.net/v1", "away-model", false, "away-secret", concurrency = 7)
+        val home = InferenceConfig("http://192.168.2.10:3000/v1", "home-model", true, "home-secret", concurrency = 2, mergeCount = 3)
+        val away = InferenceConfig("https://device.example.ts.net/v1", "away-model", false, "away-secret", concurrency = 7, mergeCount = 8)
         store.save(home)
         store.saveProfile("away", "外出", away)
         assertEquals(home, store.load())
@@ -160,7 +161,7 @@ class SettingsStoreTest {
         fun entry(id: String) = org.json.JSONObject().put("id", id).put("name", id)
             .put("endpoint", "https://$id.example/v1").put("model", id).put("key", "$id-secret").put("consent", false)
         val plain = org.json.JSONObject().put("version", 2).put("activeProfileId", "home")
-            .put("profiles", org.json.JSONArray().put(entry("home")).put(entry("away").put("concurrency", 999)))
+            .put("profiles", org.json.JSONArray().put(entry("home")).put(entry("away").put("concurrency", 999).put("mergeCount", "8")))
         val wrapper = org.json.JSONObject().put("iv", android.util.Base64.encodeToString(cipher.iv, android.util.Base64.NO_WRAP))
             .put("data", android.util.Base64.encodeToString(cipher.doFinal(plain.toString().toByteArray()), android.util.Base64.NO_WRAP))
         val file = File(context.noBackupFilesDir, "external-api.enc")
@@ -168,6 +169,8 @@ class SettingsStoreTest {
         val bytes = file.readBytes()
         val state = store.loadProfiles()
         assertTrue(state.profiles.all { it.config.concurrency == 8 })
+        assertTrue(state.profiles.all { it.config.mergeCount == 1 })
+        assertThrows(IllegalArgumentException::class.java) { store.save(store.load().copy(mergeCount = 9)) }
         assertTrue(bytes.contentEquals(file.readBytes()))
         assertThrows(IllegalArgumentException::class.java) { store.save(store.load().copy(concurrency = 0)) }
         assertTrue(bytes.contentEquals(file.readBytes()))

@@ -28,6 +28,26 @@ class ApmDatabaseTest {
         names.forEach(context::deleteDatabase)
     }
 
+    @Test fun compatibleBatchAnnotationsAreSkippedAndGroupWritesAreAtomic() {
+        val db = ApmDatabase(context, databaseName("collage-atomic"))
+        try {
+            val photos = (1..3).map(::scannedPhoto)
+            db.upsertAccessiblePhotos(photos)
+            db.replaceAnnotationSelection(photos.map { it.photoId })
+            db.insertAnnotation(photos[0].photoId, annotation("单张历史"), "model", AnnotationContract.PROMPT_VERSION)
+            db.insertAnnotation(photos[1].photoId, annotation("合图历史"), "model", BatchAnnotationContract.PROMPT_VERSION)
+            assertEquals(listOf(photos[2].photoId), db.pendingAllPhotos("model", BatchAnnotationContract.compatiblePromptVersions).map { it.photoId })
+            assertEquals(listOf(photos[2].photoId), db.pendingSelectedPhotos("model", BatchAnnotationContract.compatiblePromptVersions).map { it.photoId })
+            val before = db.readableDatabase.rawQuery("SELECT COUNT(*) FROM photo_annotations", null).use { it.moveToFirst(); it.getInt(0) }
+            assertThrows(Exception::class.java) {
+                db.insertAnnotationGroup(listOf(photos[2].photoId to annotation("不得部分写入"), "missing-photo" to annotation("失败")), "model", BatchAnnotationContract.PROMPT_VERSION)
+            }
+            val after = db.readableDatabase.rawQuery("SELECT COUNT(*) FROM photo_annotations", null).use { it.moveToFirst(); it.getInt(0) }
+            assertEquals(before, after)
+            assertEquals(listOf(photos[2].photoId), db.pendingAllPhotos("model", BatchAnnotationContract.compatiblePromptVersions).map { it.photoId })
+        } finally { db.close() }
+    }
+
     @Test
     fun selectedAnnotationScopeIsExactAndSelectionImportPreservesOtherPhotos() {
         val name = databaseName("annotation-selection")
