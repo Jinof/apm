@@ -50,6 +50,7 @@ data class InferenceConfig(
     val allowRemote: Boolean = false,
     val apiKey: String = "",
     val concurrency: Int = 8,
+    val mergeCount: Int = 1,
 ) {
     override fun toString(): String = "InferenceConfig(redacted)"
 }

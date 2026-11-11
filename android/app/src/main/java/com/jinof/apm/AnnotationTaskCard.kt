@@ -37,14 +37,16 @@ internal fun AnnotationTaskCard(task: AnnotationTaskProgress?, busy: Boolean, on
                 } else if (task.active) {
                     LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                 }
-                Text("并发 ${task.activePhotos.size}/${task.concurrency}", modifier = Modifier.testTag("annotation_task_concurrency"))
+                Text("并发 ${task.activeBatches.size}/${task.concurrency}", modifier = Modifier.testTag("annotation_task_concurrency"))
+                Text("每组最多 ${task.mergeCount} 张 · 正在处理 ${task.activePhotos.size} 张",
+                    modifier = Modifier.testTag("annotation_task_batch"), style = MaterialTheme.typography.bodySmall)
                 Text("当前图片：${task.activePhotos.values.joinToString("、") { it.name }.ifBlank { if (task.active) "准备中" else "—" }}",
                     modifier = Modifier.testTag("annotation_current_photo"), maxLines = 2, overflow = TextOverflow.Ellipsis)
                 val eta = task.etaSeconds(now)
                 val etaText = when {
                     !task.active -> "—"
                     total == null -> "扫描完成后估算"
-                    task.completed == 0 -> "首张完成后估算"
+                    task.completed == 0 -> if (task.mergeCount == 1) "首张完成后估算" else "首组完成后估算"
                     eta != null -> "约 ${formatAnnotationDuration(eta)}"
                     else -> "重新估算中"
                 }

@@ -449,7 +449,12 @@ class ApmDatabase(
     ).use { cursor -> cursor.moveToFirst(); cursor.getInt(0) }
 
     @Synchronized
-    fun pendingAllPhotos(modelName: String, promptVersion: String): List<PendingPhoto> {
+    fun pendingAllPhotos(modelName: String, promptVersion: String): List<PendingPhoto> =
+        pendingAllPhotos(modelName, listOf(promptVersion))
+
+    @Synchronized
+    fun pendingAllPhotos(modelName: String, promptVersions: List<String>): List<PendingPhoto> {
+        require(promptVersions.isNotEmpty())
         val sql = """
             SELECT location.photo_id, MIN(location.uri) AS uri, MIN(location.display_name) AS display_name
             FROM media_locations AS location
@@ -459,12 +464,12 @@ class ApmDatabase(
                   WHERE annotation.photo_id = location.photo_id
                     AND annotation.provider = 'openai-compatible'
                     AND annotation.model_name = ?
-                    AND annotation.prompt_version = ?
+                    AND annotation.prompt_version IN (${promptVersions.joinToString(",") { "?" }})
             )
             GROUP BY location.photo_id
             ORDER BY COALESCE(MAX(location.date_taken_millis), MAX(location.modified_seconds) * 1000) DESC
         """.trimIndent()
-        return readableDatabase.rawQuery(sql, arrayOf(modelName, promptVersion)).use { cursor ->
+        return readableDatabase.rawQuery(sql, (listOf(modelName) + promptVersions).toTypedArray()).use { cursor ->
             buildList {
                 while (cursor.moveToNext()) {
                     add(PendingPhoto(cursor.getString(0), cursor.getString(1), cursor.getString(2)))
@@ -474,7 +479,12 @@ class ApmDatabase(
     }
 
     @Synchronized
-    fun pendingSelectedPhotos(modelName: String, promptVersion: String): List<PendingPhoto> {
+    fun pendingSelectedPhotos(modelName: String, promptVersion: String): List<PendingPhoto> =
+        pendingSelectedPhotos(modelName, listOf(promptVersion))
+
+    @Synchronized
+    fun pendingSelectedPhotos(modelName: String, promptVersions: List<String>): List<PendingPhoto> {
+        require(promptVersions.isNotEmpty())
         val sql = """
             SELECT location.photo_id, MIN(location.uri) AS uri, MIN(location.display_name) AS display_name
             FROM annotation_selection AS selection
@@ -485,12 +495,12 @@ class ApmDatabase(
                   WHERE annotation.photo_id = location.photo_id
                     AND annotation.provider = 'openai-compatible'
                     AND annotation.model_name = ?
-                    AND annotation.prompt_version = ?
+                    AND annotation.prompt_version IN (${promptVersions.joinToString(",") { "?" }})
               )
             GROUP BY location.photo_id
             ORDER BY MIN(selection.selected_at), location.photo_id
         """.trimIndent()
-        return readableDatabase.rawQuery(sql, arrayOf(modelName, promptVersion)).use { cursor ->
+        return readableDatabase.rawQuery(sql, (listOf(modelName) + promptVersions).toTypedArray()).use { cursor ->
             buildList {
                 while (cursor.moveToNext()) {
                     add(PendingPhoto(cursor.getString(0), cursor.getString(1), cursor.getString(2)))
@@ -530,6 +540,19 @@ class ApmDatabase(
                 put("search_text", FacetRules.searchText(valid))
             },
         )
+    }
+
+    @Synchronized
+    fun insertAnnotationGroup(
+        annotations: List<Pair<String, PhotoAnnotation>>, modelName: String, promptVersion: String,
+    ) {
+        require(annotations.size in 1..8 && annotations.map { it.first }.distinct().size == annotations.size)
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            annotations.forEach { (id, annotation) -> insertAnnotation(id, annotation, modelName, promptVersion) }
+            db.setTransactionSuccessful()
+        } finally { db.endTransaction() }
     }
 
     @Synchronized

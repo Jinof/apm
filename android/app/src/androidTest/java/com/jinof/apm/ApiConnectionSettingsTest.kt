@@ -36,6 +36,8 @@ class ApiConnectionSettingsTest {
                 reveal("model_input").assertIsNotEnabled()
                 reveal("decrease_api_concurrency").assertIsNotEnabled()
                 reveal("increase_api_concurrency").assertIsNotEnabled()
+                reveal("increase_merge_count").assertIsNotEnabled()
+                reveal("decrease_merge_count").assertIsNotEnabled()
                 rule.onNodeWithTag("add_api_profile").assertDoesNotExist()
                 reveal("api_editor_back").assertIsNotEnabled()
                 activity.recreate()
@@ -131,6 +133,11 @@ class ApiConnectionSettingsTest {
                     reveal("decrease_api_concurrency").assertIsNotEnabled()
                     repeat(3) { reveal("increase_api_concurrency").performClick() }
                     reveal("api_concurrency").assertTextEquals("4")
+                    reveal("api_merge_count").assertTextEquals("1")
+                    reveal("decrease_merge_count").assertIsNotEnabled()
+                    repeat(7) { reveal("increase_merge_count").performClick() }
+                    reveal("api_merge_count").assertTextEquals("8")
+                    reveal("increase_merge_count").assertIsNotEnabled()
                     reveal("profile_name_input").performTextReplacement("外出")
                     reveal("endpoint_input").performTextReplacement(away.endpoint)
                     reveal("model_input").performTextReplacement("away-model")
@@ -138,6 +145,8 @@ class ApiConnectionSettingsTest {
                     reveal("remote_consent").performClick()
                     activity.recreate()
                     reveal("api_concurrency").assertTextEquals("4")
+                    reveal("api_merge_count").assertTextEquals("8")
+                    rule.onRoot().saveRoadmapScreenshot("merge-settings.png")
                     reveal("profile_name_input").assertTextContains("外出")
                     rule.onRoot().saveRoadmapScreenshot("api-editor.png")
                     reveal("model_input").assertTextContains("away-model")
@@ -147,6 +156,7 @@ class ApiConnectionSettingsTest {
                     val profile = store.loadProfiles().profiles.single { it.name == "外出" }
                     assertEquals("away-test-key", profile.config.apiKey)
                     assertEquals(4, profile.config.concurrency)
+                    assertEquals(8, profile.config.mergeCount)
                     assertEquals(homeConfig, store.load())
                     assertEquals(0, home.requests.size + away.requests.size)
                     reveal("activate_profile_${profile.id}").performClick()
@@ -160,6 +170,10 @@ class ApiConnectionSettingsTest {
                     assertEquals(1, away.requests.size)
                     assertTrue(away.requests.single().header.contains("Authorization: Bearer away-test-key"))
                     assertEquals("away-model", JSONObject(away.requests.single().body).getString("model"))
+                    val batchPayload = JSONObject(away.requests.single().body)
+                    assertEquals("photo_annotation_batch", batchPayload.getJSONObject("response_format").getJSONObject("json_schema").getString("name"))
+                    assertEquals(12288, batchPayload.getInt("max_tokens"))
+                    assertEquals(2, batchPayload.getJSONArray("messages").getJSONObject(0).getJSONArray("content").length())
                     reveal("delete_api_profile").assertIsNotEnabled()
                     reveal("api_editor_back").performClick()
                     reveal("activate_profile_default").performClick()
@@ -313,8 +327,16 @@ private class MockChatConnectionServer(holdResponse: Boolean = false) : Closeabl
                 while (read < length) { val n = input.read(body, read, length - read); check(n > 0); read += n }
                 requests += Request(header.toString(), String(body, Charsets.UTF_8))
                 check(gate.await(45, TimeUnit.SECONDS))
+                val payload = JSONObject(String(body, Charsets.UTF_8))
+                val contract = payload.getJSONObject("response_format").getJSONObject("json_schema")
+                val responseContent = if (contract.getString("name") == "photo_annotation_batch") {
+                    val count = contract.getJSONObject("schema").getJSONObject("properties").getJSONObject("photos").getInt("maxItems")
+                    JSONObject().put("photos", JSONArray((count downTo 1).map { slot ->
+                        JSONObject().put("slot", slot).put("annotation", JSONObject(content))
+                    })).toString()
+                } else content
                 val response = if (status != 200) "secret-server-body" else JSONObject().put("choices", JSONArray()
-                    .put(JSONObject().put("finish_reason", "stop").put("message", JSONObject().put("content", content)))).toString()
+                    .put(JSONObject().put("finish_reason", "stop").put("message", JSONObject().put("content", responseContent)))).toString()
                 val bytes = response.toByteArray(Charsets.UTF_8)
                 connection.getOutputStream().apply {
                     write("HTTP/1.1 $status Mock\r\nContent-Type: application/json\r\nContent-Length: ${bytes.size}\r\nConnection: close\r\n\r\n".toByteArray())

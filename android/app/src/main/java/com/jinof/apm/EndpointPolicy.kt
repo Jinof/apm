@@ -6,6 +6,7 @@ object EndpointPolicy {
     const val DEFAULT_ENDPOINT = ""
 
     fun validate(config: InferenceConfig): InferenceConfig {
+        require(config.mergeCount in 1..8) { "合并张数需为 1 至 8" }
         require(config.concurrency in 1..8) { "并发度需为 1 至 8" }
         val endpoint = config.endpoint.trim().trimEnd('/')
         val model = config.modelName.trim()
