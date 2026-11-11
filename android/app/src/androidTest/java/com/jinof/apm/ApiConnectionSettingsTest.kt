@@ -34,6 +34,8 @@ class ApiConnectionSettingsTest {
                 rule.waitUntil(5_000) { server.requests.size == 1 }
                 rule.onNodeWithTag("test_model_api").assertIsNotEnabled()
                 reveal("model_input").assertIsNotEnabled()
+                reveal("decrease_api_concurrency").assertIsNotEnabled()
+                reveal("increase_api_concurrency").assertIsNotEnabled()
                 rule.onNodeWithTag("add_api_profile").assertDoesNotExist()
                 reveal("api_editor_back").assertIsNotEnabled()
                 activity.recreate()
@@ -113,7 +115,7 @@ class ApiConnectionSettingsTest {
         MockChatConnectionServer().use { home ->
             MockChatConnectionServer().use { away ->
                 val store = SettingsStore(context)
-                val homeConfig = InferenceConfig(home.endpoint, "home-model", true, "home-test-key")
+                val homeConfig = InferenceConfig(home.endpoint, "home-model", true, "home-test-key", concurrency = 2)
                 store.save(homeConfig)
                 ActivityScenario.launch(SettingsActivity::class.java).use { activity ->
                     reveal("add_api_profile").performClick()
@@ -122,12 +124,20 @@ class ApiConnectionSettingsTest {
                     reveal("api_key_input").assert(SemanticsMatcher.expectValue(
                         androidx.compose.ui.semantics.SemanticsProperties.EditableText, androidx.compose.ui.text.AnnotatedString("")))
                     reveal("remote_consent").assertIsOff()
+                    reveal("api_concurrency").assertTextEquals("8")
+                    reveal("increase_api_concurrency").assertIsNotEnabled()
+                    repeat(7) { reveal("decrease_api_concurrency").performClick() }
+                    reveal("api_concurrency").assertTextEquals("1")
+                    reveal("decrease_api_concurrency").assertIsNotEnabled()
+                    repeat(3) { reveal("increase_api_concurrency").performClick() }
+                    reveal("api_concurrency").assertTextEquals("4")
                     reveal("profile_name_input").performTextReplacement("外出")
                     reveal("endpoint_input").performTextReplacement(away.endpoint)
                     reveal("model_input").performTextReplacement("away-model")
                     reveal("api_key_input").performTextReplacement("away-test-key")
                     reveal("remote_consent").performClick()
                     activity.recreate()
+                    reveal("api_concurrency").assertTextEquals("4")
                     reveal("profile_name_input").assertTextContains("外出")
                     rule.onRoot().saveRoadmapScreenshot("api-editor.png")
                     reveal("model_input").assertTextContains("away-model")
@@ -136,6 +146,7 @@ class ApiConnectionSettingsTest {
                     rule.onNodeWithTag("api_profile_editor").assertDoesNotExist()
                     val profile = store.loadProfiles().profiles.single { it.name == "外出" }
                     assertEquals("away-test-key", profile.config.apiKey)
+                    assertEquals(4, profile.config.concurrency)
                     assertEquals(homeConfig, store.load())
                     assertEquals(0, home.requests.size + away.requests.size)
                     reveal("activate_profile_${profile.id}").performClick()

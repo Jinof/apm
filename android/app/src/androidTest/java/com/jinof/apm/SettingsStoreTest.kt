@@ -21,6 +21,7 @@ class SettingsStoreTest {
             assertEquals("", config.modelName)
             assertEquals("", config.apiKey)
             assertFalse(config.allowRemote)
+            assertEquals(8, config.concurrency)
         }
         assertFalse(File(context.noBackupFilesDir, "external-api.enc").exists())
         assertTrue(context.legacyPreferences.all.isEmpty())
@@ -98,8 +99,8 @@ class SettingsStoreTest {
 
     @Test
     fun profilesKeepIndependentSecretsAndConsentAcrossSwitchSaveAndDelete() = withIsolatedStore { context, store ->
-        val home = InferenceConfig("http://192.168.2.10:3000/v1", "home-model", true, "home-secret")
-        val away = InferenceConfig("https://device.example.ts.net/v1", "away-model", false, "away-secret")
+        val home = InferenceConfig("http://192.168.2.10:3000/v1", "home-model", true, "home-secret", concurrency = 2)
+        val away = InferenceConfig("https://device.example.ts.net/v1", "away-model", false, "away-secret", concurrency = 7)
         store.save(home)
         store.saveProfile("away", "外出", away)
         assertEquals(home, store.load())
@@ -148,6 +149,33 @@ class SettingsStoreTest {
         assertEquals(InferenceConfig(), store.loadProfiles().profiles.single { it.id == "away" }.config)
         assertFalse(originalBytes.contentEquals(file.readBytes()))
         assertEquals(2, SettingsStore(context).loadProfiles().profiles.size)
+    }
+
+    @Test fun oldMultiProfilesDefaultIndependentlyWithoutRewritingBytes() = withIsolatedStore { context, store ->
+        store.save(InferenceConfig())
+        val keyStore = java.security.KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+        val cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding").apply {
+            init(javax.crypto.Cipher.ENCRYPT_MODE, keyStore.getKey("apm-external-api-v1", null))
+        }
+        fun entry(id: String) = org.json.JSONObject().put("id", id).put("name", id)
+            .put("endpoint", "https://$id.example/v1").put("model", id).put("key", "$id-secret").put("consent", false)
+        val plain = org.json.JSONObject().put("version", 2).put("activeProfileId", "home")
+            .put("profiles", org.json.JSONArray().put(entry("home")).put(entry("away").put("concurrency", 999)))
+        val wrapper = org.json.JSONObject().put("iv", android.util.Base64.encodeToString(cipher.iv, android.util.Base64.NO_WRAP))
+            .put("data", android.util.Base64.encodeToString(cipher.doFinal(plain.toString().toByteArray()), android.util.Base64.NO_WRAP))
+        val file = File(context.noBackupFilesDir, "external-api.enc")
+        file.writeText(wrapper.toString())
+        val bytes = file.readBytes()
+        val state = store.loadProfiles()
+        assertTrue(state.profiles.all { it.config.concurrency == 8 })
+        assertTrue(bytes.contentEquals(file.readBytes()))
+        assertThrows(IllegalArgumentException::class.java) { store.save(store.load().copy(concurrency = 0)) }
+        assertTrue(bytes.contentEquals(file.readBytes()))
+        store.save(store.load().copy(concurrency = 2))
+        store.activateProfile("away")
+        assertEquals(8, store.load().concurrency)
+        store.activateProfile("home")
+        assertEquals(2, SettingsStore(context).load().concurrency)
     }
 
     private fun withIsolatedStore(test: (IsolatedSettingsContext, SettingsStore) -> Unit) {

@@ -104,7 +104,7 @@ internal fun ModelSettingsScreen(isActive: Boolean = true) {
                         HorizontalDivider()
                     }
                     item {
-                        Text("每个 API 独立保存模型、密钥和传输许可。启用后用于下一次任务，正在执行的任务继续使用原配置。",
+                        Text("每个 API 独立保存模型、密钥、并发度和传输许可。启用后用于下一次任务，正在执行的任务继续使用原配置。",
                             modifier = Modifier.padding(vertical = 16.dp), style = MaterialTheme.typography.bodySmall)
                     }
                 }
@@ -143,6 +143,8 @@ private fun ApiProfileRow(profile: ApiProfile, active: Boolean, enabled: Boolean
                 maxLines = 2, overflow = TextOverflow.Ellipsis)
             Text("模型：${profile.config.modelName.ifBlank { "未填写" }}", style = MaterialTheme.typography.bodySmall,
                 maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text("并发度：${profile.config.concurrency}", style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.testTag("profile_concurrency_${profile.id}"))
             Text(if (profile.config.allowRemote) "已允许传输" else "尚未允许传输", style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
@@ -175,6 +177,20 @@ private fun ApiProfileForm(editor: ApiSettingsEditor, status: String, modifier: 
             modifier = Modifier.fillMaxWidth().testTag("api_key_input"), singleLine = true,
             label = { Text("API 密钥") }, supportingText = { Text("无鉴权的私有 API 可留空；密钥仅加密保存在本机。") },
             visualTransformation = PasswordVisualTransformation())
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("并发度", modifier = Modifier.weight(1f))
+                OutlinedButton(enabled = enabled && config.concurrency > 1,
+                    onClick = { editor.edit(config.copy(concurrency = config.concurrency - 1)) },
+                    modifier = Modifier.testTag("decrease_api_concurrency")) { Text("减少") }
+                Text(config.concurrency.toString(), modifier = Modifier.testTag("api_concurrency"))
+                OutlinedButton(enabled = enabled && config.concurrency < 8,
+                    onClick = { editor.edit(config.copy(concurrency = config.concurrency + 1)) },
+                    modifier = Modifier.testTag("increase_api_concurrency")) { Text("增加") }
+            }
+            Text("同时标注 1–8 张照片，默认 8。服务繁忙时可以调低；下次任务生效。",
+                style = MaterialTheme.typography.bodySmall)
+        }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Switch(checked = config.allowRemote, onCheckedChange = { editor.edit(config.copy(allowRemote = it)) },
                 enabled = enabled, modifier = Modifier.testTag("remote_consent"))

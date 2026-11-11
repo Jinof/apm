@@ -49,6 +49,7 @@ data class InferenceConfig(
     val modelName: String = "",
     val allowRemote: Boolean = false,
     val apiKey: String = "",
+    val concurrency: Int = 8,
 ) {
     override fun toString(): String = "InferenceConfig(redacted)"
 }

@@ -63,3 +63,14 @@ tail -n 80 /home/jinof/services/qwen3.6-35b-a3b-nvfp4/logs/server.log
 服务启动前检查固定配置、权重校验记录和文件大小，要求 H3 未运行、整机可用内存至少 40 GiB。启动时加载需要时间，应等待 `/health` 返回 200，再判断可用；本次约三分钟完成加载。
 
 若恢复 H3，需先禁用 new-api 中两个 Qwen 渠道（ID 3、4），停止并禁用 `qwen38-27b.service`、`qwen36-35b-a3b.service`，再按 [原部署记录](xspark-qwen3.8-27b.md) 恢复 H3。H3 的大内存占用不适合与这两个模型并驻。
+
+
+## 2026-11-11：启用 8 路并发
+
+按 Roadmap 0.1.0 调整现有 `qwen36-35b-a3b.service`：`max-num-seqs=8`，CUDA Graph 捕获批次改为 `[1,2,4,8]`。其余模型参数、端口、密钥、new-api 渠道及开机启用状态保持原值。当前服务开机启用状态为 disabled；本次只调整并发，不改变启动策略。
+
+通过现有 new-api 网关同时提交 8 张合成图片标注，8/8 成功且结构校验通过，服务端观测到 8 个请求同时运行：整批 22.81 秒，总输出 243.05 token/s，单次中位数 21.81 秒。该结果是短图片请求测试，不代表 8 个满 16K 上下文的容量保证。
+
+原配置与验收资料在 xspark 的 `/home/jinof/benchmarks/apm-010-rollout-3ix4_w9v/`，原文件为 `qwen36-original.service`。回滚时将它复制回 `/home/jinof/.config/systemd/user/qwen36-35b-a3b.service`，执行 `systemctl --user daemon-reload` 后重启该单元，并重新核对健康与推理。Gemma、IndexTTS、H3 和 Qwen3.8 的服务状态、进程及重启计数前后一致；未改动渠道或既有凭据。
+
+App 配置和交付验证见 [0.1.0 验收记录](roadmap-0.1.0-validation.md)。此前的[并发基准](benchmarks/xspark-qwen-concurrency-2026-11-11/README.md)记录的是本次上线前的单路配置与临时实例对照。

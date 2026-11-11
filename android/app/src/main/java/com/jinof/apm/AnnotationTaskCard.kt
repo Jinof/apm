@@ -37,7 +37,8 @@ internal fun AnnotationTaskCard(task: AnnotationTaskProgress?, busy: Boolean, on
                 } else if (task.active) {
                     LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                 }
-                Text("当前图片：${task.currentPhotoName ?: if (task.active) "准备中" else "—"}",
+                Text("并发 ${task.activePhotos.size}/${task.concurrency}", modifier = Modifier.testTag("annotation_task_concurrency"))
+                Text("当前图片：${task.activePhotos.values.joinToString("、") { it.name }.ifBlank { if (task.active) "准备中" else "—" }}",
                     modifier = Modifier.testTag("annotation_current_photo"), maxLines = 2, overflow = TextOverflow.Ellipsis)
                 val eta = task.etaSeconds(now)
                 val etaText = when {

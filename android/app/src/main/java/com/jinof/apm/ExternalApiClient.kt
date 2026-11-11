@@ -22,19 +22,29 @@ internal class ApiRequestException(
 internal class ExternalApiClient(
     candidateConfig: InferenceConfig,
     private val readTimeoutMillis: Int = 180_000,
-) {
+) : java.io.Closeable {
+    private val closed = java.util.concurrent.atomic.AtomicBoolean(false)
+    private val connections = java.util.concurrent.ConcurrentHashMap.newKeySet<HttpURLConnection>()
     val config = EndpointPolicy.validate(candidateConfig)
 
     init { require(readTimeoutMillis in 1..180_000) }
 
+    override fun close() {
+        closed.set(true)
+        connections.forEach { it.disconnect() }
+    }
+
     fun complete(body: JSONObject): JSONObject {
+        if (closed.get() || Thread.currentThread().isInterrupted) throw InterruptedException()
         val url = URL("${config.endpoint}/chat/completions")
         val connection = (if (EndpointPolicy.isLocalNetwork(config)) {
             url.openConnection(Proxy.NO_PROXY)
         } else {
             url.openConnection()
         }) as HttpURLConnection
+        connections.add(connection)
         try {
+            if (closed.get() || Thread.currentThread().isInterrupted) throw InterruptedException()
             connection.requestMethod = "POST"
             connection.connectTimeout = 10_000
             connection.readTimeout = readTimeoutMillis
@@ -74,13 +84,17 @@ internal class ExternalApiClient(
             check(response != null) { "API 返回了无效的 JSON 响应" }
             check(!response.has("error")) { "API 返回错误，未生成结果" }
             return structuredContent(response)
+        } catch (error: InterruptedException) {
+            throw error
         } catch (error: IllegalStateException) {
             throw error
         } catch (_: java.net.SocketTimeoutException) {
             throw IllegalStateException("API 请求超时，请稍后重试")
         } catch (_: Exception) {
+            if (closed.get() || Thread.currentThread().isInterrupted) throw InterruptedException()
             throw IllegalStateException("无法连接 API，请检查网络和设置")
         } finally {
+            connections.remove(connection)
             connection.disconnect()
         }
     }
