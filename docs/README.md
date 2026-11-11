@@ -69,7 +69,7 @@ make check PROMISE_CLI=/path/to/promise-cli
 
 Android 版本为 **0.2.0（13）**。仓库唯一交付 APK 仍为 `android/APM-0.0.2-debug.apk`，文件名按 [AGENTS.md](../AGENTS.md) 保持不变，通过验证后才更新。真实手机只对已安装的 `com.jinof.apm` 执行 `adb install -r` 保留数据更新，安装前后核对版本与数据库。
 
-已发布版本的下载与变更见 [0.1.0 发布说明](release-0.1.0.md) 和 [GitHub Release](https://github.com/Jinof/apm/releases/tag/v0.1.0)。此前版本见 [0.0.8 发布说明](release-0.0.8.md) 和 [0.0.6 发布说明](release-0.0.6.md)。
+已发布版本的下载与变更见 [0.2.0 发布说明](release-0.2.0.md) 和 [GitHub Release](https://github.com/Jinof/apm/releases/tag/v0.2.0)。此前版本见 [0.1.0 发布说明](release-0.1.0.md)、[0.0.8 发布说明](release-0.0.8.md) 和 [0.0.6 发布说明](release-0.0.6.md)。
 
 本版检查结果见 [0.2.0 验收记录](roadmap-0.2.0-validation.md)。此前版本见 [0.1.0 验收记录](roadmap-0.1.0-validation.md)、[0.0.9 验收记录](roadmap-0.0.9-validation.md)、[0.0.8 验收记录](roadmap-0.0.8-validation.md)、[0.0.7 验收记录](roadmap-0.0.7-validation.md)、[0.0.6 验收记录](roadmap-0.0.6-validation.md) 和 [0.0.5 验收记录](roadmap-0.0.5-validation.md)。此前的 [API 设置验收](api-connections-validation.md) 和 [API-only 精简验收](api-only-validation.md) 是历史记录，包含本版已移除的功能。
 
