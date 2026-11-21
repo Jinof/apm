@@ -46,6 +46,26 @@ data class SearchAvailability(
     }
 }
 
+internal data class TagCount(val label: String, val photoCount: Int)
+
+internal fun countGalleryTags(photos: List<GalleryPhotoCard>): List<TagCount> {
+    val counts = mutableMapOf<String, TagCount>()
+    for (photo in photos) {
+        val tags = photo.annotation?.tags ?: continue
+        val seen = mutableSetOf<String>()
+        for (tag in tags) {
+            val label = tag.trim()
+            val key = label.lowercase(Locale.ROOT)
+            if (key.isEmpty() || !seen.add(key)) continue
+            val previous = counts[key]
+            counts[key] = TagCount(previous?.label ?: label, (previous?.photoCount ?: 0) + 1)
+        }
+    }
+    return counts.values.sortedWith(
+        compareByDescending<TagCount> { it.photoCount }.thenBy(String.CASE_INSENSITIVE_ORDER) { it.label },
+    )
+}
+
 object SuggestionBuilder {
     private val ignored = setOf("", "无", "不确定", "unknown")
 

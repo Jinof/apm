@@ -2,7 +2,6 @@ package com.jinof.apm
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -26,7 +25,6 @@ import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
-import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
@@ -46,7 +44,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
@@ -128,6 +125,7 @@ internal fun AgentSearchScreen(
     onPhoto: (PhotoCard) -> Unit,
 ) {
     val canSearch = gallery.search.enabled && !gallery.busy && !state.busy
+    val thumbnailLoader = rememberPhotoThumbnailLoader()
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
@@ -239,35 +237,12 @@ internal fun AgentSearchScreen(
                     }
                 } else {
                     items(result.photos, key = PhotoCard::photoId) { photo ->
-                        ElevatedCard(
-                            modifier = Modifier.fillMaxWidth().clickable { onPhoto(photo) },
-                        ) {
-                            Column(Modifier.padding(16.dp)) {
-                                Text(
-                                    photo.caption,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                                Spacer(Modifier.height(6.dp))
-                                Text(
-                                    buildList {
-                                        addAll(photo.annotation.recognizedSubjects.map { it.name })
-                                        addAll(photo.annotation.tags.take(5))
-                                    }.distinct().joinToString(" · "),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                                Spacer(Modifier.height(8.dp))
-                                Text(
-                                    photo.displayName,
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.outline,
-                                )
-                            }
-                        }
+                        PhotoResultCard(
+                            photo = photo,
+                            annotating = photo.photoId in gallery.annotationTask?.activePhotoIds.orEmpty(),
+                            loader = thumbnailLoader,
+                            onClick = { onPhoto(photo) },
+                        )
                     }
                 }
             }

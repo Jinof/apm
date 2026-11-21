@@ -77,7 +77,7 @@ class PhotoAnnotationBadgeTest {
             rule.onNodeWithTag("close_annotation_details").performClick()
             rule.onNodeWithTag("annotation_details_dialog").assertDoesNotExist()
             if (tag.startsWith("photo_wall")) rule.onNodeWithTag(tag).performTouchInput { click(center) }
-            else rule.onNodeWithText(annotation.caption).performClick()
+            else rule.onNodeWithTag("result_thumbnail_badge-photo", useUnmergedTree = true).performTouchInput { click(center) }
         }
         rule.runOnIdle { assertEquals(2, opened); dark.value = true }
         badges().assertCountEquals(2)

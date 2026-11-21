@@ -149,7 +149,7 @@ class ApmDatabaseTest {
             database.replaceVisibleSnapshot(visible + inaccessible)
             database.insertAnnotation(
                 photoId = visible.first().photoId,
-                annotation = annotation("旧标注"),
+                annotation = annotation("旧标注").copy(tags = listOf("旧标签")),
                 modelName = "qwen3-vl:4b",
                 promptVersion = AnnotationContract.PROMPT_VERSION,
             )
@@ -161,7 +161,7 @@ class ApmDatabaseTest {
             )
             database.insertAnnotation(
                 photoId = inaccessible.photoId,
-                annotation = annotation("不可访问标注"),
+                annotation = annotation("不可访问标注").copy(tags = listOf("不可访问标签")),
                 modelName = "qwen3-vl:4b",
                 promptVersion = AnnotationContract.PROMPT_VERSION,
             )
@@ -178,6 +178,7 @@ class ApmDatabaseTest {
             assertEquals(120, wall.map(GalleryPhotoCard::photoId).distinct().size)
             assertEquals(119, wall.count { it.annotation == null })
             assertEquals("最新标注", wall.single { it.photoId == visible.first().photoId }.annotation?.caption)
+            assertEquals(listOf(TagCount("人物", 1)), countGalleryTags(wall))
             assertFalse(wall.any { it.photoId == inaccessible.photoId })
         } finally {
             database.close()

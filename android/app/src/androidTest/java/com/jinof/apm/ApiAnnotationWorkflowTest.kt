@@ -114,9 +114,12 @@ class ApiAnnotationWorkflowTest {
                 composeRule.onNodeWithTag("search_input").performTextReplacement("站在室内")
                 composeRule.onNodeWithTag("search_input").performImeAction()
                 composeRule.waitUntil(10_000) {
-                    composeRule.onAllNodesWithText("一个人站在室内").fetchSemanticsNodes().isNotEmpty()
+                    composeRule.onAllNodesWithTag("search_result_$photoId").fetchSemanticsNodes().isNotEmpty()
                 }
-                composeRule.onNodeWithText("一个人站在室内").performClick()
+                composeRule.onNodeWithTag("all_tags_button").performClick()
+                composeRule.onNode(hasText("人物") and hasAnyAncestor(hasTestTag("ranked_tags"))).performClick()
+                composeRule.onNodeWithTag("search_input").assertTextContains("人物")
+                composeRule.onNodeWithTag("search_result_$photoId").performClick()
                 composeRule.onNodeWithTag("photo_viewer_back").performClick()
                 composeRule.onNodeWithTag("album_search").assertIsDisplayed()
                 InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)

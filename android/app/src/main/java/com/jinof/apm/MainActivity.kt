@@ -20,6 +20,7 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -35,7 +36,6 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -88,7 +88,6 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
@@ -96,9 +95,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModelProvider
 import java.time.Instant
 import java.time.ZoneId
@@ -117,6 +114,7 @@ private const val DEBUG_ANNOTATION_ALIAS = "com.jinof.apm.DebugAnnotationAlias"
 private const val DEBUG_SEARCH_ACTION = "com.jinof.apm.debug.SEARCH"
 private const val DEBUG_SEARCH_ALIAS = "com.jinof.apm.DebugSearchAlias"
 private const val DEBUG_SEARCH_QUERY = "query"
+private const val ALBUM_COLUMNS = 5
 
 class MainActivity : ComponentActivity() {
     private lateinit var database: ApmDatabase
@@ -614,8 +612,6 @@ internal fun GalleryScreen(
             selectedRange.contains(photo.dateTakenMillis?.let { Instant.ofEpochMilli(it).atZone(zone).toLocalDate() })
         }
     }
-    val width = LocalConfiguration.current.screenWidthDp.dp
-    val requestSize = with(LocalDensity.current) { (width / 6).roundToPx().coerceAtLeast(1) }
     val loadableKeys by remember(gridState) {
         derivedStateOf {
             if (gridState.isScrollInProgress) emptySet() else {
@@ -626,7 +622,7 @@ internal fun GalleryScreen(
             }
         }
     }
-    Box(Modifier.fillMaxSize().windowInsetsPadding(
+    BoxWithConstraints(Modifier.fillMaxSize().windowInsetsPadding(
         WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal),
     ).pointerInput(onHeatmap) {
         val edge = 32.dp.toPx()
@@ -643,14 +639,18 @@ internal fun GalleryScreen(
             }
         }
     }) {
+        val gap = 2.dp
+        val requestSize = with(LocalDensity.current) {
+            ((maxWidth - gap * (ALBUM_COLUMNS - 1)) / ALBUM_COLUMNS).roundToPx().coerceAtLeast(1)
+        }
         LazyVerticalGrid(
-            columns = GridCells.Fixed(6),
+            columns = GridCells.Fixed(ALBUM_COLUMNS),
             state = gridState,
             modifier = Modifier.fillMaxSize().testTag("photo_wall_gesture_surface").semantics {
                 contentDescription = "照片墙，从左边缘向右滑动打开年度照片热力图"
             },
-            horizontalArrangement = Arrangement.spacedBy(2.dp),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
+            horizontalArrangement = Arrangement.spacedBy(gap),
+            verticalArrangement = Arrangement.spacedBy(gap),
         ) {
             item(key = "album_header", span = { GridItemSpan(maxLineSpan) }, contentType = "header") {
                 Column(Modifier.fillMaxWidth()) {
@@ -786,6 +786,7 @@ private fun SearchPanel(
     onSuggestion: (String) -> Unit,
 ) {
     val focus = LocalFocusManager.current
+    var tagsOpen by rememberSaveable { mutableStateOf(false) }
     val submit = {
         focus.clearFocus()
         onSearch()
@@ -801,13 +802,22 @@ private fun SearchPanel(
             placeholder = {
                 Text(if (state.search.enabled) "搜索描述、物体、动作或场景" else "完成一次标注后即可搜索")
             },
-            leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
             trailingIcon = {
-                IconButton(
-                    onClick = submit,
-                    enabled = state.search.enabled && state.query.isNotBlank() && !state.busy,
-                ) {
-                    Icon(Icons.Outlined.Search, contentDescription = "提交搜索")
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(
+                        onClick = {
+                            focus.clearFocus()
+                            tagsOpen = true
+                        },
+                        modifier = Modifier.testTag("all_tags_button"),
+                        contentPadding = PaddingValues(horizontal = 8.dp),
+                    ) { Text("全部标签") }
+                    IconButton(
+                        onClick = submit,
+                        enabled = state.search.enabled && state.query.isNotBlank() && !state.busy,
+                    ) {
+                        Icon(Icons.Outlined.Search, contentDescription = "提交搜索")
+                    }
                 }
             },
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
@@ -840,6 +850,17 @@ private fun SearchPanel(
                 }
             }
         }
+    }
+    if (tagsOpen) {
+        AlbumTagDialog(
+            photos = state.galleryPhotos,
+            canSearch = state.search.enabled && !state.busy,
+            onTag = { tag ->
+                tagsOpen = false
+                onSuggestion(tag)
+            },
+            onDismiss = { tagsOpen = false },
+        )
     }
 }
 
@@ -922,65 +943,33 @@ internal fun PhotoResultCard(
     onClick: () -> Unit,
 ) {
     ElevatedCard(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+        modifier = Modifier.fillMaxWidth().testTag("search_result_${photo.photoId}").clickable(onClick = onClick),
         shape = MaterialTheme.shapes.large,
         elevation = CardDefaults.elevatedCardElevation(defaultElevation = 1.dp),
     ) {
-        Row(Modifier.padding(12.dp)) {
+        Row(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            val thumbnailSize = 104.dp
             Thumbnail(
-                key = PhotoThumbnailKey(photo.photoId, photo.uri, 360),
+                key = PhotoThumbnailKey(photo.photoId, photo.uri, with(LocalDensity.current) { thumbnailSize.roundToPx() }),
                 loader = loader,
-                modifier = Modifier.size(116.dp),
+                modifier = Modifier.size(thumbnailSize).testTag("result_thumbnail_${photo.photoId}"),
                 imageDescription = photo.displayName,
                 details = photo.savedDetails(),
                 annotating = annotating,
             )
-            Spacer(Modifier.width(14.dp))
-            Column(Modifier.weight(1f)) {
-                Text(
-                    photo.caption,
-                    style = MaterialTheme.typography.titleMedium,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    facetSummary(photo.annotation.facets),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                    maxLines = 3,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                if (photo.annotation.recognizedSubjects.isNotEmpty()) {
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        photo.annotation.recognizedSubjects.joinToString(" · ") {
-                            "${it.kind} · ${it.name}"
-                        },
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.tertiary,
-                    )
-                }
-                if (photo.annotation.tags.isNotEmpty()) {
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        photo.annotation.tags.take(5).joinToString(" · "),
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    "${photo.displayName} · ${formatDate(photo)}",
-                    style = MaterialTheme.typography.bodyMedium.copy(fontSize = 12.sp),
-                    color = MaterialTheme.colorScheme.outline,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                ResultField("标签", photo.annotation.tags.joinToString("、"))
+                ResultField("分类", facetSummary(photo.annotation.facets))
             }
         }
+    }
+}
+
+@Composable
+private fun ResultField(label: String, value: String) {
+    Column {
+        Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+        Text(value.ifEmpty { "暂无" }, style = MaterialTheme.typography.bodyMedium)
     }
 }
 
@@ -1019,7 +1008,7 @@ private fun Thumbnail(
             )
         }
         // Make the photo and badge sibling hit targets. A nested 48dp touch target
-        // would otherwise claim the center of a six-column tile.
+        // would otherwise claim the center of a compact tile.
         if (onPhotoClick != null) {
             Box(Modifier.matchParentSize().clickable(onClick = onPhotoClick).semantics {
                 contentDescription = imageDescription
@@ -1046,16 +1035,17 @@ private fun Thumbnail(
 }
 
 private fun facetSummary(facets: PhotoFacets): String = buildList {
-    add(facets.daylight)
-    facets.objects.forEach { add("${it.name} ×${it.count}") }
-    facets.people.forEach { add("${it.presentation} ×${it.count}") }
-    addAll(facets.actions)
-    addAll(facets.scenes)
-}.filter { it.isNotBlank() && it != "不确定" }.joinToString(" · ")
-
-private fun formatDate(photo: PhotoCard): String {
-    return formatCaptureDate(photo.dateTakenMillis)
-}
+    fun category(label: String, values: List<String>) {
+        if (values.isNotEmpty()) add("$label · ${values.joinToString("、")}")
+    }
+    category("天色", listOf(facets.daylight))
+    category("天空", facets.sky)
+    category("物体", facets.objects.map { "${it.name} ×${it.count}" })
+    category("人物外观", facets.people.map { "${it.presentation} ×${it.count}" })
+    category("动作", facets.actions)
+    category("场景", facets.scenes)
+    category("天气", facets.weather)
+}.joinToString("\n")
 
 private fun formatCaptureDate(millis: Long?, zone: ZoneId = ZoneId.systemDefault()): String {
     if (millis == null) return "拍摄时间未记录"

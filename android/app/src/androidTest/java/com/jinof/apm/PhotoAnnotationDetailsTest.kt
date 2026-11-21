@@ -34,7 +34,8 @@ class PhotoAnnotationDetailsTest {
         rule.runOnIdle { assertEquals(0, opened) }
         rule.onNodeWithTag("close_annotation_details").performClick()
         rule.onNodeWithTag("annotation_details_dialog").assertDoesNotExist()
-        rule.onNodeWithText(annotation.caption, substring = false).performClick()
+        rule.onNodeWithText(annotation.caption, useUnmergedTree = true).assertDoesNotExist()
+        rule.onNodeWithTag("search_result_${card.photoId}").performClick()
         rule.runOnIdle { assertEquals(1, opened) }
     }
 }

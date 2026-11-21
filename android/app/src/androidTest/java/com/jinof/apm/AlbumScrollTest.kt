@@ -57,13 +57,13 @@ class AlbumScrollTest {
         rule.onNodeWithTag("album_latest_date").assertIsDisplayed()
         floating.assertDoesNotExist()
 
-        // Grid item zero is the header. Leave half of the row starting with photo 72 visible.
-        rule.runOnIdle { scope.launch { grid.scrollToItem(73, (first.height / 2).toInt()) } }
-        floating.assertTextEquals(latest.minusDays(72).toString())
-        tile("p72").assertIsDisplayed()
-        assertTrue(tile("p72").fetchSemanticsNode().boundsInRoot.height < first.height)
-        wall.performScrollToIndex(79)
-        floating.assertTextEquals(latest.minusDays(78).toString())
+        // Grid item zero is the header. Leave half of the row starting with photo 70 visible.
+        rule.runOnIdle { scope.launch { grid.scrollToItem(71, (first.height / 2).toInt()) } }
+        floating.assertTextEquals(latest.minusDays(70).toString())
+        tile("p70").assertIsDisplayed()
+        assertTrue(tile("p70").fetchSemanticsNode().boundsInRoot.height < first.height)
+        wall.performScrollToIndex(76)
+        floating.assertTextEquals(latest.minusDays(75).toString())
         wall.performScrollToIndex(217)
         floating.assertTextEquals("拍摄时间未记录")
         wall.performScrollToIndex(0)
@@ -113,14 +113,15 @@ class AlbumScrollTest {
         }
         try {
             val passing = fullyVisiblePhoto()
-            assertTrue(passing.removePrefix("p").toInt() >= 100)
+            val passingIndex = passing.removePrefix("p").toInt()
+            assertTrue(passingIndex >= 75)
             val before = tile(passing).assertIsDisplayed().fetchSemanticsNode().boundsInRoot
             assertEquals(before.width, before.height, 1f)
             assertFalse(reads.contains(passing))
             assertTrue(centerColor(passing) != Color.Red)
 
             rule.runOnIdle { next.complete(Unit) }
-            rule.waitUntil(5_000) { grid.firstVisibleItemIndex >= 210 }
+            rule.waitUntil(5_000) { grid.firstVisibleItemIndex >= passingIndex + 75 }
             val destination = fullyVisiblePhoto()
             val frame = tile(destination).fetchSemanticsNode().boundsInRoot
             assertFalse(reads.contains(destination))

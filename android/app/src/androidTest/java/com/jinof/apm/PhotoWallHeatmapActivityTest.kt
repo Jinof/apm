@@ -264,9 +264,9 @@ class PhotoWallHeatmapActivityTest {
             val tiles = photos.sortedByDescending { it.dateTakenMillis }.map {
                 composeRule.onNodeWithTag("photo_wall_thumbnail_${it.photoId}").fetchSemanticsNode().boundsInRoot
             }
-            assertTrue(tiles.take(6).all { abs(it.top - tiles.first().top) < 1f })
-            assertTrue(tiles.take(6).zipWithNext().all { (a, b) -> b.left >= a.right })
-            assertTrue(tiles[6].top >= tiles[0].bottom && abs(tiles[6].left - tiles[0].left) < 1f)
+            assertTrue(tiles.take(5).all { abs(it.top - tiles.first().top) < 1f })
+            assertTrue(tiles.take(5).zipWithNext().all { (a, b) -> b.left >= a.right })
+            assertTrue(tiles[5].top >= tiles[0].bottom && abs(tiles[5].left - tiles[0].left) < 1f)
             val wall = composeRule.onNodeWithTag("photo_wall_gesture_surface").fetchSemanticsNode().boundsInRoot
             val search = composeRule.onNodeWithTag("open_album_search").fetchSemanticsNode().boundsInRoot
             assertEquals(wall.center.y, search.center.y, 1f)
