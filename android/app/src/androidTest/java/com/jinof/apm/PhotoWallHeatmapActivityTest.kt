@@ -221,7 +221,6 @@ class PhotoWallHeatmapActivityTest {
             composeRule.onNodeWithTag("model_input").assertTextContains("pager-draft-model")
             composeRule.onNodeWithTag("dock_settings").assertIsSelected()
             assertOnlyMainActivityResumed()
-            // Swipe remains available when Agent's Dock button is disabled before annotation.
             // The retained editor must not handle Back while another Dock page is visible.
             composeRule.onNodeWithTag("dock_page_swipe_settings").performTouchInput { swipeRight() }
             waitForSettledPage("dock_page_swipe_agent")
@@ -259,7 +258,29 @@ class PhotoWallHeatmapActivityTest {
             )
             waitForDisplayedTag("dock_page_swipe_album")
             composeRule.onNodeWithTag("startup_story_dialog").assertDoesNotExist()
-            composeRule.onNodeWithTag("photo_wall_heatmap").assertIsNotDisplayed()
+            composeRule.onNodeWithTag("photo_wall_heatmap").assertDoesNotExist()
+            composeRule.onNodeWithTag("select_annotation_photos").assertDoesNotExist()
+            composeRule.onNodeWithTag("search_input").assertDoesNotExist()
+            val tiles = photos.sortedByDescending { it.dateTakenMillis }.map {
+                composeRule.onNodeWithTag("photo_wall_thumbnail_${it.photoId}").fetchSemanticsNode().boundsInRoot
+            }
+            assertTrue(tiles.take(6).all { abs(it.top - tiles.first().top) < 1f })
+            assertTrue(tiles.take(6).zipWithNext().all { (a, b) -> b.left >= a.right })
+            assertTrue(tiles[6].top >= tiles[0].bottom && abs(tiles[6].left - tiles[0].left) < 1f)
+            val wall = composeRule.onNodeWithTag("photo_wall_gesture_surface").fetchSemanticsNode().boundsInRoot
+            val search = composeRule.onNodeWithTag("open_album_search").fetchSemanticsNode().boundsInRoot
+            assertEquals(wall.center.y, search.center.y, 1f)
+            assertTrue(search.right > wall.right - search.width / 2)
+            composeRule.onNodeWithTag("open_album_search").performClick()
+            composeRule.onNodeWithTag("search_input").assertIsDisplayed()
+            composeRule.onNodeWithTag("close_album_search").performClick()
+            composeRule.onNodeWithTag("dock_agent").performClick()
+            waitForSettledPage("dock_page_swipe_agent")
+            composeRule.onNodeWithTag("agent_title").assertTextEquals("Agent")
+            assertVerticallyOrdered("select_annotation_photos", "annotate_selected")
+            assertVerticallyOrdered("annotate_selected", "annotate_all")
+            composeRule.onNodeWithTag("dock_album").performClick()
+            waitForSettledPage("dock_page_swipe_album")
             composeRule.onNodeWithTag("bottom_dock").assertExists()
             composeRule.onNodeWithTag("bottom_dock")
                 .assertContentDescriptionEquals("固定底部 Dock：相册、热力图、Agent、设置；页面跟随左右滑动并平滑切换")
@@ -275,8 +296,8 @@ class PhotoWallHeatmapActivityTest {
             composeRule.onNodeWithTag("open_settings").assertDoesNotExist()
             composeRule.onNodeWithTag("open_heatmap_page").assertDoesNotExist()
             assertDockOrder("dock_album", "dock_heatmap", "dock_agent", "dock_settings")
-            composeRule.onNodeWithTag("photo_wall_gesture_edge")
-                .assertContentDescriptionEquals("从左边缘向右滑动打开年度照片热力图")
+            composeRule.onNodeWithTag("photo_wall_gesture_surface")
+                .assertContentDescriptionEquals("照片墙，从左边缘向右滑动打开年度照片热力图")
                 .performTouchInput {
                     swipeRight(startX = 2f, endX = 90f)
                 }

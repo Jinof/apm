@@ -76,6 +76,8 @@ class AnnotationSelectionLifecycleTest {
             awaitHome()
             scenario.onActivity { it.onPhotosSelected(listOf(Uri.parse(photo.uri))) }
             assertCount(1)
+            rule.onNodeWithTag("dock_album").performClick()
+            rule.waitForIdle()
             scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
             rule.waitUntil(5_000) { scenario.state == Lifecycle.State.DESTROYED }
         }
@@ -112,7 +114,7 @@ class AnnotationSelectionLifecycleTest {
 
     private fun awaitHome() {
         rule.waitUntil(10_000) {
-            rule.onAllNodesWithTag("annotate_selected").fetchSemanticsNodes().isNotEmpty()
+            rule.onAllNodesWithTag("dock_album").fetchSemanticsNodes().isNotEmpty()
         }
         rule.onNodeWithTag("startup_loading").assertDoesNotExist()
         rule.onNodeWithTag("startup_story_dialog").assertDoesNotExist()
@@ -121,6 +123,8 @@ class AnnotationSelectionLifecycleTest {
     }
 
     private fun assertCount(count: Int) {
+        rule.waitUntil(10_000) { rule.onAllNodesWithTag("dock_agent").fetchSemanticsNodes().isNotEmpty() }
+        rule.onNodeWithTag("dock_agent").performClick()
         rule.waitUntil(10_000) {
             runCatching {
                 rule.onNodeWithTag("annotate_selected").assertTextEquals("标注所选 ($count)")

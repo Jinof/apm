@@ -10,6 +10,7 @@ import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.test.platform.app.InstrumentationRegistry
 import android.graphics.Bitmap
@@ -21,7 +22,7 @@ import org.junit.Test
 class PhotoAnnotationBadgeTest {
     @get:Rule val rule = createComposeRule()
 
-    @Test fun storedAnnotationShowsGreenBottomRightBadgeInBothModesAndKeepsPhotoClickable() {
+    @Test fun storedAnnotationShowsGreenBottomRightBadgeInWallAndSearchAndKeepsPhotoClickable() {
         val annotation = PhotoAnnotation("一张已标注照片", emptyList(), "", PhotoFacets(
             "室内", emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), emptyList(),
         ))
@@ -34,9 +35,14 @@ class PhotoAnnotationBadgeTest {
                 val photo = GalleryPhotoCard("badge-photo", "content://apm.test/badge", "测试照片", null,
                     stored.value, "older-model", "older-prompt", null)
                 Column(Modifier.fillMaxWidth().padding(16.dp)) {
-                    Box(Modifier.size(160.dp)) { PhotoWallThumbnail(photo, annotating = running.value) { opened++ } }
+                    Box(Modifier.size(64.dp)) { PhotoWallThumbnail(photo, annotating = running.value) { opened++ } }
                     Spacer(Modifier.height(16.dp))
-                    PhotoWallDetailCard(photo, annotating = running.value) { opened++ }
+                    stored.value?.let { saved ->
+                        Box(Modifier.testTag("search_badge_photo")) {
+                            PhotoResultCard(PhotoCard(photo.photoId, photo.uri, photo.displayName, saved.caption, saved,
+                                "older-model", "older-prompt", "", null), annotating = running.value) { opened++ }
+                        }
+                    }
                 }
             }
         }
@@ -44,11 +50,11 @@ class PhotoAnnotationBadgeTest {
         rule.runOnIdle { stored.value = annotation }
         fun badges() = rule.onAllNodesWithTag("photo_annotation_badge", useUnmergedTree = true)
         badges().assertCountEquals(2)
-        for (mode in listOf("thumbnail", "detail")) {
+        for (tag in listOf("photo_wall_thumbnail_badge-photo", "search_badge_photo")) {
             val badge = rule.onNode(hasTestTag("photo_annotation_badge") and
-                hasAnyAncestor(hasTestTag("photo_wall_${mode}_badge-photo")), useUnmergedTree = true)
+                hasAnyAncestor(hasTestTag(tag)), useUnmergedTree = true)
             badge.assertIsDisplayed().assertContentDescriptionEquals("已标注，查看详情")
-            if (mode == "thumbnail") {
+            if (tag.startsWith("photo_wall")) {
                 val image = rule.onNodeWithTag("photo_wall_thumbnail_badge-photo").fetchSemanticsNode().boundsInRoot
                 val check = badge.fetchSemanticsNode().boundsInRoot
                 assertTrue(check.left > image.center.x && check.top > image.center.y)
@@ -67,10 +73,11 @@ class PhotoAnnotationBadgeTest {
             rule.onNodeWithTag("annotation_detail_model").performScrollTo().assertTextEquals("older-model")
             rule.onNodeWithTag("annotation_detail_prompt").performScrollTo().assertTextEquals("older-prompt")
             rule.onNodeWithTag("annotation_detail_time").performScrollTo().assertTextEquals("未记录")
-            rule.runOnIdle { assertEquals(if (mode == "thumbnail") 0 else 1, opened) }
+            rule.runOnIdle { assertEquals(if (tag.startsWith("photo_wall")) 0 else 1, opened) }
             rule.onNodeWithTag("close_annotation_details").performClick()
             rule.onNodeWithTag("annotation_details_dialog").assertDoesNotExist()
-            rule.onNodeWithTag("photo_wall_${mode}_badge-photo").performClick()
+            if (tag.startsWith("photo_wall")) rule.onNodeWithTag(tag).performTouchInput { click(center) }
+            else rule.onNodeWithText(annotation.caption).performClick()
         }
         rule.runOnIdle { assertEquals(2, opened); dark.value = true }
         badges().assertCountEquals(2)

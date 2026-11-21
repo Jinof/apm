@@ -1,0 +1,6 @@
+<resources>
+    <item type="id" name="apm_page" />
+    <color name="startup_background">#F7FAF8</color>
+    <color name="startup_text">#181D1B</color>
+    <color name="startup_indicator">#355F59</color>
+</resources>

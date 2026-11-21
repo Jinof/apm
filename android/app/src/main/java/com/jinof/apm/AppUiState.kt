@@ -29,6 +29,11 @@ data class SearchAvailability(
     val suggestions: List<String>,
 ) {
     companion object {
+        fun fromGallery(photos: List<GalleryPhotoCard>): SearchAvailability {
+            val annotated = photos.asSequence().mapNotNull { it.annotation }
+            return derive(annotated.count(), SuggestionBuilder.from(annotated.take(500).toList()))
+        }
+
         fun derive(annotationCount: Int, suggestions: List<String>): SearchAvailability {
             require(annotationCount >= 0)
             val enabled = annotationCount > 0
@@ -86,12 +91,13 @@ object SuggestionBuilder {
 data class GalleryUiState(
     val query: String = "",
     val activeSearchQuery: String? = null,
+    val searchError: String? = null,
     val results: List<PhotoCard> = emptyList(),
     val galleryPhotos: List<GalleryPhotoCard> = emptyList(),
     val search: SearchAvailability = SearchAvailability.derive(0, emptyList()),
-    val accessibleCount: Int = 0,
+    val catalogError: String? = null,
     val selectedCount: Int = 0,
     val busy: Boolean = false,
-    val status: String = "准备就绪",
+    val status: String = "",
     val annotationTask: AnnotationTaskProgress? = null,
 )

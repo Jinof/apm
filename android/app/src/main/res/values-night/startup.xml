@@ -1,0 +1,5 @@
+<resources>
+    <color name="startup_background">#101412</color>
+    <color name="startup_text">#E0E4E1</color>
+    <color name="startup_indicator">#9DD0C6</color>
+</resources>

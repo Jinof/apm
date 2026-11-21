@@ -2,8 +2,6 @@ package com.jinof.apm
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -15,19 +13,22 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.AddPhotoAlternate
 import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -52,59 +53,26 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 internal data class AgentUiState(
     val request: String = "",
-    val enabled: Boolean = false,
     val busy: Boolean = false,
-    val status: String = "标注照片后，Agent 才能调用本地搜索。",
+    val status: String = "",
     val result: AgentSearchResult? = null,
 )
 
 class AgentSearchActivity : ComponentActivity() {
-    private lateinit var controller: AgentSearchController
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
-        controller = AgentSearchController(this)
-        setContent {
-            ApmTheme {
-                AgentSearchScreen(
-                    state = controller.state,
-                    onRequestChange = controller::changeRequest,
-                    onRun = controller::runAgent,
-                    onPhoto = ::openPhoto,
-                )
-            }
-        }
-        controller.refreshAvailability()
-    }
-
-    override fun onResume() {
-        super.onResume()
-        if (::controller.isInitialized) controller.refreshAvailability()
-    }
-
-    override fun onDestroy() {
-        controller.close()
-        super.onDestroy()
-    }
-
-    private fun openPhoto(photo: PhotoCard) {
-        startActivity(PhotoViewerActivity.intent(this, photo.photoId, photo.uri))
+        openDockDestination(DockDestination.AGENT)
+        finish()
     }
 }
 
 internal class AgentSearchController(private val activity: ComponentActivity) {
-    private lateinit var database: ApmDatabase
-    private lateinit var settingsStore: SettingsStore
+    private val database = ApmDatabase(activity.applicationContext)
+    private val settingsStore by lazy { SettingsStore(activity.applicationContext) }
     private val executor = Executors.newSingleThreadExecutor()
     private val busy = AtomicBoolean(false)
     internal var state by mutableStateOf(AgentUiState())
         private set
-
-    init {
-        database = ApmDatabase(activity.applicationContext)
-        settingsStore = SettingsStore(activity.applicationContext)
-    }
 
     internal fun close() {
         executor.shutdownNow()
@@ -115,26 +83,9 @@ internal class AgentSearchController(private val activity: ComponentActivity) {
         state = state.copy(request = request)
     }
 
-    internal fun refreshAvailability() {
-        if (busy.get()) return
-        executor.execute {
-            val enabled = database.annotationCount() > 0
-            activity.runOnUiThread {
-                state = state.copy(
-                    enabled = enabled,
-                    status = if (enabled) {
-                        "Agent 已就绪。它只有 search_photos，只读查询本地索引。"
-                    } else {
-                        "先返回相册完成一次标注，再使用 Agent 搜索。"
-                    },
-                )
-            }
-        }
-    }
-
     internal fun runAgent() {
         val request = state.request.trim()
-        if (!state.enabled || request.isEmpty() || !busy.compareAndSet(false, true)) return
+        if (request.isEmpty() || !busy.compareAndSet(false, true)) return
         state = state.copy(busy = true, status = "Agent 正在规划本地搜索…", result = null)
         executor.execute {
             try {
@@ -168,25 +119,21 @@ internal class AgentSearchController(private val activity: ComponentActivity) {
 @Composable
 internal fun AgentSearchScreen(
     state: AgentUiState,
+    gallery: GalleryUiState,
+    onSelectPhotos: () -> Unit,
+    onAnnotateSelected: () -> Unit,
+    onAnnotateAll: () -> Unit,
     onRequestChange: (String) -> Unit,
     onRun: () -> Unit,
     onPhoto: (PhotoCard) -> Unit,
 ) {
+    val canSearch = gallery.search.enabled && !gallery.busy && !state.busy
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             TopAppBar(
-                title = {
-                    Column {
-                        Text("Agent 搜索", style = MaterialTheme.typography.titleLarge)
-                        Text(
-                            "一项只读 SKILL",
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                },
+                title = { Text("Agent", modifier = Modifier.testTag("agent_title")) },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background,
                 ),
@@ -194,7 +141,7 @@ internal fun AgentSearchScreen(
         },
     ) { scaffoldPadding ->
         LazyColumn(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().testTag("agent_content"),
             contentPadding = PaddingValues(
                 start = 20.dp,
                 end = 20.dp,
@@ -204,46 +151,23 @@ internal fun AgentSearchScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             item {
-                ElevatedCard(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.elevatedCardColors(
-                        containerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                    ),
-                ) {
-                    Row(Modifier.padding(20.dp), verticalAlignment = Alignment.Top) {
-                        Surface(
-                            shape = MaterialTheme.shapes.medium,
-                            color = MaterialTheme.colorScheme.tertiary,
-                        ) {
-                            Icon(
-                                Icons.Outlined.AutoAwesome,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onTertiary,
-                                modifier = Modifier.padding(12.dp),
-                            )
-                        }
-                        Spacer(Modifier.width(14.dp))
-                        Column {
-                            Text(
-                                "描述你想找的照片",
-                                style = MaterialTheme.typography.titleLarge,
-                                color = MaterialTheme.colorScheme.onTertiaryContainer,
-                            )
-                            Spacer(Modifier.height(5.dp))
-                            Text(
-                                "Agent 会规划 1–4 个关键词，并自主调用本地 search_photos；没有删除、移动或标注工具。",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.78f),
-                            )
-                        }
-                    }
-                }
+                AnnotationActions(
+                    busy = gallery.busy || state.busy,
+                    selectedCount = gallery.selectedCount,
+                    task = gallery.annotationTask,
+                    onSelectPhotos = onSelectPhotos,
+                    onAnnotateSelected = onAnnotateSelected,
+                    onAnnotateAll = onAnnotateAll,
+                )
+            }
+            if (gallery.status.isNotEmpty()) {
+                item { StatusCard(gallery.status) }
             }
             item {
                 OutlinedTextField(
                     value = state.request,
                     onValueChange = onRequestChange,
-                    enabled = state.enabled && !state.busy,
+                    enabled = canSearch,
                     modifier = Modifier.fillMaxWidth().testTag("agent_request"),
                     label = { Text("搜索请求") },
                     placeholder = { Text("例如：找出夜晚有旺财在公园的照片") },
@@ -255,7 +179,7 @@ internal fun AgentSearchScreen(
             item {
                 Button(
                     onClick = onRun,
-                    enabled = state.enabled && state.request.isNotBlank() && !state.busy,
+                    enabled = canSearch && state.request.isNotBlank(),
                     modifier = Modifier.fillMaxWidth().height(54.dp).testTag("agent_run"),
                     shape = MaterialTheme.shapes.medium,
                 ) {
@@ -281,7 +205,10 @@ internal fun AgentSearchScreen(
                         )
                         Spacer(Modifier.width(10.dp))
                         Text(
-                            state.status,
+                            state.status.ifEmpty {
+                                if (gallery.search.enabled) "Agent 会根据描述查询本地标注。"
+                                else "先标注照片，即可用自然语言搜索。"
+                            },
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -344,6 +271,70 @@ internal fun AgentSearchScreen(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun AnnotationActions(
+    busy: Boolean,
+    selectedCount: Int,
+    task: AnnotationTaskProgress?,
+    onSelectPhotos: () -> Unit,
+    onAnnotateSelected: () -> Unit,
+    onAnnotateAll: () -> Unit,
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        FilledTonalButton(
+            onClick = onSelectPhotos,
+            enabled = !busy,
+            modifier = Modifier.fillMaxWidth().height(52.dp).testTag("select_annotation_photos"),
+            shape = MaterialTheme.shapes.medium,
+        ) {
+            Icon(Icons.Outlined.AddPhotoAlternate, contentDescription = null)
+            Spacer(Modifier.width(8.dp))
+            Text("选择照片")
+        }
+        Button(
+            onClick = onAnnotateSelected,
+            enabled = !busy && selectedCount > 0,
+            modifier = Modifier.fillMaxWidth().height(52.dp).testTag("annotate_selected"),
+            shape = MaterialTheme.shapes.medium,
+        ) {
+            Icon(Icons.Outlined.AutoAwesome, contentDescription = null)
+            Spacer(Modifier.width(8.dp))
+            Text("标注所选 ($selectedCount)")
+        }
+        AnnotationTaskCard(task, busy, onAnnotateAll)
+    }
+}
+
+@Composable
+private fun StatusCard(status: String) {
+    Surface(
+        modifier = Modifier.fillMaxWidth().testTag("status_card"),
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+    ) {
+        Row(
+            modifier = Modifier.padding(14.dp),
+            verticalAlignment = Alignment.Top,
+        ) {
+            Icon(
+                Icons.Outlined.CheckCircle,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(20.dp),
+            )
+            Spacer(Modifier.width(10.dp))
+            Text(
+                status,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }

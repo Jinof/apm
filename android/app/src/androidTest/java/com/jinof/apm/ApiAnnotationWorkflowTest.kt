@@ -69,9 +69,7 @@ class ApiAnnotationWorkflowTest {
                     Intent(context, MainActivity::class.java)
                         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK),
                 )
-                composeRule.waitUntil(10_000) {
-                    composeRule.onAllNodesWithTag("annotate_selected").fetchSemanticsNodes().isNotEmpty()
-                }
+                openAgent()
                 database.replaceAnnotationSelection(listOf(photo.photoId))
                 requireNotNull(scenario).moveToState(androidx.lifecycle.Lifecycle.State.CREATED)
                 requireNotNull(scenario).moveToState(androidx.lifecycle.Lifecycle.State.RESUMED)
@@ -102,6 +100,7 @@ class ApiAnnotationWorkflowTest {
 
                 assertEquals("other-model", profiles.load().modelName)
                 val encryptedBeforeDetails = File(context.noBackupFilesDir, "external-api.enc").readBytes()
+                composeRule.onNodeWithTag("dock_album").performClick()
                 composeRule.onNodeWithTag("photo_wall_gesture_surface")
                     .performScrollToNode(hasTestTag("photo_wall_thumbnail_$photoId"))
                 composeRule.onNode(hasTestTag("photo_annotation_badge") and
@@ -109,13 +108,27 @@ class ApiAnnotationWorkflowTest {
                 composeRule.onNodeWithTag("annotation_detail_caption").assertTextEquals("一个人站在室内")
                 composeRule.onNodeWithTag("annotation_detail_model").performScrollTo().assertTextEquals(model)
                 composeRule.onNodeWithTag("close_annotation_details").performClick()
+                val tile = composeRule.onNodeWithTag("photo_wall_thumbnail_$photoId")
+                val originalPosition = tile.fetchSemanticsNode().boundsInRoot
+                composeRule.onNodeWithTag("open_album_search").performClick()
+                composeRule.onNodeWithTag("search_input").performTextReplacement("站在室内")
+                composeRule.onNodeWithTag("search_input").performImeAction()
+                composeRule.waitUntil(10_000) {
+                    composeRule.onAllNodesWithText("一个人站在室内").fetchSemanticsNodes().isNotEmpty()
+                }
+                composeRule.onNodeWithText("一个人站在室内").performClick()
+                composeRule.onNodeWithTag("photo_viewer_back").performClick()
+                composeRule.onNodeWithTag("album_search").assertIsDisplayed()
+                InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
+                composeRule.onNodeWithTag("album_search").assertDoesNotExist()
+                assertEquals(originalPosition, tile.fetchSemanticsNode().boundsInRoot)
                 assertEquals(beforeFailure, annotationRows(database, photoId))
                 assertTrue(encryptedBeforeDetails.contentEquals(File(context.noBackupFilesDir, "external-api.enc").readBytes()))
                 assertEquals(1, server.requests.size)
 
                 // A different model makes the existing photo pending without deleting its annotation.
                 profiles.activateProfile("default")
-                composeRule.onNodeWithTag("photo_wall_gesture_surface").performScrollToNode(hasTestTag("annotate_selected"))
+                openAgent()
                 server.status = 401
                 SettingsStore(context).save(config.copy(modelName = "$model-retry"))
                 composeRule.onNodeWithTag("annotate_selected").performClick()
@@ -179,7 +192,7 @@ class ApiAnnotationWorkflowTest {
                 SettingsStore(context).save(config)
                 scenario = ActivityScenario.launch(Intent(context, MainActivity::class.java)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK))
-                composeRule.waitUntil(10_000) { composeRule.onAllNodesWithTag("annotate_selected").fetchSemanticsNodes().isNotEmpty() }
+                openAgent()
                 db.replaceAnnotationSelection(photos.take(9).map { it.photoId })
                 scenario!!.moveToState(androidx.lifecycle.Lifecycle.State.CREATED)
                 scenario!!.moveToState(androidx.lifecycle.Lifecycle.State.RESUMED)
@@ -198,6 +211,7 @@ class ApiAnnotationWorkflowTest {
                     // Every request, including the ninth refill, must use the original snapshot.
                     SettingsStore(context).save(config.copy(endpoint = "http://127.0.0.1:1/v1", modelName = "changed", concurrency = 1))
                     val active = synchronized(api.ids) { api.ids.toList() }
+                    composeRule.onNodeWithTag("dock_album").performClick()
                     for (index in listOf(active.first(), active.last())) {
                         composeRule.onNodeWithTag("photo_wall_gesture_surface")
                             .performScrollToNode(hasTestTag("photo_wall_thumbnail_${photos[index].photoId}"))
@@ -205,7 +219,7 @@ class ApiAnnotationWorkflowTest {
                             hasTestTag("photo_wall_thumbnail_${photos[index].photoId}")), useUnmergedTree = true).assertExists()
                     }
                     composeRule.onRoot().saveRoadmapScreenshot("parallel-annotation.png")
-                    composeRule.onNodeWithTag("photo_wall_gesture_surface").performScrollToNode(hasTestTag("annotate_selected"))
+                    openAgent()
                     api.release.countDown()
                     waitUntilAnnotationEnabled()
                     composeRule.onNodeWithTag("annotation_task_counts").assertTextContains("成功 7 · 失败 2", substring = true)
@@ -342,7 +356,7 @@ class ApiAnnotationWorkflowTest {
                 SettingsStore(context).save(config)
                 scenario = ActivityScenario.launch(Intent(context, MainActivity::class.java)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK))
-                composeRule.waitUntil(10_000) { composeRule.onAllNodesWithTag("annotate_selected").fetchSemanticsNodes().isNotEmpty() }
+                openAgent()
                 db.replaceAnnotationSelection(photos.take(17).map { it.photoId })
                 photos.take(17).forEachIndexed { i, photo -> db.writableDatabase.execSQL(
                     "UPDATE annotation_selection SET selected_at = ? WHERE photo_id = ?", arrayOf("%03d".format(i), photo.photoId)) }
@@ -512,6 +526,12 @@ class ApiAnnotationWorkflowTest {
             synchronized(workers) { workers.toList() }.forEach { it.join(3000) }
             failure.get()?.let { throw AssertionError("Collage mock failed", it) }
         }
+    }
+
+    private fun openAgent() {
+        composeRule.waitUntil(10_000) { composeRule.onAllNodesWithTag("dock_agent").fetchSemanticsNodes().isNotEmpty() }
+        composeRule.onNodeWithTag("dock_agent").performClick()
+        composeRule.onNodeWithTag("annotate_selected").assertExists()
     }
 
     private fun waitUntilAnnotationEnabled() {

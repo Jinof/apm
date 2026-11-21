@@ -12,88 +12,86 @@ import android.os.SystemClock
 import android.util.Log
 import android.util.Size
 import androidx.activity.ComponentActivity
-import androidx.lifecycle.ViewModelProvider
-import androidx.activity.result.PickVisualMediaRequest
-import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateContentSize
-import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.outlined.AddPhotoAlternate
 import androidx.compose.material.icons.outlined.AutoAwesome
-import androidx.compose.material.icons.outlined.CheckCircle
-import androidx.compose.material.icons.outlined.GridView
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.Search
-import androidx.compose.material.icons.outlined.Shield
-import androidx.compose.material.icons.outlined.ViewAgenda
 import androidx.compose.material3.AssistChip
-import androidx.compose.material3.Button
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.AbsoluteAlignment
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
@@ -102,15 +100,15 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import androidx.lifecycle.ViewModelProvider
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
-import java.util.Locale
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.abs
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 private enum class AnnotationScope(val label: String) {
     SELECTED("所选"),
@@ -135,10 +133,10 @@ class MainActivity : ComponentActivity() {
     private var annotationDisposed = false
     private var annotationClient: ApiVlmClient? = null
     private var uiState by mutableStateOf(GalleryUiState())
-    private var startupLoading by mutableStateOf(true)
+    private lateinit var startup: AppStartup
     private var selectedPhotoRange by mutableStateOf<PhotoHeatmapSelection?>(null)
     private var requestedDockDestination by mutableStateOf(DockDestination.ALBUM)
-    private var initialized = false
+    private var firstResume = true
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
@@ -165,99 +163,97 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        selectedPhotoRange = intent.photoHeatmapSelection()
-        requestedDockDestination = intent.dockDestination()
+        val navigation = savedInstanceState?.getBundle("navigation")?.let { Intent().putExtras(it) } ?: intent
+        selectedPhotoRange = navigation.photoHeatmapSelection()
+        requestedDockDestination = navigation.dockDestination()
         enableEdgeToEdge()
         database = ApmDatabase(applicationContext)
         selectionSession = ViewModelProvider(this)[AnnotationSelectionSession::class.java]
-        selectionSession.initialize(database)
         settingsStore = SettingsStore(applicationContext)
         scanner = MediaStoreScanner(applicationContext, database)
         agentController = AgentSearchController(this)
-        initialized = true
-        setContent {
+        startup = AppStartup(this) {
             ApmTheme {
-                AppStartupContent(loading = startupLoading) {
-                    AppDockPager(
-                        requestedDestination = requestedDockDestination,
-                        busy = uiState.busy || agentController.state.busy,
-                        searchEnabled = uiState.search.enabled,
-                        onExit = { finish() },
-                        onDestinationSettled = { destination ->
-                            requestedDockDestination = destination
-                            when (destination) {
-                                DockDestination.AGENT -> agentController.refreshAvailability()
-                                else -> Unit
-                            }
-                        },
-                    ) { destination, navigate ->
-                        when (destination) {
-                            DockDestination.ALBUM -> GalleryScreen(
-                                state = uiState,
-                                onQueryChange = { query ->
-                                    val activeSearchQuery = uiState.activeSearchQuery
-                                        ?.takeIf { it == query.trim() }
-                                    uiState = uiState.copy(
-                                        query = query,
-                                        activeSearchQuery = activeSearchQuery,
-                                        results = if (activeSearchQuery == null) emptyList() else uiState.results,
-                                    )
-                                },
-                                onSearch = ::submitSearch,
-                                onSuggestion = { suggestion ->
-                                    uiState = uiState.copy(query = suggestion)
-                                    submitSearch()
-                                },
-                                onSelectPhotos = ::selectPhotosForAnnotation,
-                                onAnnotateSelected = { startAnnotation(AnnotationScope.SELECTED) },
-                                onAnnotateAll = ::onAnnotateAllRequested,
-                                onHeatmap = { navigate(DockDestination.HEATMAP) },
-                                initialSelectedRange = selectedPhotoRange,
-                                onPhoto = ::openPhoto,
-                            )
+                AppDockPager(
+                    requestedDestination = requestedDockDestination,
+                    onExit = { finish() },
+                    onDestinationSettled = { requestedDockDestination = it },
+                ) { destination, navigate ->
+                    when (destination) {
+                        DockDestination.ALBUM -> GalleryScreen(
+                            state = uiState,
+                            onQueryChange = { query ->
+                                val activeSearchQuery = uiState.activeSearchQuery
+                                    ?.takeIf { it == query.trim() }
+                                uiState = uiState.copy(
+                                    query = query,
+                                    searchError = null,
+                                    activeSearchQuery = activeSearchQuery,
+                                    results = if (activeSearchQuery == null) emptyList() else uiState.results,
+                                )
+                            },
+                            onSearch = ::submitSearch,
+                            onSuggestion = { suggestion ->
+                                uiState = uiState.copy(query = suggestion)
+                                submitSearch()
+                            },
+                            onHeatmap = { navigate(DockDestination.HEATMAP) },
+                            selectedRange = selectedPhotoRange,
+                            onClearRange = { selectedPhotoRange = null },
+                            onPhoto = ::openPhoto,
+                        )
 
-                            DockDestination.HEATMAP -> PhotoHeatmapPage(
-                                photos = uiState.galleryPhotos,
-                                onViewPhotos = { selection ->
-                                    selectedPhotoRange = selection
-                                    navigate(DockDestination.ALBUM)
-                                },
-                            )
+                        DockDestination.HEATMAP -> PhotoHeatmapPage(
+                            photos = uiState.galleryPhotos,
+                            onViewPhotos = { selection ->
+                                selectedPhotoRange = selection
+                                navigate(DockDestination.ALBUM)
+                            },
+                        )
 
-                            DockDestination.AGENT -> AgentSearchScreen(
-                                state = agentController.state,
-                                onRequestChange = agentController::changeRequest,
-                                onRun = agentController::runAgent,
-                                onPhoto = { photo ->
-                                    startActivity(PhotoViewerActivity.intent(this, photo.photoId, photo.uri))
-                                },
-                            )
+                        DockDestination.AGENT -> AgentSearchScreen(
+                            state = agentController.state,
+                            gallery = uiState,
+                            onSelectPhotos = ::selectPhotosForAnnotation,
+                            onAnnotateSelected = { startAnnotation(AnnotationScope.SELECTED) },
+                            onAnnotateAll = ::onAnnotateAllRequested,
+                            onRequestChange = agentController::changeRequest,
+                            onRun = agentController::runAgent,
+                            onPhoto = { photo -> openPhoto(photo.photoId, photo.uri) },
+                        )
 
-                            DockDestination.SETTINGS -> ModelSettingsScreen(isActive = requestedDockDestination == DockDestination.SETTINGS)
-                        }
+                        DockDestination.SETTINGS -> ModelSettingsScreen(isActive = requestedDockDestination == DockDestination.SETTINGS)
                     }
                 }
             }
         }
-        refreshLibraryState("准备就绪。先选择照片，再让 VLM 建立可搜索标注。")
+        refreshLibraryState()
+    }
+
+    private fun handleStartupRequest() {
         when {
             isDebugRequest(DEBUG_ANNOTATE_SELECTED_ACTION, DEBUG_ANNOTATION_ALIAS) -> {
                 intent.setAction(null)
-                window.decorView.post { startAnnotation(AnnotationScope.SELECTED) }
+                startAnnotation(AnnotationScope.SELECTED)
             }
             isDebugRequest(DEBUG_SEARCH_ACTION, DEBUG_SEARCH_ALIAS) -> {
                 val query = intent.getStringExtra(DEBUG_SEARCH_QUERY).orEmpty().trim()
                 intent.setAction(null)
-                window.decorView.post {
-                    if (query.isEmpty() || !database.searchAvailability().enabled) {
-                        updateStatus("USB 验收搜索不可用：查询为空或尚无标注。")
-                    } else {
-                        uiState = uiState.copy(query = query)
-                        runSearch(query, acceptanceLog = true)
-                    }
+                if (query.isEmpty() || !uiState.search.enabled) {
+                    updateStatus("USB 验收搜索不可用：查询为空或尚无标注。")
+                } else {
+                    uiState = uiState.copy(query = query)
+                    runSearch(query, acceptanceLog = true)
                 }
             }
         }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        val navigation = Intent().putDockDestination(requestedDockDestination)
+        selectedPhotoRange?.let(navigation::putPhotoHeatmapSelection)
+        outState.putBundle("navigation", navigation.extras)
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -269,10 +265,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        if (initialized && !busy.get()) {
-            refreshLibraryState(null)
-            agentController.refreshAvailability()
-        }
+        if (!firstResume && !busy.get()) refreshLibraryState()
+        firstResume = false
     }
 
     override fun onDestroy() {
@@ -346,7 +340,7 @@ class MainActivity : ComponentActivity() {
                 } else {
                     " · ${persistFailures} 项授权仅在本次运行有效"
                 }
-                completeWork(
+                publishLibraryState(
                     "已授权并选择 ${result.photoIds.size} 张 · 内容校验 ${report.hashed} 张$errorSuffix$persistSuffix",
                 )
             } catch (error: Exception) {
@@ -396,7 +390,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun startAnnotation(scope: AnnotationScope) {
-        if (scope == AnnotationScope.SELECTED && database.annotationSelectionCount() == 0) {
+        if (scope == AnnotationScope.SELECTED && uiState.selectedCount == 0) {
             updateStatus("请先通过“选择照片”授权并选择要标注的照片。")
             return
         }
@@ -481,7 +475,7 @@ class MainActivity : ComponentActivity() {
                     .finish(SystemClock.elapsedRealtime())
                 publishAnnotationTask(task, gallery)
                 val scanSuffix = scanReport?.let { " · 扫描可见 ${it.visible} 张 · 读取失败 ${it.errors.size}" }.orEmpty()
-                completeWork("${scope.label}范围 $scopeCount 张 · 成功 ${task.succeeded} · 失败 ${task.failed} · 跳过 ${task.skipped}$scanSuffix")
+                publishLibraryState("${scope.label}范围 $scopeCount 张 · 成功 ${task.succeeded} · 失败 ${task.failed} · 跳过 ${task.skipped}$scanSuffix")
             } catch (error: Exception) {
                 val message = annotationFailureMessage(error)
                 task = task.log(message, SystemClock.elapsedRealtime()).finish(SystemClock.elapsedRealtime(), fatal = true)
@@ -503,99 +497,85 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun runSearch(query: String, acceptanceLog: Boolean = false) {
-        if (!beginWork("正在搜索“$query”…")) return
+        if (!beginWork()) return
+        uiState = uiState.copy(searchError = null)
         executor.execute {
             try {
                 val cards = database.search(query)
                 if (acceptanceLog) {
                     Log.i("APM.Acceptance", "search query=$query results=${cards.size}")
                 }
-                val availability = database.searchAvailability()
-                val galleryPhotos = database.galleryPhotos()
-                val accessible = database.accessibleCount()
-                val selected = database.annotationSelectionCount()
                 runOnUiThread {
                     busy.set(false)
-                    uiState = uiState.copy(
-                        activeSearchQuery = query,
-                        results = cards,
-                        galleryPhotos = galleryPhotos,
-                        search = availability,
-                        accessibleCount = accessible,
-                        selectedCount = selected,
-                        busy = false,
-                        status = "“$query” · ${cards.size} 个结果",
-                    )
+                    if (!isDestroyed && !isFinishing) {
+                        uiState = uiState.copy(
+                            activeSearchQuery = query,
+                            results = cards,
+                            busy = false,
+                        )
+                    }
                 }
             } catch (error: Exception) {
-                failWork("搜索失败：${error.message}")
+                runOnUiThread {
+                    busy.set(false)
+                    uiState = uiState.copy(busy = false, searchError = "搜索失败：${error.message}")
+                }
             }
         }
     }
 
-    private fun refreshLibraryState(message: String?) {
+    private fun refreshLibraryState() {
         executor.execute {
             try {
-                val availability = database.searchAvailability()
-                val query = if (availability.enabled) uiState.query else ""
-                val activeQuery = if (availability.enabled) uiState.activeSearchQuery else null
-                val cards = activeQuery?.let(database::search).orEmpty()
-                val galleryPhotos = database.galleryPhotos()
-                val accessible = database.accessibleCount()
-                val selected = database.annotationSelectionCount()
-                runOnUiThread {
-                    uiState = uiState.copy(
-                        query = query,
-                        activeSearchQuery = activeQuery,
-                        results = cards,
-                        galleryPhotos = galleryPhotos,
-                        search = availability,
-                        accessibleCount = accessible,
-                        selectedCount = selected,
-                        status = message ?: uiState.status,
-                    )
-                    startupLoading = false
-                }
+                selectionSession.initialize(database)
+                publishLibraryState()
             } catch (error: Exception) {
                 runOnUiThread {
-                    uiState = uiState.copy(status = "读取本地索引失败：${error.message}")
-                    startupLoading = false
+                    if (!isDestroyed && !isFinishing) {
+                        val message = "读取本地索引失败：${error.message}"
+                        uiState = uiState.copy(status = message, catalogError = message)
+                        startup.onCatalogReady()
+                    }
                 }
             }
         }
     }
 
-    private fun beginWork(message: String): Boolean {
+    // Called on the serial catalog worker. Search suggestions reuse the wall's decoded annotations.
+    private fun publishLibraryState(completionMessage: String? = null) {
+        val photos = database.galleryPhotos()
+        val availability = SearchAvailability.fromGallery(photos)
+        val selected = database.annotationSelectionCount()
+        val query = uiState.activeSearchQuery?.takeIf { availability.enabled }
+        val cards = query?.let(database::search).orEmpty()
+        runOnUiThread {
+            if (isDestroyed || isFinishing) return@runOnUiThread
+            if (completionMessage != null) busy.set(false)
+            val current = uiState
+            val activeQuery = current.activeSearchQuery?.takeIf { availability.enabled }
+            uiState = current.copy(
+                query = if (availability.enabled) current.query else "",
+                activeSearchQuery = activeQuery,
+                results = if (activeQuery == query) cards else current.results,
+                galleryPhotos = photos,
+                search = availability,
+                selectedCount = selected,
+                busy = busy.get(),
+                status = completionMessage ?: current.status,
+                catalogError = null,
+            )
+            startup.onCatalogReady()
+            handleStartupRequest()
+        }
+    }
+
+    private fun beginWork(message: String? = null): Boolean {
         if (!busy.compareAndSet(false, true)) {
             updateStatus("已有任务正在运行，请稍候。")
             return false
         }
-        runOnUiThread { uiState = uiState.copy(busy = true, status = message) }
+        runOnUiThread { uiState = uiState.copy(busy = true, status = message ?: uiState.status) }
         return true
-    }
-
-    private fun completeWork(message: String) {
-        val availability = database.searchAvailability()
-        val query = if (availability.enabled) uiState.query else ""
-        val activeQuery = if (availability.enabled) uiState.activeSearchQuery else null
-        val cards = activeQuery?.let(database::search).orEmpty()
-        val galleryPhotos = database.galleryPhotos()
-        val accessible = database.accessibleCount()
-        val selected = database.annotationSelectionCount()
-        runOnUiThread {
-            busy.set(false)
-            uiState = uiState.copy(
-                query = query,
-                activeSearchQuery = activeQuery,
-                results = cards,
-                galleryPhotos = galleryPhotos,
-                search = availability,
-                accessibleCount = accessible,
-                selectedCount = selected,
-                busy = false,
-                status = message,
-            )
-        }
     }
 
     private fun failWork(message: String) {
@@ -612,263 +592,126 @@ class MainActivity : ComponentActivity() {
     private fun openPhoto(photoId: String, uri: String) {
         startActivity(PhotoViewerActivity.intent(this, photoId, uri))
     }
-
-
 }
 
 private const val ANNOTATION_LOG_TAG = "APM.Annotation"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun GalleryScreen(
+internal fun GalleryScreen(
     state: GalleryUiState,
     onQueryChange: (String) -> Unit,
     onSearch: () -> Unit,
     onSuggestion: (String) -> Unit,
-    onSelectPhotos: () -> Unit,
-    onAnnotateSelected: () -> Unit,
-    onAnnotateAll: () -> Unit,
     onHeatmap: () -> Unit,
-    initialSelectedRange: PhotoHeatmapSelection?,
+    selectedRange: PhotoHeatmapSelection?,
+    onClearRange: () -> Unit,
     onPhoto: (String, String) -> Unit,
 ) {
-    val zoneId = ZoneId.systemDefault()
-    var displayMode by remember { mutableStateOf(PhotoWallDisplayMode.THUMBNAILS) }
-    var selectedRange by remember(state.galleryPhotos, initialSelectedRange) {
-        mutableStateOf(initialSelectedRange)
+    var searchOpen by rememberSaveable { mutableStateOf(false) }
+    val zone = ZoneId.systemDefault()
+    val photos = remember(state.galleryPhotos, selectedRange, zone) {
+        if (selectedRange == null) state.galleryPhotos else state.galleryPhotos.filter { photo ->
+            selectedRange.contains(photo.dateTakenMillis?.let { Instant.ofEpochMilli(it).atZone(zone).toLocalDate() })
+        }
     }
-    val dayGroups = remember(state.galleryPhotos, selectedRange, zoneId) {
-        PhotoWallOrganizer.groupByDay(state.galleryPhotos, zoneId)
-            .let { groups ->
-                selectedRange?.let { range -> groups.filter { range.contains(it.date) } } ?: groups
+    val width = LocalConfiguration.current.screenWidthDp.dp
+    val requestSize = with(LocalDensity.current) { (width / 6).roundToPx().coerceAtLeast(1) }
+    Box(Modifier.fillMaxSize().windowInsetsPadding(
+        WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal),
+    ).pointerInput(onHeatmap) {
+        val edge = 32.dp.toPx()
+        val threshold = 24.dp.toPx()
+        awaitEachGesture {
+            val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+            if (down.position.x <= edge) {
+                do {
+                    val change = awaitPointerEvent(PointerEventPass.Initial).changes.firstOrNull { it.id == down.id }
+                        ?: break
+                    val offset = change.position - down.position
+                    if (!change.pressed && offset.x >= threshold && offset.x > abs(offset.y)) onHeatmap()
+                } while (change.pressed)
             }
-    }
-    val searchActive = state.activeSearchQuery != null
-    val density = LocalDensity.current
-
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        contentWindowInsets = WindowInsets(0, 0, 0, 0),
-        topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Text("APM", style = MaterialTheme.typography.titleLarge)
-                        Text(
-                            "AI 相册",
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                ),
-            )
-        },
-    ) { scaffoldPadding ->
-        Box(Modifier.fillMaxSize()) {
+        }
+    }) {
         LazyVerticalGrid(
-            columns = GridCells.Fixed(3),
-            modifier = Modifier
-                .fillMaxSize()
-                .semantics {
-                    contentDescription = "照片墙，向右滑动打开年度照片热力图"
-                }
-                .testTag("photo_wall_gesture_surface"),
-            contentPadding = PaddingValues(
-                start = 20.dp,
-                end = 20.dp,
-                top = scaffoldPadding.calculateTopPadding() + 8.dp,
-                bottom = scaffoldPadding.calculateBottomPadding() + 28.dp,
-            ),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+            columns = GridCells.Fixed(6),
+            modifier = Modifier.fillMaxSize().testTag("photo_wall_gesture_surface").semantics {
+                contentDescription = "照片墙，从左边缘向右滑动打开年度照片热力图"
+            },
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
-            item(span = { GridItemSpan(maxLineSpan) }) {
-                AnnotationActions(
-                    busy = state.busy,
-                    selectedCount = state.selectedCount,
-                    task = state.annotationTask,
-                    onSelectPhotos = onSelectPhotos,
-                    onAnnotateSelected = onAnnotateSelected,
-                    onAnnotateAll = onAnnotateAll,
-                )
-            }
-            item(span = { GridItemSpan(maxLineSpan) }) {
-                SearchPanel(
-                    state = state,
-                    onQueryChange = onQueryChange,
-                    onSearch = onSearch,
-                    onSuggestion = onSuggestion,
-                )
-            }
-            item(span = { GridItemSpan(maxLineSpan) }) {
-                AnimatedVisibility(visible = state.busy) {
-                    LinearProgressIndicator(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp)),
-                    )
-                }
-            }
-            item(span = { GridItemSpan(maxLineSpan) }) {
-                StatusCard(state.status)
-            }
-            if (searchActive) {
-                if (state.results.isEmpty()) {
-                    item(span = { GridItemSpan(maxLineSpan) }) {
-                        EmptyState(
-                            icon = Icons.Outlined.Search,
-                            title = "没有找到匹配照片",
-                            body = "换一个来自描述或标签的关键词试试，或清空输入返回照片墙。",
-                        )
-                    }
-                } else {
-                    item(span = { GridItemSpan(maxLineSpan) }) {
-                        SectionTitle("搜索结果", "${state.results.size} 张")
-                    }
-                    gridItems(
-                        items = state.results,
-                        key = { "search-${it.photoId}-${it.uri}" },
-                        span = { GridItemSpan(maxLineSpan) },
-                    ) { photo ->
-                        PhotoResultCard(
-                            photo = photo,
-                            annotating = state.annotationTask?.activePhotoIds?.contains(photo.photoId) == true,
-                            onClick = { onPhoto(photo.photoId, photo.uri) },
-                        )
-                    }
-                }
-            } else if (state.galleryPhotos.isEmpty()) {
+            if (selectedRange != null) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
-                    EmptyState(
-                        icon = Icons.Outlined.PhotoLibrary,
-                        title = "照片墙等待授权照片",
-                        body = "先通过“选择照片”授权照片，或运行全量标注并授权相册范围。照片无需标注也会显示。",
-                    )
-                }
-            } else {
-                item(span = { GridItemSpan(maxLineSpan) }) {
-                    PhotoWallControls(
-                        photoCount = state.galleryPhotos.size,
-                        displayMode = displayMode,
-                        selectedRange = selectedRange,
-                        onDisplayMode = { displayMode = it },
-                        onClearRange = { selectedRange = null },
-                    )
-                }
-                dayGroups.forEach { group ->
-                    item(
-                        key = "day-${group.date ?: "unknown"}",
-                        span = { GridItemSpan(maxLineSpan) },
-                    ) {
-                        PhotoDayHeader(group)
-                    }
-                    if (displayMode == PhotoWallDisplayMode.THUMBNAILS) {
-                        gridItems(
-                            items = group.photos,
-                            key = { "wall-thumb-${it.photoId}" },
-                        ) { photo ->
-                            PhotoWallThumbnail(
-                                photo = photo,
-                                annotating = state.annotationTask?.activePhotoIds?.contains(photo.photoId) == true,
-                                onClick = { onPhoto(photo.photoId, photo.uri) },
-                            )
-                        }
-                    } else {
-                        gridItems(
-                            items = group.photos,
-                            key = { "wall-detail-${it.photoId}" },
-                            span = { GridItemSpan(maxLineSpan) },
-                        ) { photo ->
-                            PhotoWallDetailCard(
-                                photo = photo,
-                                annotating = state.annotationTask?.activePhotoIds?.contains(photo.photoId) == true,
-                                onClick = { onPhoto(photo.photoId, photo.uri) },
-                            )
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text("只看 ${heatmapSelectionLabel(selectedRange)} · ${selectedRange.count} 张照片",
+                            Modifier.weight(1f).testTag("selected_photo_range_summary"))
+                        TextButton(onClick = onClearRange, modifier = Modifier.testTag("clear_photo_range")) {
+                            Text("显示全部时间")
                         }
                     }
                 }
             }
-            item(span = { GridItemSpan(maxLineSpan) }) {
-                PrivacyFooter()
+            state.catalogError?.let { error ->
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    Text(error, Modifier.padding(16.dp).testTag("album_read_error"))
+                }
+            }
+            gridItems(photos, key = { it.photoId }) { photo ->
+                PhotoWallThumbnail(
+                    photo = photo,
+                    requestSize = requestSize,
+                    annotating = state.annotationTask?.activePhotoIds?.contains(photo.photoId) == true,
+                    onClick = { onPhoto(photo.photoId, photo.uri) },
+                )
             }
         }
-        Box(
-            modifier = Modifier
-                .align(Alignment.CenterStart)
-                .fillMaxHeight()
-                .width(32.dp)
-                .pointerInput(onHeatmap) {
-                    val thresholdPx = with(density) { 24.dp.toPx() }
-                    awaitEachGesture {
-                        val down = awaitFirstDown(
-                            requireUnconsumed = false,
-                            pass = PointerEventPass.Initial,
-                        )
-                        var distanceX = 0f
-                        var distanceY = 0f
-                        var shouldOpenHeatmap = false
-                        while (true) {
-                            val event = awaitPointerEvent(PointerEventPass.Initial)
-                            val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                            if (!change.pressed) break
-                            distanceX += change.position.x - change.previousPosition.x
-                            distanceY += change.position.y - change.previousPosition.y
-                            if (!shouldOpenHeatmap &&
-                                distanceX >= thresholdPx &&
-                                distanceX > abs(distanceY)
-                            ) {
-                                shouldOpenHeatmap = true
-                            }
-                        }
-                        if (shouldOpenHeatmap) onHeatmap()
-                    }
-                }
-                .semantics {
-                    contentDescription = "从左边缘向右滑动打开年度照片热力图"
-                }
-                .testTag("photo_wall_gesture_edge"),
-        )
+        if (photos.isEmpty() && state.catalogError == null && selectedRange == null) {
+            Box(Modifier.align(Alignment.Center).padding(horizontal = 48.dp)) {
+                EmptyState(Icons.Outlined.PhotoLibrary, "相册里还没有照片", "在底部 Agent 中点“选择照片”，所选照片就会显示在这里。")
+            }
+        }
+        FilledTonalIconButton(onClick = { searchOpen = true },
+            modifier = Modifier.align(AbsoluteAlignment.CenterRight).padding(horizontal = 4.dp)
+                .size(48.dp).testTag("open_album_search")) {
+            Icon(Icons.Outlined.Search, contentDescription = "搜索照片")
         }
     }
-}
-
-@Composable
-private fun AnnotationActions(
-    busy: Boolean,
-    selectedCount: Int,
-    task: AnnotationTaskProgress?,
-    onSelectPhotos: () -> Unit,
-    onAnnotateSelected: () -> Unit,
-    onAnnotateAll: () -> Unit,
-) {
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        FilledTonalButton(
-            onClick = onSelectPhotos,
-            enabled = !busy,
-            modifier = Modifier.fillMaxWidth().height(52.dp).testTag("select_annotation_photos"),
-            shape = MaterialTheme.shapes.medium,
+    if (searchOpen) {
+        ModalBottomSheet(
+            onDismissRequest = { searchOpen = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         ) {
-            Icon(Icons.Outlined.AddPhotoAlternate, contentDescription = null)
-            Spacer(Modifier.width(8.dp))
-            Text("选择照片")
+            LazyColumn(
+                modifier = Modifier.fillMaxWidth().imePadding().testTag("album_search"),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                item {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text("搜索照片", modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
+                        IconButton(onClick = { searchOpen = false }, modifier = Modifier.testTag("close_album_search")) {
+                            Icon(Icons.Outlined.Close, contentDescription = "关闭搜索")
+                        }
+                    }
+                    SearchPanel(state, onQueryChange, onSearch, onSuggestion)
+                }
+                if (state.busy) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
+                if (state.activeSearchQuery != null) {
+                    item { SectionTitle("搜索结果", "${state.results.size} 张") }
+                    if (state.results.isEmpty()) item {
+                        Text("没有找到匹配照片，试试其他关键词。")
+                    }
+                    items(state.results, key = { it.photoId }) { photo ->
+                        PhotoResultCard(photo, annotating = state.annotationTask?.activePhotoIds?.contains(photo.photoId) == true) {
+                            onPhoto(photo.photoId, photo.uri)
+                        }
+                    }
+                }
+                state.searchError?.let { message -> item { Text(message) } }
+            }
         }
-        Button(
-            onClick = onAnnotateSelected,
-            enabled = !busy && selectedCount > 0,
-            modifier = Modifier.fillMaxWidth().height(52.dp).testTag("annotate_selected"),
-            shape = MaterialTheme.shapes.medium,
-        ) {
-            Icon(Icons.Outlined.AutoAwesome, contentDescription = null)
-            Spacer(Modifier.width(8.dp))
-            Text("标注所选 ($selectedCount)")
-        }
-        AnnotationTaskCard(task, busy, onAnnotateAll)
     }
 }
 
@@ -879,9 +722,12 @@ private fun SearchPanel(
     onSearch: () -> Unit,
     onSuggestion: (String) -> Unit,
 ) {
-    Column(Modifier.fillMaxWidth().animateContentSize()) {
-        SectionTitle("搜索", if (state.search.enabled) "来自实际标注" else "标注后开启")
-        Spacer(Modifier.height(10.dp))
+    val keyboard = LocalSoftwareKeyboardController.current
+    val submit = {
+        keyboard?.hide()
+        onSearch()
+    }
+    Column(Modifier.fillMaxWidth()) {
         OutlinedTextField(
             value = state.query,
             onValueChange = onQueryChange,
@@ -895,14 +741,14 @@ private fun SearchPanel(
             leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
             trailingIcon = {
                 IconButton(
-                    onClick = onSearch,
+                    onClick = submit,
                     enabled = state.search.enabled && state.query.isNotBlank() && !state.busy,
                 ) {
                     Icon(Icons.Outlined.Search, contentDescription = "提交搜索")
                 }
             },
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-            keyboardActions = KeyboardActions(onSearch = { onSearch() }),
+            keyboardActions = KeyboardActions(onSearch = { submit() }),
             supportingText = if (!state.search.enabled) {
                 { Text("当前没有可搜索标注，也不会显示示例或预设词。") }
             } else {
@@ -914,7 +760,11 @@ private fun SearchPanel(
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(state.search.suggestions) { suggestion ->
                     AssistChip(
-                        onClick = { onSuggestion(suggestion) },
+                        onClick = {
+                            keyboard?.hide()
+                            onSuggestion(suggestion)
+                        },
+                        enabled = !state.busy,
                         label = { Text(suggestion) },
                         leadingIcon = {
                             Icon(
@@ -932,197 +782,22 @@ private fun SearchPanel(
 
 
 @Composable
-private fun PhotoWallControls(
-    photoCount: Int,
-    displayMode: PhotoWallDisplayMode,
-    selectedRange: PhotoHeatmapSelection?,
-    onDisplayMode: (PhotoWallDisplayMode) -> Unit,
-    onClearRange: () -> Unit,
-) {
-    Column(
-        modifier = Modifier.fillMaxWidth().testTag("photo_wall_controls"),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        SectionTitle("照片墙", "$photoCount 张 · 按拍摄日")
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            PhotoWallDisplayMode.entries.forEach { mode ->
-                FilterChip(
-                    selected = displayMode == mode,
-                    onClick = { onDisplayMode(mode) },
-                    label = { Text(mode.label) },
-                    leadingIcon = {
-                        Icon(
-                            if (mode == PhotoWallDisplayMode.THUMBNAILS) {
-                                Icons.Outlined.GridView
-                            } else {
-                                Icons.Outlined.ViewAgenda
-                            },
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp),
-                        )
-                    },
-                    modifier = Modifier.testTag("photo_wall_mode_${mode.name.lowercase()}"),
-                )
-            }
-        }
-        if (selectedRange != null) {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalAlignment = Alignment.End,
-            ) {
-                Text(
-                    "只看 ${heatmapSelectionLabel(selectedRange)} · ${selectedRange.count} 张照片",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("selected_photo_range_summary"),
-                )
-                TextButton(
-                    onClick = onClearRange,
-                    modifier = Modifier.testTag("clear_photo_range"),
-                ) {
-                    Text("显示全部时间")
-                }
-            }
-        }
-    }
-}
-
-
-@Composable
-private fun PhotoDayHeader(group: PhotoDayGroup) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
-        Text(
-            group.date?.format(DateTimeFormatter.ofPattern("M月d日 EEEE", Locale.CHINA))
-                ?: "拍摄时间未记录",
-            style = MaterialTheme.typography.titleMedium,
-        )
-        Text(
-            "${group.photos.size} 张",
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.primary,
-        )
-    }
-}
-
-@Composable
-internal fun PhotoWallThumbnail(photo: GalleryPhotoCard, annotating: Boolean = false, onClick: () -> Unit) {
-    ElevatedCard(
-        modifier = Modifier
-            .fillMaxWidth()
-            .aspectRatio(1f)
-            .clickable(onClick = onClick)
-            .testTag("photo_wall_thumbnail_${photo.photoId}"),
-        shape = MaterialTheme.shapes.medium,
-        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 1.dp),
-    ) {
-        Thumbnail(
-            uriText = photo.uri,
-            modifier = Modifier.fillMaxSize(),
-            requestSize = 300,
-            contentDescription = photo.displayName,
-            details = photo.savedDetails(),
-            annotating = annotating,
-        )
-    }
-}
-
-@Composable
-internal fun PhotoWallDetailCard(
+internal fun PhotoWallThumbnail(
     photo: GalleryPhotoCard,
     annotating: Boolean = false,
+    requestSize: Int = 180,
     onClick: () -> Unit,
 ) {
-    ElevatedCard(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .testTag("photo_wall_detail_${photo.photoId}"),
-        shape = MaterialTheme.shapes.large,
-        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 1.dp),
-    ) {
-        Row(Modifier.padding(12.dp)) {
-            Thumbnail(photo.uri, contentDescription = photo.displayName, details = photo.savedDetails(), annotating = annotating)
-            Spacer(Modifier.width(14.dp))
-            Column(Modifier.weight(1f)) {
-                val annotation = photo.annotation
-                Text(
-                    annotation?.caption ?: "尚未标注",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = if (annotation == null) {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    } else {
-                        MaterialTheme.colorScheme.onSurface
-                    },
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                if (annotation != null) {
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        facetSummary(annotation.facets),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.primary,
-                        maxLines = 3,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    if (annotation.tags.isNotEmpty()) {
-                        Spacer(Modifier.height(6.dp))
-                        Text(
-                            annotation.tags.take(5).joinToString(" · "),
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                }
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    "${photo.displayName} · ${formatCaptureDate(photo.dateTakenMillis)}",
-                    style = MaterialTheme.typography.bodyMedium.copy(fontSize = 12.sp),
-                    color = MaterialTheme.colorScheme.outline,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun StatusCard(status: String) {
-    Surface(
-        modifier = Modifier.fillMaxWidth().testTag("status_card"),
-        shape = MaterialTheme.shapes.medium,
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
-    ) {
-        Row(
-            modifier = Modifier.padding(14.dp),
-            verticalAlignment = Alignment.Top,
-        ) {
-            Icon(
-                Icons.Outlined.CheckCircle,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(20.dp),
-            )
-            Spacer(Modifier.width(10.dp))
-            Text(
-                status,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
+    Thumbnail(
+        uriText = photo.uri,
+        modifier = Modifier.fillMaxWidth().aspectRatio(1f)
+            .testTag("photo_wall_thumbnail_${photo.photoId}"),
+        requestSize = requestSize,
+        details = photo.savedDetails(),
+        annotating = annotating,
+        imageDescription = photo.displayName,
+        onPhotoClick = onClick,
+    )
 }
 
 @Composable
@@ -1181,7 +856,7 @@ internal fun PhotoResultCard(photo: PhotoCard, annotating: Boolean = false, onCl
         elevation = CardDefaults.elevatedCardElevation(defaultElevation = 1.dp),
     ) {
         Row(Modifier.padding(12.dp)) {
-            Thumbnail(photo.uri, contentDescription = photo.displayName, details = photo.savedDetails(), annotating = annotating)
+            Thumbnail(photo.uri, imageDescription = photo.displayName, details = photo.savedDetails(), annotating = annotating)
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
                 Text(
@@ -1231,19 +906,24 @@ internal fun PhotoResultCard(photo: PhotoCard, annotating: Boolean = false, onCl
     }
 }
 
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+private val thumbnailDispatcher = Dispatchers.IO.limitedParallelism(4)
+
 @Composable
 private fun Thumbnail(
     uriText: String,
     modifier: Modifier = Modifier.size(116.dp),
     requestSize: Int = 360,
-    contentDescription: String = "照片缩略图",
+    imageDescription: String = "照片缩略图",
     details: StoredAnnotationDetails? = null,
     annotating: Boolean = false,
+    onPhotoClick: (() -> Unit)? = null,
 ) {
+    val compact = onPhotoClick != null
     var detailsOpen by remember(uriText) { mutableStateOf(false) }
     val context = LocalContext.current
     val bitmap by produceState<Bitmap?>(initialValue = null, key1 = uriText, key2 = requestSize) {
-        value = withContext(Dispatchers.IO) {
+        value = withContext(thumbnailDispatcher) {
             runCatching {
                 context.contentResolver.loadThumbnail(
                     Uri.parse(uriText),
@@ -1255,27 +935,34 @@ private fun Thumbnail(
     }
     Box(
         modifier = modifier
-            .clip(MaterialTheme.shapes.medium)
+            .then(if (compact) Modifier else Modifier.clip(MaterialTheme.shapes.medium))
             .background(MaterialTheme.colorScheme.surfaceVariant),
         contentAlignment = Alignment.Center,
     ) {
-        if (bitmap == null) {
+        if (bitmap == null && !compact) {
             Icon(
                 Icons.Outlined.PhotoLibrary,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.outline,
             )
-        } else {
+        } else if (bitmap != null) {
             Image(
                 bitmap = bitmap!!.asImageBitmap(),
-                contentDescription = contentDescription,
+                contentDescription = if (compact) null else imageDescription,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
             )
         }
+        // Make the photo and badge sibling hit targets. A nested 48dp touch target
+        // would otherwise claim the center of a six-column tile.
+        if (onPhotoClick != null) {
+            Box(Modifier.matchParentSize().clickable(onClick = onPhotoClick).semantics {
+                contentDescription = imageDescription
+            })
+        }
         if (annotating) {
             CircularProgressIndicator(
-                modifier = Modifier.align(Alignment.BottomEnd).padding(6.dp).size(32.dp)
+                modifier = Modifier.align(Alignment.BottomEnd).padding(if (compact) 2.dp else 6.dp).size(if (compact) 20.dp else 32.dp)
                     .background(Color.White, CircleShape).padding(3.dp)
                     .semantics { this.contentDescription = "正在标注" }
                     .testTag("photo_annotation_running"),
@@ -1283,36 +970,14 @@ private fun Thumbnail(
             )
         } else if (details != null) {
             IconButton(onClick = { detailsOpen = true }, modifier = Modifier.align(Alignment.BottomEnd)
-                .padding(2.dp).size(40.dp).semantics { this.contentDescription = "已标注，查看详情" }
+                .padding(2.dp).size(if (compact) 26.dp else 40.dp).semantics { this.contentDescription = "已标注，查看详情" }
                 .testTag("photo_annotation_badge")) {
                 Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = Color(0xFF15803D),
-                    modifier = Modifier.size(32.dp).background(Color.White, CircleShape))
+                    modifier = Modifier.size(if (compact) 20.dp else 32.dp).background(Color.White, CircleShape))
             }
         }
     }
     if (detailsOpen && details != null) PhotoAnnotationDetailsDialog(details) { detailsOpen = false }
-}
-
-@Composable
-private fun PrivacyFooter() {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.Center,
-    ) {
-        Icon(
-            Icons.Outlined.Shield,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.outline,
-            modifier = Modifier.size(16.dp),
-        )
-        Spacer(Modifier.width(6.dp))
-        Text(
-            "原图只读 · 标注存于本机 · 远程推理需授权",
-            style = MaterialTheme.typography.bodyMedium.copy(fontSize = 12.sp),
-            color = MaterialTheme.colorScheme.outline,
-        )
-    }
 }
 
 private fun facetSummary(facets: PhotoFacets): String = buildList {

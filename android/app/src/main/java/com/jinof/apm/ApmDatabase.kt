@@ -722,15 +722,6 @@ class ApmDatabase(
         null,
     ).use { cursor -> cursor.moveToFirst(); cursor.getInt(0) }
 
-    @Synchronized
-    fun searchAvailability(): SearchAvailability {
-        val cards = search("", limit = 500)
-        return SearchAvailability.derive(
-            annotationCount = cards.map(PhotoCard::photoId).distinct().size,
-            suggestions = SuggestionBuilder.from(cards.map(PhotoCard::annotation)),
-        )
-    }
-
     private fun Cursor.toPhotoCard(): PhotoCard {
         val photoId = getString(0)
         val combined = JSONObject()

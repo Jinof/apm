@@ -1,45 +1,93 @@
 package com.jinof.apm
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawingPadding
-import androidx.compose.foundation.layout.size
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.AutoAwesome
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
+import android.animation.ValueAnimator
+import android.provider.Settings
+import android.view.Choreographer
+import android.view.animation.AccelerateDecelerateInterpolator
+import android.widget.FrameLayout
+import androidx.activity.ComponentActivity
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.ComposeView
+import androidx.core.view.doOnPreDraw
 
-/** Branding lasts only as long as the initial local catalog read. */
-@Composable
-internal fun AppStartupContent(loading: Boolean, content: @Composable () -> Unit) {
-    if (!loading) {
-        content()
-        return
-    }
-    Surface(Modifier.fillMaxSize().testTag("startup_loading"), color = MaterialTheme.colorScheme.background) {
-        Box(Modifier.fillMaxSize().safeDrawingPadding().padding(32.dp), contentAlignment = Alignment.Center) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(24.dp)) {
-                Icon(Icons.Outlined.AutoAwesome, contentDescription = null,
-                    modifier = Modifier.size(48.dp), tint = MaterialTheme.colorScheme.primary)
-                Text(stringResource(R.string.startup_story), style = MaterialTheme.typography.headlineMedium,
-                    textAlign = TextAlign.Center, modifier = Modifier.testTag("startup_tagline"))
-                CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
-                Text(stringResource(R.string.startup_loading), style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+internal class AppStartup(private val activity: ComponentActivity, content: @Composable () -> Unit) {
+    private val root = FrameLayout(activity)
+    private val splash = activity.layoutInflater.inflate(R.layout.app_startup, root, false)
+    private var firstFrameDrawn = false
+    private var catalogReady = false
+    private var page: (@Composable () -> Unit)? = content
+
+    init {
+        root.addView(splash)
+        activity.setContentView(root)
+        // Give the native indicator a frame on RenderThread before composing the album.
+        splash.doOnPreDraw {
+            splash.post {
+                firstFrameDrawn = true
+                showPageIfReady()
             }
         }
+    }
+
+    fun onCatalogReady() {
+        catalogReady = true
+        showPageIfReady()
+    }
+
+    private fun showPageIfReady() {
+        val content = page ?: return
+        if (!firstFrameDrawn || !catalogReady || activity.isFinishing || activity.isDestroyed) return
+        page = null
+        val album = ComposeView(activity).apply {
+            id = R.id.apm_page
+            setContent(content = content)
+        }
+        root.addView(album, 0)
+        album.doOnPreDraw {
+            // Initial Compose layout can use up a frame. Start the fade on a fresh vsync
+            // after the first frame with both layers has been submitted to the renderer.
+            if (album.isHardwareAccelerated) {
+                album.viewTreeObserver.registerFrameCommitCallback { splash.postOnAnimation(::fadeSplash) }
+            } else {
+                splash.postOnAnimation(::fadeSplash)
+            }
+        }
+    }
+
+    private fun fadeSplash() {
+        val scale = Settings.Global.getFloat(activity.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f)
+        val durationNanos = 180_000_000L * scale
+        if (!ValueAnimator.areAnimatorsEnabled() || durationNanos <= 0f) {
+            finishHandoff()
+            return
+        }
+        val clock = Choreographer.getInstance()
+        val easing = AccelerateDecelerateInterpolator()
+        var previousFrame = 0L
+        var progress = 0f
+        clock.postFrameCallback(object : Choreographer.FrameCallback {
+            override fun doFrame(frameTimeNanos: Long) {
+                if (!splash.isAttachedToWindow) return
+                if (previousFrame != 0L) {
+                    // Thumbnail uploads may miss a vsync. Keep intermediate opacities visible
+                    // instead of letting one late frame consume the entire fade.
+                    val step = ((frameTimeNanos - previousFrame) / durationNanos).coerceAtMost(0.125f)
+                    progress = (progress + step).coerceAtMost(1f)
+                    splash.alpha = 1f - easing.getInterpolation(progress)
+                }
+                previousFrame = frameTimeNanos
+                when {
+                    progress >= 1f -> finishHandoff()
+                    progress > 0f && splash.isHardwareAccelerated ->
+                        splash.viewTreeObserver.registerFrameCommitCallback { clock.postFrameCallback(this) }
+                    else -> clock.postFrameCallback(this)
+                }
+            }
+        })
+    }
+
+    private fun finishHandoff() {
+        root.removeView(splash)
+        activity.reportFullyDrawn()
     }
 }

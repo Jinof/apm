@@ -22,7 +22,8 @@ internal fun AnnotationTaskCard(task: AnnotationTaskProgress?, busy: Boolean, on
     }
     ElevatedCard(Modifier.fillMaxWidth().testTag("annotation_task_card")) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("全量标注", style = MaterialTheme.typography.titleMedium)
+            FilledTonalButton(onClick = onStart, enabled = !busy,
+                modifier = Modifier.fillMaxWidth().testTag("annotate_all")) { Text("开始全量标注") }
             if (task == null) {
                 Text("处理全部已授权照片，跳过已有当前模型标注的图片。", style = MaterialTheme.typography.bodyMedium)
             } else {
@@ -58,8 +59,6 @@ internal fun AnnotationTaskCard(task: AnnotationTaskProgress?, busy: Boolean, on
                         style = MaterialTheme.typography.bodySmall)
                 }
             }
-            FilledTonalButton(onClick = onStart, enabled = !busy,
-                modifier = Modifier.fillMaxWidth().testTag("annotate_all")) { Text("开始全量标注") }
         }
     }
 }

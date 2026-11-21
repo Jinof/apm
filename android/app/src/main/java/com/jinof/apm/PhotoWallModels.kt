@@ -9,11 +9,6 @@ import java.time.temporal.ChronoUnit
 import java.time.temporal.TemporalAdjusters
 import kotlin.math.ceil
 
-enum class PhotoWallDisplayMode(val label: String) {
-    THUMBNAILS("缩略图"),
-    DETAILS("明细"),
-}
-
 enum class PhotoHeatmapGranularity(val label: String) {
     DAY("每天"),
     WEEK("每周"),

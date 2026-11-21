@@ -55,10 +55,13 @@ internal enum class DockDestination(val label: String) {
 internal fun Context.openDockDestination(destination: DockDestination) {
     startActivity(
         Intent(this, MainActivity::class.java)
-            .putExtra(EXTRA_DOCK_DESTINATION, destination.name)
+            .putDockDestination(destination)
             .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP),
     )
 }
+
+internal fun Intent.putDockDestination(destination: DockDestination): Intent =
+    putExtra(EXTRA_DOCK_DESTINATION, destination.name)
 
 internal fun Intent.dockDestination(): DockDestination =
     getStringExtra(EXTRA_DOCK_DESTINATION)
@@ -69,8 +72,6 @@ internal fun Intent.dockDestination(): DockDestination =
 @Composable
 internal fun AppDockPager(
     requestedDestination: DockDestination,
-    busy: Boolean,
-    searchEnabled: Boolean,
     onExit: () -> Unit,
     onDestinationSettled: (DockDestination) -> Unit,
     pageContent: @Composable (DockDestination, (DockDestination) -> Unit) -> Unit,
@@ -126,8 +127,6 @@ internal fun AppDockPager(
         bottomBar = {
             AppBottomDock(
                 selected = selected,
-                busy = busy,
-                searchEnabled = searchEnabled,
                 onNavigate = navigate,
             )
         },
@@ -147,7 +146,6 @@ internal fun AppDockPager(
                 .semantics {
                     contentDescription = "平滑横向分页，当前${selected.label}页面"
                 },
-            beyondBoundsPageCount = 1,
             key = { destinations[it].name },
         ) { page ->
             val destination = destinations[page]
@@ -168,8 +166,6 @@ internal fun AppDockPager(
 @Composable
 internal fun AppBottomDock(
     selected: DockDestination,
-    busy: Boolean,
-    searchEnabled: Boolean,
     onNavigate: (DockDestination) -> Unit,
 ) {
     val destinations = DockDestination.entries
@@ -181,14 +177,9 @@ internal fun AppBottomDock(
             },
     ) {
         destinations.forEach { destination ->
-            val enabled = when (destination) {
-                DockDestination.AGENT -> searchEnabled && !busy
-                else -> true
-            }
             NavigationBarItem(
                 selected = destination == selected,
                 onClick = { onNavigate(destination) },
-                enabled = enabled,
                 icon = {
                     Icon(
                         imageVector = when (destination) {
@@ -200,7 +191,7 @@ internal fun AppBottomDock(
                         contentDescription = when (destination) {
                             DockDestination.ALBUM -> "相册首页"
                             DockDestination.HEATMAP -> "年度热力图"
-                            DockDestination.AGENT -> "Agent 搜索"
+                            DockDestination.AGENT -> "Agent"
                             DockDestination.SETTINGS -> "模型设置"
                         },
                     )
@@ -231,6 +222,6 @@ private fun DockDestination.testTag(): String = when (this) {
 private fun DockDestination.contentDescription(): String = when (this) {
     DockDestination.ALBUM -> "相册首页"
     DockDestination.HEATMAP -> "年度热力图"
-    DockDestination.AGENT -> "Agent 搜索"
+    DockDestination.AGENT -> "Agent"
     DockDestination.SETTINGS -> "模型设置"
 }
