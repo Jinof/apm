@@ -4,13 +4,11 @@ import android.Manifest
 import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
-import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
 import android.util.Log
-import android.util.Size
 import androidx.activity.ComponentActivity
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.PickVisualMediaRequest
@@ -43,8 +41,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items as gridItems
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -73,9 +73,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -89,9 +89,8 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
@@ -107,8 +106,6 @@ import java.time.format.DateTimeFormatter
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.abs
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 
 private enum class AnnotationScope(val label: String) {
     SELECTED("所选"),
@@ -607,6 +604,8 @@ internal fun GalleryScreen(
     selectedRange: PhotoHeatmapSelection?,
     onClearRange: () -> Unit,
     onPhoto: (String, String) -> Unit,
+    gridState: LazyGridState = rememberLazyGridState(),
+    thumbnailLoader: PhotoThumbnailLoader = rememberPhotoThumbnailLoader(),
 ) {
     var searchOpen by rememberSaveable { mutableStateOf(false) }
     val zone = ZoneId.systemDefault()
@@ -617,6 +616,16 @@ internal fun GalleryScreen(
     }
     val width = LocalConfiguration.current.screenWidthDp.dp
     val requestSize = with(LocalDensity.current) { (width / 6).roundToPx().coerceAtLeast(1) }
+    val loadableKeys by remember(gridState) {
+        derivedStateOf {
+            if (gridState.isScrollInProgress) emptySet() else {
+                val layout = gridState.layoutInfo
+                layout.visibleItemsInfo.asSequence().filter {
+                    it.offset.y < layout.viewportEndOffset && it.offset.y + it.size.height > layout.viewportStartOffset
+                }.mapTo(mutableSetOf()) { it.key }
+            }
+        }
+    }
     Box(Modifier.fillMaxSize().windowInsetsPadding(
         WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal),
     ).pointerInput(onHeatmap) {
@@ -636,37 +645,58 @@ internal fun GalleryScreen(
     }) {
         LazyVerticalGrid(
             columns = GridCells.Fixed(6),
+            state = gridState,
             modifier = Modifier.fillMaxSize().testTag("photo_wall_gesture_surface").semantics {
                 contentDescription = "照片墙，从左边缘向右滑动打开年度照片热力图"
             },
             horizontalArrangement = Arrangement.spacedBy(2.dp),
             verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
-            if (selectedRange != null) {
-                item(span = { GridItemSpan(maxLineSpan) }) {
-                    Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text("只看 ${heatmapSelectionLabel(selectedRange)} · ${selectedRange.count} 张照片",
-                            Modifier.weight(1f).testTag("selected_photo_range_summary"))
-                        TextButton(onClick = onClearRange, modifier = Modifier.testTag("clear_photo_range")) {
-                            Text("显示全部时间")
+            item(key = "album_header", span = { GridItemSpan(maxLineSpan) }, contentType = "header") {
+                Column(Modifier.fillMaxWidth()) {
+                    if (state.catalogError == null || state.galleryPhotos.isNotEmpty()) {
+                        Text(
+                            "${state.galleryPhotos.size} 张照片",
+                            modifier = Modifier.align(Alignment.CenterHorizontally).padding(vertical = 12.dp)
+                                .testTag("album_total"),
+                            style = MaterialTheme.typography.titleLarge,
+                        )
+                    }
+                    if (selectedRange != null) {
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text("只看 ${heatmapSelectionLabel(selectedRange)} · ${selectedRange.count} 张照片",
+                                Modifier.weight(1f).testTag("selected_photo_range_summary"))
+                            TextButton(onClick = onClearRange, modifier = Modifier.testTag("clear_photo_range")) {
+                                Text("显示全部时间")
+                            }
                         }
                     }
-                }
-            }
-            state.catalogError?.let { error ->
-                item(span = { GridItemSpan(maxLineSpan) }) {
-                    Text(error, Modifier.padding(16.dp).testTag("album_read_error"))
+                    state.catalogError?.let { error ->
+                        Text(error, Modifier.padding(16.dp).testTag("album_read_error"))
+                    }
+                    photos.firstOrNull()?.let { latest ->
+                        Text(
+                            formatCaptureDate(latest.dateTakenMillis, zone),
+                            modifier = Modifier.padding(start = 12.dp, top = 4.dp, bottom = 6.dp)
+                                .testTag("album_latest_date"),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
             }
             gridItems(photos, key = { it.photoId }) { photo ->
                 PhotoWallThumbnail(
                     photo = photo,
                     requestSize = requestSize,
+                    loader = thumbnailLoader,
+                    canLoad = { photo.photoId in loadableKeys },
                     annotating = state.annotationTask?.activePhotoIds?.contains(photo.photoId) == true,
                     onClick = { onPhoto(photo.photoId, photo.uri) },
                 )
             }
         }
+        FloatingPhotoDate(gridState, photos, zone, Modifier.align(Alignment.TopStart))
         if (photos.isEmpty() && state.catalogError == null && selectedRange == null) {
             Box(Modifier.align(Alignment.Center).padding(horizontal = 48.dp)) {
                 EmptyState(Icons.Outlined.PhotoLibrary, "相册里还没有照片", "在底部 Agent 中点“选择照片”，所选照片就会显示在这里。")
@@ -683,6 +713,7 @@ internal fun GalleryScreen(
             onDismissRequest = { searchOpen = false },
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         ) {
+            val focus = LocalFocusManager.current
             LazyColumn(
                 modifier = Modifier.fillMaxWidth().imePadding().testTag("album_search"),
                 contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp),
@@ -704,7 +735,12 @@ internal fun GalleryScreen(
                         Text("没有找到匹配照片，试试其他关键词。")
                     }
                     items(state.results, key = { it.photoId }) { photo ->
-                        PhotoResultCard(photo, annotating = state.annotationTask?.activePhotoIds?.contains(photo.photoId) == true) {
+                        PhotoResultCard(
+                            photo = photo,
+                            annotating = state.annotationTask?.activePhotoIds?.contains(photo.photoId) == true,
+                            loader = thumbnailLoader,
+                        ) {
+                            focus.clearFocus()
                             onPhoto(photo.photoId, photo.uri)
                         }
                     }
@@ -716,15 +752,42 @@ internal fun GalleryScreen(
 }
 
 @Composable
+private fun FloatingPhotoDate(
+    gridState: LazyGridState,
+    photos: List<GalleryPhotoCard>,
+    zone: ZoneId,
+    modifier: Modifier,
+) {
+    val firstPhoto by remember(gridState, photos) {
+        derivedStateOf {
+            val layout = gridState.layoutInfo
+            val first = layout.visibleItemsInfo.firstOrNull { it.offset.y + it.size.height > layout.viewportStartOffset }
+            // The single full-span header is item zero, even in a filtered range.
+            first?.let { item -> photos.getOrNull(item.index - 1)?.takeIf { it.photoId == item.key } }
+        }
+    }
+    firstPhoto?.let { photo ->
+        Text(
+            remember(photo.dateTakenMillis, zone) { formatCaptureDate(photo.dateTakenMillis, zone) },
+            modifier = modifier.padding(start = 8.dp, top = 4.dp)
+                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.94f), RoundedCornerShape(8.dp))
+                .padding(horizontal = 8.dp, vertical = 3.dp).testTag("album_floating_date"),
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+    }
+}
+
+@Composable
 private fun SearchPanel(
     state: GalleryUiState,
     onQueryChange: (String) -> Unit,
     onSearch: () -> Unit,
     onSuggestion: (String) -> Unit,
 ) {
-    val keyboard = LocalSoftwareKeyboardController.current
+    val focus = LocalFocusManager.current
     val submit = {
-        keyboard?.hide()
+        focus.clearFocus()
         onSearch()
     }
     Column(Modifier.fillMaxWidth()) {
@@ -761,7 +824,7 @@ private fun SearchPanel(
                 items(state.search.suggestions) { suggestion ->
                     AssistChip(
                         onClick = {
-                            keyboard?.hide()
+                            focus.clearFocus()
                             onSuggestion(suggestion)
                         },
                         enabled = !state.busy,
@@ -786,13 +849,16 @@ internal fun PhotoWallThumbnail(
     photo: GalleryPhotoCard,
     annotating: Boolean = false,
     requestSize: Int = 180,
+    loader: PhotoThumbnailLoader = rememberPhotoThumbnailLoader(),
+    canLoad: () -> Boolean = { true },
     onClick: () -> Unit,
 ) {
     Thumbnail(
-        uriText = photo.uri,
+        key = PhotoThumbnailKey(photo.photoId, photo.uri, requestSize),
+        loader = loader,
+        canLoad = canLoad,
         modifier = Modifier.fillMaxWidth().aspectRatio(1f)
             .testTag("photo_wall_thumbnail_${photo.photoId}"),
-        requestSize = requestSize,
         details = photo.savedDetails(),
         annotating = annotating,
         imageDescription = photo.displayName,
@@ -849,14 +915,26 @@ private fun EmptyState(
 }
 
 @Composable
-internal fun PhotoResultCard(photo: PhotoCard, annotating: Boolean = false, onClick: () -> Unit) {
+internal fun PhotoResultCard(
+    photo: PhotoCard,
+    annotating: Boolean = false,
+    loader: PhotoThumbnailLoader = rememberPhotoThumbnailLoader(),
+    onClick: () -> Unit,
+) {
     ElevatedCard(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
         shape = MaterialTheme.shapes.large,
         elevation = CardDefaults.elevatedCardElevation(defaultElevation = 1.dp),
     ) {
         Row(Modifier.padding(12.dp)) {
-            Thumbnail(photo.uri, imageDescription = photo.displayName, details = photo.savedDetails(), annotating = annotating)
+            Thumbnail(
+                key = PhotoThumbnailKey(photo.photoId, photo.uri, 360),
+                loader = loader,
+                modifier = Modifier.size(116.dp),
+                imageDescription = photo.displayName,
+                details = photo.savedDetails(),
+                annotating = annotating,
+            )
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
                 Text(
@@ -906,33 +984,20 @@ internal fun PhotoResultCard(photo: PhotoCard, annotating: Boolean = false, onCl
     }
 }
 
-@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
-private val thumbnailDispatcher = Dispatchers.IO.limitedParallelism(4)
-
 @Composable
 private fun Thumbnail(
-    uriText: String,
-    modifier: Modifier = Modifier.size(116.dp),
-    requestSize: Int = 360,
+    key: PhotoThumbnailKey,
+    loader: PhotoThumbnailLoader,
+    modifier: Modifier,
+    canLoad: () -> Boolean = { true },
     imageDescription: String = "照片缩略图",
     details: StoredAnnotationDetails? = null,
     annotating: Boolean = false,
     onPhotoClick: (() -> Unit)? = null,
 ) {
     val compact = onPhotoClick != null
-    var detailsOpen by remember(uriText) { mutableStateOf(false) }
-    val context = LocalContext.current
-    val bitmap by produceState<Bitmap?>(initialValue = null, key1 = uriText, key2 = requestSize) {
-        value = withContext(thumbnailDispatcher) {
-            runCatching {
-                context.contentResolver.loadThumbnail(
-                    Uri.parse(uriText),
-                    Size(requestSize, requestSize),
-                    null,
-                )
-            }.getOrNull()
-        }
-    }
+    var detailsOpen by remember(key.photoId) { mutableStateOf(false) }
+    val bitmap = loader.rememberBitmap(key, canLoad)
     Box(
         modifier = modifier
             .then(if (compact) Modifier else Modifier.clip(MaterialTheme.shapes.medium))
@@ -947,7 +1012,7 @@ private fun Thumbnail(
             )
         } else if (bitmap != null) {
             Image(
-                bitmap = bitmap!!.asImageBitmap(),
+                bitmap = bitmap.asImageBitmap(),
                 contentDescription = if (compact) null else imageDescription,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
@@ -992,9 +1057,7 @@ private fun formatDate(photo: PhotoCard): String {
     return formatCaptureDate(photo.dateTakenMillis)
 }
 
-private fun formatCaptureDate(millis: Long?): String {
+private fun formatCaptureDate(millis: Long?, zone: ZoneId = ZoneId.systemDefault()): String {
     if (millis == null) return "拍摄时间未记录"
-    return DateTimeFormatter.ofPattern("yyyy-MM-dd")
-        .withZone(ZoneId.systemDefault())
-        .format(Instant.ofEpochMilli(millis))
+    return Instant.ofEpochMilli(millis).atZone(zone).toLocalDate().format(DateTimeFormatter.ISO_LOCAL_DATE)
 }
