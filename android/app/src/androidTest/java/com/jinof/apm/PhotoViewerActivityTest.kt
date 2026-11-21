@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.os.ParcelFileDescriptor
 import android.provider.MediaStore
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -32,6 +33,7 @@ import java.io.File
 import java.io.FileOutputStream
 import java.security.MessageDigest
 import java.util.UUID
+import kotlin.math.roundToInt
 
 @RunWith(AndroidJUnit4::class)
 class PhotoViewerActivityTest {
@@ -110,7 +112,39 @@ class PhotoViewerActivityTest {
             }
             composeRule.onNodeWithTag("photo_viewer_image")
                 .assertContentDescriptionEquals(photos[1].displayName)
+            scenario.recreate()
+            composeRule.waitUntil(10_000) {
+                composeRule.onAllNodes(hasTestTag("photo_viewer_image") and
+                    hasContentDescription(photos[1].displayName)).fetchSemanticsNodes().size == 1
+            }
             captureViewerScreenshot()
+
+            val viewer = composeRule.onNodeWithTag("photo_viewer")
+            val view = viewer.fetchSemanticsNode().boundsInRoot
+            val thumb = composeRule.onNodeWithTag("photo_viewer_scrubber").fetchSemanticsNode().boundsInRoot
+            viewer.performTouchInput {
+                val start = thumb.center - view.topLeft
+                swipe(start, Offset(start.x, view.height * 0.06f))
+            }
+            composeRule.onNodeWithTag("photo_viewer_position").assertTextEquals("1 / $totalPhotos")
+            composeRule.waitUntil(10_000) {
+                composeRule.onAllNodes(hasTestTag("photo_viewer_image") and
+                    hasContentDescription(photos[0].displayName)).fetchSemanticsNodes().size == 1
+            }
+            val origin = IntArray(2)
+            scenario.onActivity { it.window.decorView.getLocationOnScreen(origin) }
+            val x = origin[0] + (view.left + view.width * 0.90f).roundToInt()
+            fun screenY(fraction: Float) = origin[1] + (view.top + view.height * fraction).roundToInt()
+            fun fastSwipe(from: Float, to: Float) {
+                val command = "input swipe $x ${screenY(from)} $x ${screenY(to)} 180"
+                val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+                ParcelFileDescriptor.AutoCloseInputStream(automation.executeShellCommand(command)).use { it.readBytes() }
+            }
+            fastSwipe(0.10f, 0.90f)
+            composeRule.onNodeWithTag("photo_viewer_position").assertTextEquals("$totalPhotos / $totalPhotos")
+            fastSwipe(0.80f, 0.05f)
+            composeRule.onNodeWithTag("photo_viewer_position").assertTextEquals("1 / $totalPhotos")
+            assertEquals(originalHash, hashUri(context, photos[0].uri))
         } finally {
             scenario?.close()
             try {
@@ -157,7 +191,7 @@ class PhotoViewerActivityTest {
         val fixtures = listOf(
             Triple(Color.rgb(31, 112, 170), 3_072, 2_048),
             Triple(Color.rgb(198, 101, 48), 2_560, 1_440),
-        )
+        ) + List(6) { index -> Triple(Color.rgb(48, 72 + index * 20, 168), 160, 120) }
         return fixtures.mapIndexed { index, (color, width, height) ->
             val fixtureId = UUID.randomUUID().toString()
             val displayName = "apm-viewer-test-$fixtureId-$index.png"
@@ -203,7 +237,7 @@ class PhotoViewerActivityTest {
                 dateTakenMillis = baseCaptureTime - index,
             )
         }.also { photos ->
-            assertEquals(2, photos.size)
+            assertEquals(fixtures.size, photos.size)
             assertEquals(photos.map { it.photoId }.distinct(), photos.map { it.photoId })
         }
     }

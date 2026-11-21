@@ -1,11 +1,11 @@
 meta:
   title "AI Photo Manager System Promise"
   domain photo_management
-  version v47
+  version v48
   status active
   owner product
-  summary "Roadmap 0.5.0 shows five photos per album row, photo search results with wrapping tags and categories, and a full tag directory ranked by photo count. The album shows its total, latest and first-visible capture dates and defers thumbnail reads while scrolling. The app supports an album with right-edge local search, Agent-owned annotation actions, per-API numbered thumbnail collages of one through eight photos, default one, plus bounded request concurrency defaulting to eight, automatic entry after local startup loading, list-first API settings with top add action, right-side edit/activate controls and a separate editor, read-only saved annotation details, session-scoped annotation selection, read-only photo browsing, heatmaps, full-resolution viewing, external multimodal annotation and local or Agent search, with one model settings card and no duplicate detection or person/pet recognition."
-  source "README Roadmap 0.5.0 UI 优化"
+  summary "Roadmap 0.6.0 adds a proportional vertical photo scrubber to the full-screen viewer. Album rows show five photos, search results show wrapping tags and categories, and the full tag directory ranks tags by photo count. The album shows its total, latest and first-visible capture dates and defers thumbnail reads while scrolling. The app supports an album with right-edge local search, Agent-owned annotation actions, per-API numbered thumbnail collages of one through eight photos, default one, plus bounded request concurrency defaulting to eight, automatic entry after local startup loading, list-first API settings with top add action, right-side edit/activate controls and a separate editor, read-only saved annotation details, session-scoped annotation selection, read-only photo browsing, heatmaps, full-resolution viewing, external multimodal annotation and local or Agent search, with one model settings card and no duplicate detection or person/pet recognition."
+  source "README Roadmap 0.6.0 UI 优化"
 
 resource User kind actor:
   label "用户"
@@ -176,9 +176,11 @@ field AndroidPhotoViewerFieldPromise for AndroidPhotoViewer:
   field displayBitmap type json required false nullable true default null semantic "Metadata for an in-memory decode made directly from the selected original content URI at the decoder's complete orientation-correct intrinsic width and height; decoded pixels are never persisted as a new photo." mutable true system true readers view writers view
   field zoomScale type number required true nullable false default 1 semantic "Current selected-photo scale clamped from 1 through an image-specific maximum that is at least 5 and large enough to inspect one original image pixel per display pixel, reset to 1 when the selected photo changes." mutable true system false readers view writers view
   field panOffset type json required true nullable false default "{\"x\":0,\"y\":0}" semantic "Ephemeral display translation clamped to prevent the zoomed image from being panned entirely away, reset to zero when the selected photo changes." mutable true system false readers view writers view
+  field scrubFraction type number required false nullable true default null semantic "Transient finger position on the viewer track, clamped to 0 through 1 while dragging and null once released. At rest the thumb position derives from the selected photo's index." mutable true system false readers view writers view
   invariant AndroidPhotoViewer.accessible_sequence statement "photoIds contains every distinct currently accessible AndroidPhotoWall.photoIds identity once in the same stable order, and selectedPhotoId is null only while no valid accessible photo can be selected." refs AndroidPhotoViewer.photoIds,AndroidPhotoViewer.selectedPhotoId,AndroidPhotoWall.photoIds
   invariant AndroidPhotoViewer.original_decode statement "A successful displayBitmap is decoded read-only from the selected AndroidMediaLocation.uri without loadThumbnail, target-size reduction, sampling, cropping, or other resolution loss; its dimensions equal the decoder's orientation-correct intrinsic original dimensions." refs AndroidPhotoViewer.displayBitmap,AndroidPhotoViewer.selectedPhotoId,AndroidMediaLocation.uri
   invariant AndroidPhotoViewer.zoom_bounds statement "zoomScale remains between 1 and max(5, nativePixelScale), where nativePixelScale fits one decoded original pixel to one display pixel; panOffset remains bounded and selecting another photo resets both values before its bitmap is shown." refs AndroidPhotoViewer.zoomScale,AndroidPhotoViewer.panOffset,AndroidPhotoViewer.selectedPhotoId
+  invariant AndroidPhotoViewer.scrubber_position statement "The first and last accessible photos anchor the thumb center at 10% and 80% of the full viewer height, with equal spacing between photo indices and a fixed physical horizontal center at 90% of its width. A single photo anchors at the start. The thumb is absent when no photo is selected." refs AndroidPhotoViewer.photoIds,AndroidPhotoViewer.selectedPhotoId,AndroidPhotoViewer.scrubFraction
   forbid AndroidPhotoViewer.no_external_handoff statement "Opening or navigating the viewer cannot dispatch the selected content URI through an ACTION_VIEW or other external-app handoff." refs AndroidPhotoViewer.selectedPhotoId,AndroidMediaLocation.uri
   forbid AndroidPhotoViewer.no_original_mutation statement "Viewing, decoding, zooming, panning, and navigating never update, move, rename, trash, delete, or rewrite an original photo." refs AndroidPhotoViewer.displayBitmap,AndroidMediaLocation.uri
 
@@ -325,15 +327,16 @@ function ViewAndroidPhotoFunctionPromise action view:
   label "在 APM 内查看照片 Function Promise"
   summary "Opens the tapped accessible photo in APM's native full-screen viewer, decodes its complete original image resolution, supports original-pixel zoom and bounded pan, and navigates the stable accessible-photo sequence."
   depends AndroidMediaLocationFieldPromise,AndroidPhotoWallFieldPromise,AndroidPhotoViewerFieldPromise
-  trigger "The user taps an accessible photo in the photo wall, text search, Agent search, or similar-photo results, or selects previous or next inside the viewer."
+  trigger "The user taps an accessible photo in the photo wall, text search, Agent search, or similar-photo results, selects previous or next, or adjusts the full-screen viewer scrubber."
   precondition ViewAndroidPhoto.accessible_photo statement "The requested photoId maps to a currently accessible URI in the app-private catalog." refs AndroidMediaLocation.photoId,AndroidMediaLocation.uri,AndroidMediaLocation.accessible
   reads AndroidPhotoWall.photoIds,AndroidMediaLocation.photoId,AndroidMediaLocation.uri,AndroidMediaLocation.displayName,AndroidMediaLocation.dateTakenMillis,AndroidMediaLocation.accessible
-  writes AndroidPhotoViewer.photoIds,AndroidPhotoViewer.selectedPhotoId,AndroidPhotoViewer.displayBitmap,AndroidPhotoViewer.zoomScale,AndroidPhotoViewer.panOffset
+  writes AndroidPhotoViewer.photoIds,AndroidPhotoViewer.selectedPhotoId,AndroidPhotoViewer.displayBitmap,AndroidPhotoViewer.zoomScale,AndroidPhotoViewer.panOffset,AndroidPhotoViewer.scrubFraction
   ensure ViewAndroidPhoto.in_app_destination statement "Opening from every APM photo-result surface starts the private native PhotoViewerActivity and keeps the user inside APM rather than resolving an external image application." refs AndroidPhotoViewer.selectedPhotoId,AndroidMediaLocation.uri
   ensure ViewAndroidPhoto.exact_initial_selection statement "The first selectedPhotoId equals the exact accessible photoId tapped by the user, even when it originated in search or similarity results." refs AndroidPhotoViewer.selectedPhotoId,AndroidMediaLocation.photoId
   ensure ViewAndroidPhoto.aspect_fit statement "The selected original URI is decoded off the main thread with ImageDecoder at its complete orientation-correct intrinsic dimensions and preserved aspect ratio, then shown fully fit on a dark full-screen surface at scale 1 without a thumbnail request or target size." refs AndroidPhotoViewer.displayBitmap,AndroidPhotoViewer.zoomScale
   ensure ViewAndroidPhoto.zoom_and_pan statement "Pinch gestures clamp scale from 1 through max(5, nativePixelScale), permitting at least one original pixel per display pixel; pan remains bounded while zoomed, and changing selectedPhotoId resets scale and pan before rendering that photo." refs AndroidPhotoViewer.zoomScale,AndroidPhotoViewer.panOffset,AndroidPhotoViewer.selectedPhotoId
   ensure ViewAndroidPhoto.adjacent_navigation statement "Visible previous and next controls move by one through the stable accessible wall order, disable at sequence boundaries, and show the current one-based position and total count." refs AndroidPhotoViewer.photoIds,AndroidPhotoViewer.selectedPhotoId
+  ensure ViewAndroidPhoto.scrub_navigation statement "A translucent frosted thumb with white up and down chevrons is 1% of the viewer width and 2% of its height. Dragging its enlarged touch target selects the nearest photo throughout the drag and aligns to that photo on release. Adjacent navigation and accessibility adjustments update the same selection and counter. Photo gestures outside the thumb remain available." refs AndroidPhotoViewer.photoIds,AndroidPhotoViewer.selectedPhotoId,AndroidPhotoViewer.scrubFraction
   reject ViewAndroidPhoto.inaccessible_or_unreadable statement "A missing, newly inaccessible, or undecodable URI shows an in-app error state and never falls back to an external viewer or fabricates image content." refs AndroidMediaLocation.uri,AndroidMediaLocation.accessible,AndroidPhotoViewer.displayBitmap
   sideeffect ViewAndroidPhoto.read_only statement "The function reads the app-private catalog and selected content URI only; navigation and gesture state are ephemeral and no MediaStore or annotation row is written." refs AndroidMediaLocation.uri,AndroidPhotoViewer.selectedPhotoId,AndroidPhotoViewer.zoomScale,AndroidPhotoViewer.panOffset
   idempotency "Opening the same accessible photo against the same catalog order selects the same item and decodes the same complete original dimensions; gesture state always starts at scale 1 and zero pan."
@@ -596,3 +599,16 @@ verify Roadmap050Verification kind cross-cutting:
     then "The empty state or every latest accessible tag and its count can be reached in frequency order, long labels wrap, dismissal preserves the search and selection runs a keyword search."
   evidence "Tag count unit tests, emulator layout and search navigation tests, and isolated Android build and package checks."
   fail "A row holds the wrong number of photos, a label is truncated, or tag counts depend on a suggestion sample or an active search."
+
+verify Roadmap060Verification kind cross-cutting:
+  label "0.6.0 全屏照片滑动条"
+  claim "The full-screen thumb tracks the active photo and can navigate the entire ordered accessible album."
+  verifies AndroidPhotoViewerFieldPromise,ViewAndroidPhotoFunctionPromise
+  methods unit,integration,review
+  scenario "proportional navigation":
+    covers AndroidPhotoViewer.scrubber_position,ViewAndroidPhoto.scrub_navigation,ViewAndroidPhoto.adjacent_navigation,ViewAndroidPhoto.zoom_and_pan
+    given "A full-screen viewer opened on a chosen photo, including an empty, single-photo or multi-photo sequence."
+    when "Dragging the thumb in either direction, reaching the ends, adjusting it through accessibility, paging with the buttons or resizing the viewport."
+    then "The thumb has proportional bounds and two white arrows. The counter and selected image agree, the endpoints clamp, a single photo stays at the start, and gestures outside the thumb can still zoom and pan."
+  evidence "Index mapping tests, emulator geometry and touch assertions, viewer screenshots and isolated Android build checks."
+  fail "The thumb drifts from the current photo, misses either endpoint, hides valid photos or captures image gestures outside its touch target."

@@ -28,6 +28,23 @@ class PhotoViewerModelsTest {
     }
 
     @Test
+    fun scrubberSelectsTheNearestPhotoAndClampsBothEnds() {
+        assertEquals(-1, PhotoViewerNavigator.indexAtFraction(0.5f, 0))
+        assertEquals(0f, PhotoViewerNavigator.scrubFraction(0, 1), 0f)
+        assertEquals(0, PhotoViewerNavigator.indexAtFraction(1f, 1))
+        assertEquals(0, PhotoViewerNavigator.indexAtFraction(-0.2f, 5))
+        assertEquals(1, PhotoViewerNavigator.indexAtFraction(0.374f, 5))
+        assertEquals(2, PhotoViewerNavigator.indexAtFraction(0.375f, 5))
+        assertEquals(4, PhotoViewerNavigator.indexAtFraction(1.2f, 5))
+        for (count in listOf(2, 5, 10_001)) {
+            for (index in 0 until count) {
+                val position = PhotoViewerNavigator.scrubFraction(index, count)
+                assertEquals(index, PhotoViewerNavigator.indexAtFraction(position, count))
+            }
+        }
+    }
+
+    @Test
     fun zoomAndPanClampToFitImageAndViewportBounds() {
         val transformed = PhotoViewerTransformPolicy.update(
             current = PhotoViewerTransform(),

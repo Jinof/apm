@@ -46,6 +46,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.AbsoluteAlignment
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -58,6 +59,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.time.Instant
 import java.time.ZoneId
@@ -100,12 +103,19 @@ class PhotoViewerActivity : ComponentActivity() {
                 PhotoViewerScreen(
                     state = state,
                     onBack = ::finish,
-                    onPrevious = ::showPrevious,
-                    onNext = ::showNext,
+                    onSelect = ::selectPhoto,
                 )
             }
         }
-        loadPhotos()
+        loadPhotos(savedInstanceState)
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        state.selectedPhoto?.let { photo ->
+            outState.putString(EXTRA_PHOTO_ID, photo.photoId)
+            outState.putString(EXTRA_URI, photo.uri)
+        }
     }
 
     override fun onDestroy() {
@@ -114,9 +124,10 @@ class PhotoViewerActivity : ComponentActivity() {
         super.onDestroy()
     }
 
-    private fun loadPhotos() {
-        val requestedPhotoId = intent.getStringExtra(EXTRA_PHOTO_ID).orEmpty()
-        val requestedUri = intent.getStringExtra(EXTRA_URI).orEmpty()
+    private fun loadPhotos(selection: Bundle?) {
+        val requestedPhotoId = selection?.getString(EXTRA_PHOTO_ID)
+            ?: intent.getStringExtra(EXTRA_PHOTO_ID).orEmpty()
+        val requestedUri = selection?.getString(EXTRA_URI) ?: intent.getStringExtra(EXTRA_URI).orEmpty()
         executor.execute {
             runCatching {
                 val photos = PhotoViewerNavigator.items(database.galleryPhotos())
@@ -144,14 +155,10 @@ class PhotoViewerActivity : ComponentActivity() {
         }
     }
 
-    private fun showPrevious() {
-        val index = PhotoViewerNavigator.previous(state.selectedIndex, state.photos.size)
-        if (index >= 0 && index != state.selectedIndex) state = state.copy(selectedIndex = index)
-    }
-
-    private fun showNext() {
-        val index = PhotoViewerNavigator.next(state.selectedIndex, state.photos.size)
-        if (index >= 0 && index != state.selectedIndex) state = state.copy(selectedIndex = index)
+    private fun selectPhoto(index: Int) {
+        if (index in state.photos.indices && index != state.selectedIndex) {
+            state = state.copy(selectedIndex = index)
+        }
     }
 
     companion object {
@@ -169,11 +176,15 @@ class PhotoViewerActivity : ComponentActivity() {
 private fun PhotoViewerScreen(
     state: PhotoViewerUiState,
     onBack: () -> Unit,
-    onPrevious: () -> Unit,
-    onNext: () -> Unit,
+    onSelect: (Int) -> Unit,
 ) {
     val photo = state.selectedPhoto
-    Box(
+    // A native original decode may still be finishing after the user has scrubbed past it.
+    val decodeLock = remember { Mutex() }
+    PhotoViewerScrubber(
+        selectedIndex = state.selectedIndex,
+        photoCount = state.photos.size,
+        onSelect = onSelect,
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black)
@@ -185,7 +196,7 @@ private fun PhotoViewerScreen(
                 modifier = Modifier.align(Alignment.Center).testTag("photo_viewer_loading"),
             )
             photo != null -> key(photo.photoId, photo.uri) {
-                ZoomableViewerImage(photo)
+                ZoomableViewerImage(photo, decodeLock)
             }
             else -> ViewerError(
                 message = state.error ?: "没有可查看的照片。",
@@ -251,7 +262,7 @@ private fun PhotoViewerScreen(
                     horizontalArrangement = Arrangement.Center,
                 ) {
                     IconButton(
-                        onClick = onPrevious,
+                        onClick = { onSelect(PhotoViewerNavigator.previous(state.selectedIndex, state.photos.size)) },
                         enabled = state.selectedIndex > 0,
                         modifier = Modifier.testTag("photo_viewer_previous"),
                     ) {
@@ -269,7 +280,7 @@ private fun PhotoViewerScreen(
                         modifier = Modifier.padding(horizontal = 14.dp),
                     )
                     IconButton(
-                        onClick = onNext,
+                        onClick = { onSelect(PhotoViewerNavigator.next(state.selectedIndex, state.photos.size)) },
                         enabled = state.selectedIndex < state.photos.lastIndex,
                         modifier = Modifier.testTag("photo_viewer_next"),
                     ) {
@@ -291,20 +302,22 @@ private fun PhotoViewerScreen(
 }
 
 @Composable
-private fun ZoomableViewerImage(photo: PhotoViewerItem) {
+private fun ZoomableViewerImage(photo: PhotoViewerItem, decodeLock: Mutex) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val loadState by produceState<ViewerImageLoadState>(
         initialValue = ViewerImageLoadState.Loading,
         key1 = photo.photoId,
         key2 = photo.uri,
     ) {
-        value = withContext(Dispatchers.IO) {
-            runCatching {
-                ViewerImageLoadState.Loaded(
-                    loadOriginalViewerBitmap(context.contentResolver, Uri.parse(photo.uri)),
-                )
-            }.getOrElse { error ->
-                ViewerImageLoadState.Failed(error.message ?: "照片读取失败。")
+        value = decodeLock.withLock {
+            withContext(Dispatchers.IO) {
+                runCatching {
+                    ViewerImageLoadState.Loaded(
+                        loadOriginalViewerBitmap(context.contentResolver, Uri.parse(photo.uri)),
+                    )
+                }.getOrElse { error ->
+                    ViewerImageLoadState.Failed(error.message ?: "照片读取失败。")
+                }
             }
         }
     }
@@ -369,7 +382,7 @@ private fun ZoomableBitmap(photo: PhotoViewerItem, bitmap: Bitmap) {
             Surface(
                 color = Color.Black.copy(alpha = 0.62f),
                 shape = MaterialTheme.shapes.large,
-                modifier = Modifier.align(Alignment.CenterEnd).padding(end = 16.dp),
+                modifier = Modifier.align(AbsoluteAlignment.CenterLeft).padding(horizontal = 16.dp),
             ) {
                 IconButton(
                     onClick = { transform = PhotoViewerTransform() },

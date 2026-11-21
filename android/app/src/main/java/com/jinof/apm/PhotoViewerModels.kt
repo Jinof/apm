@@ -2,6 +2,7 @@ package com.jinof.apm
 
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.roundToInt
 
 data class PhotoViewerItem(
     val photoId: String,
@@ -41,6 +42,12 @@ object PhotoViewerNavigator {
     fun previous(index: Int, size: Int): Int = (index - 1).coerceInValidRange(size)
 
     fun next(index: Int, size: Int): Int = (index + 1).coerceInValidRange(size)
+
+    fun scrubFraction(index: Int, size: Int): Float =
+        if (size > 1) index.coerceInValidRange(size).toFloat() / (size - 1) else 0f
+
+    fun indexAtFraction(fraction: Float, size: Int): Int =
+        if (size > 0) (fraction.coerceIn(0f, 1f).toDouble() * (size - 1)).roundToInt() else -1
 
     private fun Int.coerceInValidRange(size: Int): Int = when {
         size <= 0 -> -1
