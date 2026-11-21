@@ -12,6 +12,26 @@ class PhotoWallModelsTest {
     private val zoneId = ZoneId.of("Asia/Shanghai")
 
     @Test
+    fun scrubRangeIncludesHeaderOffsetsPartialLastRowsAndBothEnds() {
+        // Five 20px tiles plus four 2px gaps. Thirteen photos occupy three rows.
+        val range = PhotoWallScrollRange(13, headerHeight = 30, viewportWidth = 108, viewportHeight = 40, gap = 2)
+        assertEquals(WallScrollTarget(0), range.target(-0.1f))
+        assertEquals(WallScrollTarget(0, 28), range.target(0.5f))
+        assertEquals(WallScrollTarget(1, 10), range.target(0.75f))
+        assertEquals(WallScrollTarget(13), range.target(1f))
+        assertEquals(0.75f, range.fraction(1, 10, true, true), 0.0001f)
+        assertEquals(1f, range.fraction(6, 2, true, false), 0f)
+        assertEquals(0f, range.fraction(0, 0, false, false), 0f)
+        assertEquals(WallScrollTarget(0), PhotoWallScrollRange(0, 30, 108, 40, 2).target(1f))
+        val large = PhotoWallScrollRange(10_003, 123, 1081, 2017, 5)
+        for (percent in 1..99) {
+            val fraction = percent / 100f
+            val target = large.target(fraction)
+            assertEquals(fraction, large.fraction(target.item, target.offset, true, true), 0.00001f)
+        }
+    }
+
+    @Test
     fun groupsOnlyByRealLocalCaptureDayAndLeavesUnknownLast() {
         val beforeMidnight = card(
             "b",

@@ -8,6 +8,43 @@ import java.time.ZoneId
 import java.time.temporal.ChronoUnit
 import java.time.temporal.TemporalAdjusters
 import kotlin.math.ceil
+import kotlin.math.roundToLong
+
+internal const val ALBUM_COLUMNS = 5
+
+internal data class WallScrollTarget(val item: Int, val offset: Int = 0)
+
+/** The header occupies grid item zero. Each following row has up to five square photos. */
+internal class PhotoWallScrollRange(
+    private val photoCount: Int,
+    private val headerHeight: Int,
+    viewportWidth: Int,
+    viewportHeight: Int,
+    private val gap: Int,
+) {
+    private val rows = (photoCount.toLong() + ALBUM_COLUMNS - 1) / ALBUM_COLUMNS
+    private val availableWidth = viewportWidth - gap * (ALBUM_COLUMNS - 1)
+    private val tileHeight = ((availableWidth + ALBUM_COLUMNS - 1) / ALBUM_COLUMNS).coerceAtLeast(1)
+    private val stride = tileHeight + gap
+    private val maxOffset = (headerHeight + rows * stride - viewportHeight).coerceAtLeast(0L)
+
+    fun fraction(item: Int, offset: Int, canScrollBack: Boolean, canScrollForward: Boolean): Float {
+        if (!canScrollBack || photoCount == 0) return 0f
+        if (!canScrollForward) return 1f
+        if (maxOffset == 0L) return 0f
+        val rowTop = if (item == 0) 0L else headerHeight + gap + (item - 1L) / ALBUM_COLUMNS * stride
+        return ((rowTop + offset).toDouble() / maxOffset).coerceIn(0.0, 1.0).toFloat()
+    }
+
+    fun target(fraction: Float): WallScrollTarget {
+        if (fraction <= 0f || photoCount == 0) return WallScrollTarget(0)
+        if (fraction >= 1f) return WallScrollTarget(photoCount)
+        val y = (maxOffset * fraction.toDouble()).roundToLong()
+        val inPhotos = y - headerHeight - gap
+        if (inPhotos < 0) return WallScrollTarget(0, y.toInt())
+        return WallScrollTarget((1 + inPhotos / stride * ALBUM_COLUMNS).toInt(), (inPhotos % stride).toInt())
+    }
+}
 
 enum class PhotoHeatmapGranularity(val label: String) {
     DAY("每天"),

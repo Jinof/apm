@@ -46,7 +46,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.AbsoluteAlignment
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -179,12 +178,9 @@ private fun PhotoViewerScreen(
     onSelect: (Int) -> Unit,
 ) {
     val photo = state.selectedPhoto
-    // A native original decode may still be finishing after the user has scrubbed past it.
+    // A native decode may still be finishing when the user changes photos.
     val decodeLock = remember { Mutex() }
-    PhotoViewerScrubber(
-        selectedIndex = state.selectedIndex,
-        photoCount = state.photos.size,
-        onSelect = onSelect,
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black)
@@ -382,7 +378,7 @@ private fun ZoomableBitmap(photo: PhotoViewerItem, bitmap: Bitmap) {
             Surface(
                 color = Color.Black.copy(alpha = 0.62f),
                 shape = MaterialTheme.shapes.large,
-                modifier = Modifier.align(AbsoluteAlignment.CenterLeft).padding(horizontal = 16.dp),
+                modifier = Modifier.align(Alignment.CenterEnd).padding(end = 16.dp),
             ) {
                 IconButton(
                     onClick = { transform = PhotoViewerTransform() },

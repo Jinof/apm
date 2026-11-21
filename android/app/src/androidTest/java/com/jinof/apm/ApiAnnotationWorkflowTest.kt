@@ -117,13 +117,25 @@ class ApiAnnotationWorkflowTest {
                     composeRule.onAllNodesWithTag("search_result_$photoId").fetchSemanticsNodes().isNotEmpty()
                 }
                 composeRule.onNodeWithTag("all_tags_button").performClick()
-                composeRule.onNode(hasText("人物") and hasAnyAncestor(hasTestTag("ranked_tags"))).performClick()
+                val personTag = hasText("人物") and hasAnyAncestor(hasTestTag("ranked_tags"))
+                composeRule.waitUntil(10_000) {
+                    composeRule.onAllNodes(personTag).fetchSemanticsNodes().size == 1
+                }
+                composeRule.onNode(personTag).performClick()
                 composeRule.onNodeWithTag("search_input").assertTextContains("人物")
+                composeRule.waitUntil(10_000) {
+                    composeRule.onAllNodesWithTag("search_result_$photoId").fetchSemanticsNodes().isNotEmpty()
+                }
                 composeRule.onNodeWithTag("search_result_$photoId").performClick()
                 composeRule.onNodeWithTag("photo_viewer_back").performClick()
+                composeRule.waitUntil(5_000) {
+                    composeRule.onAllNodesWithTag("photo_viewer_back").fetchSemanticsNodes().isEmpty()
+                }
                 composeRule.onNodeWithTag("album_search").assertIsDisplayed()
                 InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
-                composeRule.onNodeWithTag("album_search").assertDoesNotExist()
+                composeRule.waitUntil(5_000) {
+                    composeRule.onAllNodesWithTag("album_search").fetchSemanticsNodes().isEmpty()
+                }
                 assertEquals(originalPosition, tile.fetchSemanticsNode().boundsInRoot)
                 assertEquals(beforeFailure, annotationRows(database, photoId))
                 assertTrue(encryptedBeforeDetails.contentEquals(File(context.noBackupFilesDir, "external-api.enc").readBytes()))

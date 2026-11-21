@@ -20,7 +20,6 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -61,7 +60,6 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -75,11 +73,11 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.AbsoluteAlignment
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -88,6 +86,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
@@ -114,7 +113,6 @@ private const val DEBUG_ANNOTATION_ALIAS = "com.jinof.apm.DebugAnnotationAlias"
 private const val DEBUG_SEARCH_ACTION = "com.jinof.apm.debug.SEARCH"
 private const val DEBUG_SEARCH_ALIAS = "com.jinof.apm.DebugSearchAlias"
 private const val DEBUG_SEARCH_QUERY = "query"
-private const val ALBUM_COLUMNS = 5
 
 class MainActivity : ComponentActivity() {
     private lateinit var database: ApmDatabase
@@ -606,6 +604,8 @@ internal fun GalleryScreen(
     thumbnailLoader: PhotoThumbnailLoader = rememberPhotoThumbnailLoader(),
 ) {
     var searchOpen by rememberSaveable { mutableStateOf(false) }
+    var headerHeight by rememberSaveable { mutableIntStateOf(0) }
+    val gap = 2.dp
     val zone = ZoneId.systemDefault()
     val photos = remember(state.galleryPhotos, selectedRange, zone) {
         if (selectedRange == null) state.galleryPhotos else state.galleryPhotos.filter { photo ->
@@ -622,7 +622,7 @@ internal fun GalleryScreen(
             }
         }
     }
-    BoxWithConstraints(Modifier.fillMaxSize().windowInsetsPadding(
+    val wallGestures = Modifier.fillMaxSize().windowInsetsPadding(
         WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal),
     ).pointerInput(onHeatmap) {
         val edge = 32.dp.toPx()
@@ -638,8 +638,8 @@ internal fun GalleryScreen(
                 } while (change.pressed)
             }
         }
-    }) {
-        val gap = 2.dp
+    }
+    PhotoWallScrubber(gridState, photos.size, headerHeight, gap, onSearch = { searchOpen = true }, modifier = wallGestures) { isScrubbing ->
         val requestSize = with(LocalDensity.current) {
             ((maxWidth - gap * (ALBUM_COLUMNS - 1)) / ALBUM_COLUMNS).roundToPx().coerceAtLeast(1)
         }
@@ -653,7 +653,7 @@ internal fun GalleryScreen(
             verticalArrangement = Arrangement.spacedBy(gap),
         ) {
             item(key = "album_header", span = { GridItemSpan(maxLineSpan) }, contentType = "header") {
-                Column(Modifier.fillMaxWidth()) {
+                Column(Modifier.fillMaxWidth().onSizeChanged { headerHeight = it.height }) {
                     if (state.catalogError == null || state.galleryPhotos.isNotEmpty()) {
                         Text(
                             "${state.galleryPhotos.size} 张照片",
@@ -690,7 +690,7 @@ internal fun GalleryScreen(
                     photo = photo,
                     requestSize = requestSize,
                     loader = thumbnailLoader,
-                    canLoad = { photo.photoId in loadableKeys },
+                    canLoad = { !isScrubbing() && photo.photoId in loadableKeys },
                     annotating = state.annotationTask?.activePhotoIds?.contains(photo.photoId) == true,
                     onClick = { onPhoto(photo.photoId, photo.uri) },
                 )
@@ -701,11 +701,6 @@ internal fun GalleryScreen(
             Box(Modifier.align(Alignment.Center).padding(horizontal = 48.dp)) {
                 EmptyState(Icons.Outlined.PhotoLibrary, "相册里还没有照片", "在底部 Agent 中点“选择照片”，所选照片就会显示在这里。")
             }
-        }
-        FilledTonalIconButton(onClick = { searchOpen = true },
-            modifier = Modifier.align(AbsoluteAlignment.CenterRight).padding(horizontal = 4.dp)
-                .size(48.dp).testTag("open_album_search")) {
-            Icon(Icons.Outlined.Search, contentDescription = "搜索照片")
         }
     }
     if (searchOpen) {
