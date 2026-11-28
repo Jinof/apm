@@ -70,4 +70,4 @@ Promise 格式、lint 和结构检查通过。56 项 Android JVM 测试、23 项
 
 仓库交付文件为 `android/APM-0.0.2-debug.apk`，包名为 `com.jinof.apm`，版本为 0.7.0（19）。交付 APK 与实际通过上述检查的隔离构建 SHA-256 均为 `1390b2ac3d92c7b6c83f7b63279438338eb5d9c5bd7aaf457f4059de833146fe`。本机保留隔离构建 `/private/tmp/apm-070-impl-lRlEYkOA/build-6/outputs/apk/debug/app-debug.apk`。
 
-准备期间真机 ADB 显示未授权，交付时设备已断开。本次安装、迁移及帧耗时均在模拟器上验证，真机更新待连接。
+2026-11-28，真机 `23127PN0CC` 通过 `adb install -r` 从 0.6.0（18）更新到 0.7.0（19）。手机上已安装 APK 的 SHA-256 与交付包一致。更新前后，首次安装时间相同，私有数据库和 WAL 的文件标识、大小及 SHA-256 均一致。上述迁移和帧耗时数据来自模拟器。
