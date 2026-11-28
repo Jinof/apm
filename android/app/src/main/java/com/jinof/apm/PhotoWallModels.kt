@@ -59,23 +59,35 @@ data class PhotoDayGroup(
     val photos: List<GalleryPhotoCard>,
 )
 
-private val heatmapDayFormat = DateTimeFormatter.ofPattern("yyyy年M月d日", Locale.CHINA)
+internal const val HEATMAP_COLUMNS = 7
+
+internal val heatmapDayFormat = DateTimeFormatter.ofPattern("yyyy年M月d日", Locale.CHINA)
+
+sealed interface PhotoHeatmapCell {
+    val startDate: LocalDate
+    val endDate: LocalDate
+    val count: Int
+    val level: Int
+    val inYear: Boolean get() = true
+}
 
 data class PhotoHeatmapDayCell(
     val date: LocalDate,
-    val count: Int,
-    val level: Int,
-    val inYear: Boolean,
-) {
+    override val count: Int,
+    override val level: Int,
+    override val inYear: Boolean,
+) : PhotoHeatmapCell {
+    override val startDate get() = date
+    override val endDate get() = date
     val description = "${date.format(heatmapDayFormat)}，${count}张照片，热度${level}级"
 }
 
 data class PhotoHeatmapPeriodCell(
-    val startDate: LocalDate,
-    val endDate: LocalDate,
-    val count: Int,
-    val level: Int,
-)
+    override val startDate: LocalDate,
+    override val endDate: LocalDate,
+    override val count: Int,
+    override val level: Int,
+) : PhotoHeatmapCell
 
 data class PhotoHeatmapMonthLabel(
     val month: YearMonth,
@@ -97,18 +109,11 @@ data class PhotoHeatmapYear(
 ) {
     val weekCount: Int get() = weekCells.size
 
-    // Each month has a Sunday-first, six-row grid. Prepare its slots with the annual data.
-    val calendarMonths = (1..12).map { number ->
-        val month = YearMonth.of(year, number)
-        val first = month.atDay(1)
-        val firstIndex = (first.toEpochDay() - gridStart.toEpochDay()).toInt()
-        val leadingBlanks = first.dayOfWeek.value % 7
-        List(42) { slot ->
-            val index = slot - leadingBlanks
-            if (index in 0 until month.lengthOfMonth()) dayCells[firstIndex + index] else null
-        }.chunked(7)
+    fun cells(granularity: PhotoHeatmapGranularity): List<PhotoHeatmapCell> = when (granularity) {
+        PhotoHeatmapGranularity.DAY -> dayCells
+        PhotoHeatmapGranularity.WEEK -> weekCells
+        PhotoHeatmapGranularity.MONTH -> monthCells
     }
-    val weeksByMonth = weekCells.groupBy { it.startDate.monthValue }
 
     fun selection(granularity: PhotoHeatmapGranularity, start: LocalDate): PhotoHeatmapSelection? {
         if (granularity == PhotoHeatmapGranularity.DAY) {

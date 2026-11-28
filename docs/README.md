@@ -69,7 +69,7 @@ make check PROMISE_CLI=/path/to/promise-cli
 
 `android-check` 使用全新的 `/private/tmp/apm-build-<UUID>` 目录，执行 JVM 测试、lint、主 APK 和测试 APK 构建，并检查 APK 不包含模型权重或推理运行库。可指定尚不存在的 `APM_BUILD_DIR=/private/tmp/<unique-name>`。仪器测试仅在模拟器上运行，使用本地 mock API。
 
-Android 版本为 **0.7.0（19）**。仓库唯一交付 APK 仍为 `android/APM-0.0.2-debug.apk`，文件名按 [AGENTS.md](../AGENTS.md) 保持不变，通过验证后才更新。真实手机只对已安装的 `com.jinof.apm` 执行 `adb install -r` 保留数据更新，安装前后核对版本与数据库。
+Android 版本为 **0.7.0（20）**。仓库唯一交付 APK 仍为 `android/APM-0.0.2-debug.apk`，文件名按 [AGENTS.md](../AGENTS.md) 保持不变，通过验证后才更新。真实手机只对已安装的 `com.jinof.apm` 执行 `adb install -r` 保留数据更新，安装前后核对版本与数据库。
 
 已发布版本的下载与变更见 [0.2.0 发布说明](release-0.2.0.md) 和 [GitHub Release](https://github.com/Jinof/apm/releases/tag/v0.2.0)。此前版本见 [0.1.0 发布说明](release-0.1.0.md)、[0.0.8 发布说明](release-0.0.8.md) 和 [0.0.6 发布说明](release-0.0.6.md)。
 

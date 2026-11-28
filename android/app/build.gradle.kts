@@ -15,7 +15,7 @@ android {
         applicationId = "com.jinof.apm"
         minSdk = 29
         targetSdk = 34
-        versionCode = 19
+        versionCode = 20
         versionName = "0.7.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"

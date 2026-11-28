@@ -7,6 +7,11 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.provider.MediaStore
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.test.click
 import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotDisplayed
@@ -44,6 +49,7 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.security.MessageDigest
+import java.time.LocalDate
 import java.time.ZoneId
 import java.time.ZonedDateTime
 import java.util.UUID
@@ -242,7 +248,7 @@ class PhotoWallHeatmapActivityTest {
     }
 
     @Test
-    fun showsGitHubAnnualDailyWeeklyAndMonthlyHeatmapsWithExactSelection() {
+    fun showsSevenColumnAnnualHeatmapsWithExactSelection() {
         assumeTrue(
             "This test creates temporary emulator images only when explicitly requested.",
             InstrumentationRegistry.getArguments().getString(ARGUMENT) == "true",
@@ -328,25 +334,21 @@ class PhotoWallHeatmapActivityTest {
             }
             composeRule.onNodeWithTag("heatmap_previous_year").performClick()
             composeRule.onNodeWithTag("heatmap_year_label").assertTextEquals("2039年")
+            InstrumentationRegistry.getInstrumentation().uiAutomation.rootInActiveWindow
+            assertMatrix(2039, PhotoHeatmapGranularity.DAY)
             composeRule.onNodeWithTag("heatmap_next_year").performClick()
             composeRule.onNodeWithTag("heatmap_year_label").assertTextEquals("2040年")
 
-            composeRule.onNodeWithTag("heatmap_day_2040-01-01").assertExists()
-            composeRule.onNodeWithTag("heatmap_day_2040-12-31").assertExists()
-            composeRule.onNodeWithTag("heatmap_day_quarters").assertExists()
-            assertQuarterMonthMatrix("day")
-            assertInHeatmapViewport("heatmap_day_2040-01-01")
-            assertInHeatmapViewport("heatmap_day_2040-12-31")
-            assertVerticallyOrdered("heatmap_day_2040-01-01", "heatmap_day_2040-01-08")
-            composeRule.onNodeWithTag("heatmap_day_2040-08-14").assertExists()
-            composeRule.onNodeWithTag("heatmap_day_2040-08-14")
+            assertMatrix(2040, PhotoHeatmapGranularity.DAY)
+            val august14 = LocalDate.of(2040, 8, 14).dayOfYear - 1 // January 1 was a Sunday.
+            composeRule.onNodeWithTag("heatmap_cell_$august14")
                 .assertContentDescriptionEquals("2040年8月14日，4张照片，热度4级")
-            composeRule.onNodeWithTag("heatmap_day_2040-08-15")
-                .assertContentDescriptionEquals("2040年8月15日，2张照片，热度2级")
-                .performClick()
-            composeRule.onNodeWithTag("heatmap_day_2040-08-15")
-                .assertContentDescriptionEquals("2040年8月15日，2张照片，热度2级，已选择")
-            captureScreenshot("photo-wall-github-annual-day-quarter-month.png")
+            selectMatrixCell(august14 + 1, "2040年8月15日，2张照片，热度2级", touch = true)
+            captureScreenshot("photo-wall-seven-column-day.png")
+            composeRule.onNodeWithTag("heatmap_matrix").performTouchInput { swipeLeft() }
+            waitForSettledPage("dock_page_swipe_agent")
+            composeRule.onNodeWithTag("dock_heatmap").performClick()
+            waitForSettledPage("dock_page_swipe_heatmap")
             scrollUntilVisible("selected_photo_range_summary")
             displayedNodeWithTag("selected_photo_range_summary")
                 .assertTextEquals("已选 2040年8月15日 · 2 张照片")
@@ -362,37 +364,18 @@ class PhotoWallHeatmapActivityTest {
             composeRule.onNodeWithTag("heatmap_granularity_week").assertExists()
             composeRule.onNodeWithTag("heatmap_granularity_week")
                 .performSemanticsAction(SemanticsActions.OnClick) { it() }
-            composeRule.onNodeWithTag("heatmap_week_2040-08-12").assertExists()
-            composeRule.onNodeWithTag("heatmap_week_2040-08-19").assertExists()
-            composeRule.onNodeWithTag("heatmap_week_2040-01-01").assertExists()
-            composeRule.onNodeWithTag("heatmap_week_2040-12-30").assertExists()
-            composeRule.onNodeWithTag("heatmap_week_quarters").assertExists()
-            assertQuarterMonthMatrix("week")
-            assertInHeatmapViewport("heatmap_week_2040-01-01")
-            assertInHeatmapViewport("heatmap_week_2040-12-30")
-            assertInHeatmapViewport("heatmap_week_2040-08-12")
-            assertInHeatmapViewport("heatmap_week_2040-08-19")
-            assertVerticallyOrdered("heatmap_week_2040-08-12", "heatmap_week_2040-08-19")
-            composeRule.onNodeWithTag("heatmap_week_2040-08-12")
-                .assertContentDescriptionEquals("2040年8月12日–18日，7张照片，热度4级")
-                .performClick()
-            captureScreenshot("photo-wall-github-annual-week-quarter-month.png")
+            assertMatrix(2040, PhotoHeatmapGranularity.WEEK)
+            selectMatrixCell((LocalDate.of(2040, 8, 12).dayOfYear - 1) / 7,
+                "2040年8月12日–18日，7张照片，热度4级", touch = false)
+            captureScreenshot("photo-wall-seven-column-week.png")
             displayedNodeWithTag("selected_photo_range_summary")
                 .assertTextEquals("已选 2040年8月12日–18日 · 7 张照片")
             composeRule.onNodeWithTag("heatmap_granularity_month").assertExists()
             composeRule.onNodeWithTag("heatmap_granularity_month")
                 .performSemanticsAction(SemanticsActions.OnClick) { it() }
-            composeRule.onNodeWithTag("heatmap_month_01").assertExists()
-            composeRule.onNodeWithTag("heatmap_month_12").assertExists()
-            composeRule.onNodeWithTag("heatmap_month_quarters").assertExists()
-            assertQuarterMonthMatrix("month")
-            assertInHeatmapViewport("heatmap_month_01")
-            assertInHeatmapViewport("heatmap_month_12")
-            composeRule.onNodeWithTag("heatmap_month_08").assertExists()
-            composeRule.onNodeWithTag("heatmap_month_08")
-                .assertContentDescriptionEquals("2040年8月，7张照片，热度4级")
-                .performClick()
-            captureScreenshot("photo-wall-github-annual-month-quarter-month.png")
+            assertMatrix(2040, PhotoHeatmapGranularity.MONTH)
+            selectMatrixCell(7, "2040年8月，7张照片，热度4级", touch = true)
+            captureScreenshot("photo-wall-seven-column-month.png")
             displayedNodeWithTag("selected_photo_range_summary")
                 .assertTextEquals("已选 2040年8月 · 7 张照片")
             composeRule.onNodeWithTag("view_selected_photos").performClick()
@@ -496,31 +479,61 @@ class PhotoWallHeatmapActivityTest {
         assertTrue("Expected $laterTag below $earlierTag, but $laterTop <= $earlierTop", laterTop > earlierTop)
     }
 
-    private fun assertQuarterMonthMatrix(mode: String) {
-        val quarterBounds = (1..4).map { quarter ->
-            composeRule.onNodeWithTag("heatmap_${mode}_quarter_$quarter")
-                .fetchSemanticsNode().boundsInRoot
+    private fun assertMatrix(year: Int, mode: PhotoHeatmapGranularity) {
+        val jan1 = LocalDate.of(year, 1, 1)
+        val leading = jan1.dayOfWeek.value % 7
+        val weeks = (leading + jan1.lengthOfYear() + 6) / 7
+        val dates = when (mode) {
+            PhotoHeatmapGranularity.DAY -> (0 until jan1.lengthOfYear()).associate { leading + it to jan1.plusDays(it.toLong()) }
+            PhotoHeatmapGranularity.WEEK -> (0 until weeks).associateWith { maxOf(jan1, jan1.plusDays((it * 7 - leading).toLong())) }
+            PhotoHeatmapGranularity.MONTH -> (0 until 12).associateWith { jan1.plusMonths(it.toLong()) }
         }
-        assertTrue(
-            "$mode quarters must run top-to-bottom: $quarterBounds",
-            quarterBounds.zipWithNext().all { (upper, lower) -> upper.top < lower.top },
-        )
-        (1..4).forEach { quarter ->
-            val monthStart = (quarter - 1) * 3 + 1
-            val months = (monthStart..monthStart + 2).map { month ->
-                composeRule.onNodeWithTag(
-                    "heatmap_${mode}_month_panel_${month.toString().padStart(2, '0')}",
-                ).fetchSemanticsNode().boundsInRoot
+        val matcher = SemanticsMatcher("date cells") { it.config.getOrNull(SemanticsProperties.TestTag)?.startsWith("heatmap_cell_") == true }
+        composeRule.waitUntil(10_000) {
+            composeRule.onAllNodes(matcher).fetchSemanticsNodes().size == dates.size
+        }
+        val nodes = composeRule.onAllNodes(matcher).fetchSemanticsNodes().associateBy {
+            it.config[SemanticsProperties.TestTag].substringAfterLast('_').toInt()
+        }
+        assertEquals(dates.keys, nodes.keys)
+        val matrix = composeRule.onNodeWithTag("heatmap_matrix").fetchSemanticsNode()
+        val collection = matrix.config[SemanticsProperties.CollectionInfo]
+        assertEquals(7, collection.columnCount)
+        assertEquals(dates.keys.max() / 7 + 1, collection.rowCount)
+        val bounds = mutableMapOf<Int, Rect>()
+        for ((slot, date) in dates) {
+            val node = nodes.getValue(slot)
+            val prefix = if (mode == PhotoHeatmapGranularity.MONTH) "${year}年${date.monthValue}月，" else date.format(heatmapDayFormat)
+            val description = node.config[SemanticsProperties.ContentDescription].single()
+            assertTrue(description, description.startsWith(prefix))
+            val item = node.config[SemanticsProperties.CollectionItemInfo]
+            assertEquals(slot / 7, item.rowIndex)
+            assertEquals(slot % 7, item.columnIndex)
+            if (description.contains("，0张照片")) assertTrue(SemanticsActions.OnClick !in node.config)
+            val rect = node.boundsInRoot
+            assertTrue(rect.width > 0 && rect.height > 0 && matrix.boundsInRoot.contains(rect.center))
+            if (slot % 7 != 0) bounds[slot - 1]?.let {
+                assertEquals(it.right, rect.left, 1f)
+                assertEquals(it.top, rect.top, 1f)
             }
-            assertTrue(
-                "$mode quarter $quarter months must share one horizontal row: $months",
-                months.all { bounds -> abs(bounds.top - months.first().top) <= 1f },
-            )
-            assertTrue(
-                "$mode quarter $quarter months must run left-to-right: $months",
-                months.zipWithNext().all { (left, right) -> left.left < right.left },
-            )
+            bounds[slot - 7]?.let {
+                assertEquals(it.left, rect.left, 1f)
+                assertEquals(it.bottom, rect.top, 1f)
+            }
+            bounds[slot] = rect
         }
+    }
+
+    private fun selectMatrixCell(slot: Int, description: String, touch: Boolean) {
+        val cell = composeRule.onNodeWithTag("heatmap_cell_$slot").assertContentDescriptionEquals(description)
+        if (touch) {
+            val matrix = composeRule.onNodeWithTag("heatmap_matrix")
+            val point = cell.fetchSemanticsNode().boundsInRoot.center - matrix.fetchSemanticsNode().boundsInRoot.topLeft
+            matrix.performTouchInput { click(point) }
+        } else {
+            cell.performSemanticsAction(SemanticsActions.OnClick) { it() }
+        }
+        cell.assertContentDescriptionEquals("$description，已选择").assertIsSelected()
     }
 
     private fun assertDockOrder(vararg tags: String) {
@@ -541,13 +554,13 @@ class PhotoWallHeatmapActivityTest {
     private fun assertHeatmapFillsContent() {
         val contentBounds = composeRule.onNodeWithTag("photo_heatmap_content").fetchSemanticsNode().boundsInRoot
         val heatmapBounds = composeRule.onNodeWithTag("photo_wall_heatmap").fetchSemanticsNode().boundsInRoot
-        val quarterBounds = composeRule.onNodeWithTag("heatmap_quarters_vertical")
+        val matrixBounds = composeRule.onNodeWithTag("heatmap_matrix")
             .fetchSemanticsNode().boundsInRoot
         assertTrue("borderless heatmap should use the content width", heatmapBounds.width >= contentBounds.width * 0.98f)
-        assertTrue("quarter grid should use the full heatmap width", quarterBounds.width >= contentBounds.width * 0.98f)
+        assertTrue("seven-column grid should use the full heatmap width", matrixBounds.width >= contentBounds.width * 0.98f)
         assertTrue(
-            "quarter grid should consume most available heatmap height",
-            quarterBounds.height >= contentBounds.height * 0.80f,
+            "seven-column grid should consume most available heatmap height",
+            matrixBounds.height >= contentBounds.height * 0.80f,
         )
     }
 
