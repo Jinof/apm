@@ -112,6 +112,7 @@ data class ScanReport(
 data class SelectedScanReport(
     val scan: ScanReport,
     val photoIds: List<String>,
+    val affectedPhotoIds: Set<String>,
 )
 
 data class AnnotationReport(

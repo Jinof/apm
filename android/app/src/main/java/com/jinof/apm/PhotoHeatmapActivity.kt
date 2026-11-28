@@ -1,5 +1,8 @@
 package com.jinof.apm
 
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.IntentFilter
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -42,6 +45,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.key
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -53,10 +59,10 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import java.time.LocalDate
-import java.time.YearMonth
-import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.util.concurrent.Executors
 
 private const val EXTRA_HEATMAP_GRANULARITY = "photo_heatmap_granularity"
@@ -87,21 +93,34 @@ internal fun Intent.photoHeatmapSelection(): PhotoHeatmapSelection? {
     )
 }
 
+internal fun Context.observeHeatmapTimeZone(onChange: () -> Unit): BroadcastReceiver {
+    val receiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) = onChange()
+    }
+    androidx.core.content.ContextCompat.registerReceiver(
+        this, receiver, IntentFilter(Intent.ACTION_TIMEZONE_CHANGED),
+        androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED,
+    )
+    return receiver
+}
+
 class PhotoHeatmapActivity : ComponentActivity() {
     private lateinit var database: ApmDatabase
     private val executor = Executors.newSingleThreadExecutor()
-    private var initialized = false
-    private var photos by mutableStateOf<List<GalleryPhotoCard>?>(null)
+    private var data by mutableStateOf<PreparedHeatmap?>(null)
+    private var error by mutableStateOf<String?>(null)
+    private lateinit var zoneReceiver: BroadcastReceiver
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         database = ApmDatabase(applicationContext)
-        initialized = true
+        zoneReceiver = observeHeatmapTimeZone(::reloadPhotos)
         setContent {
             ApmTheme {
                 PhotoHeatmapPage(
-                    photos = photos,
+                    data = data,
+                    loadError = error,
                     onViewPhotos = { selection ->
                         startActivity(
                             Intent(this, MainActivity::class.java)
@@ -113,15 +132,15 @@ class PhotoHeatmapActivity : ComponentActivity() {
                 )
             }
         }
-        reloadPhotos()
     }
 
     override fun onResume() {
         super.onResume()
-        if (initialized) reloadPhotos()
+        reloadPhotos()
     }
 
     override fun onDestroy() {
+        unregisterReceiver(zoneReceiver)
         executor.shutdownNow()
         database.close()
         super.onDestroy()
@@ -129,9 +148,12 @@ class PhotoHeatmapActivity : ComponentActivity() {
 
     private fun reloadPhotos() {
         executor.execute {
-            val loaded = database.galleryPhotos()
+            val result = runCatching { database.preparedHeatmap() }
             runOnUiThread {
-                if (!isFinishing && !isDestroyed) photos = loaded
+                if (!isFinishing && !isDestroyed) {
+                    data = result.getOrNull()
+                    error = result.exceptionOrNull()?.let { "读取热力图失败" }
+                }
             }
         }
     }
@@ -141,7 +163,8 @@ class PhotoHeatmapActivity : ComponentActivity() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun PhotoHeatmapPage(
-    photos: List<GalleryPhotoCard>?,
+    data: PreparedHeatmap?,
+    loadError: String? = null,
     onViewPhotos: (PhotoHeatmapSelection) -> Unit,
 ) {
     Scaffold(
@@ -162,23 +185,27 @@ internal fun PhotoHeatmapPage(
             )
         },
     ) { padding ->
-        if (photos == null) {
+        if (data == null) {
             Box(
                 modifier = Modifier.fillMaxSize().testTag("heatmap_loading"),
                 contentAlignment = Alignment.Center,
             ) {
-                CircularProgressIndicator()
+                if (loadError == null) CircularProgressIndicator() else Text(loadError)
             }
         } else {
-            val zoneId = ZoneId.systemDefault()
-            val initialYear = remember(photos, zoneId) {
-                PhotoWallOrganizer.initialYear(photos, zoneId)
+            var chosenYear by rememberSaveable { mutableStateOf<Int?>(null) }
+            val displayedYear = chosenYear ?: data.initialYear
+            var granularity by rememberSaveable { mutableStateOf(PhotoHeatmapGranularity.DAY) }
+            var selectedDay by rememberSaveable(displayedYear, granularity) { mutableStateOf<Long?>(null) }
+            val heatmap = data.years[displayedYear] ?: key(displayedYear) {
+                // Years outside the catalog only need an empty calendar template.
+                val empty by produceState<PhotoHeatmapYear?>(null) {
+                    value = withContext(Dispatchers.Default) { PhotoWallOrganizer.heatmap(displayedYear, emptyMap()) }
+                }
+                empty
             }
-            var displayedYear by remember(initialYear) { mutableStateOf(initialYear) }
-            var granularity by remember { mutableStateOf(PhotoHeatmapGranularity.DAY) }
-            var selectedRange by remember { mutableStateOf<PhotoHeatmapSelection?>(null) }
-            val heatmap = remember(displayedYear, photos, zoneId) {
-                PhotoWallOrganizer.heatmap(displayedYear, photos, zoneId)
+            val selectedRange = remember(heatmap, granularity, selectedDay) {
+                selectedDay?.let { heatmap?.selection(granularity, LocalDate.ofEpochDay(it)) }
             }
             Column(
                 modifier = Modifier
@@ -197,24 +224,24 @@ internal fun PhotoHeatmapPage(
                     granularity = granularity,
                     onGranularity = {
                         granularity = it
-                        selectedRange = null
+                        selectedDay = null
                     },
                     onPreviousYear = {
-                        displayedYear -= 1
-                        selectedRange = null
+                        chosenYear = displayedYear - 1
+                        selectedDay = null
                     },
                     onNextYear = {
-                        displayedYear += 1
-                        selectedRange = null
+                        chosenYear = displayedYear + 1
+                        selectedDay = null
                     },
                 )
-                PhotoHeatmapContent(
+                if (heatmap != null) PhotoHeatmapContent(
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                     heatmap = heatmap,
                     heatmapGranularity = granularity,
                     selectedRange = selectedRange,
-                    onSelectRange = { selectedRange = it },
-                    onClearRange = { selectedRange = null },
+                    onSelectRange = { selectedDay = it.startDate.toEpochDay() },
+                    onClearRange = { selectedDay = null },
                     onViewPhotos = onViewPhotos,
                 )
             }
@@ -421,13 +448,7 @@ private fun GitHubMonthDayHeatmap(
     today: LocalDate,
     onSelectRange: (PhotoHeatmapSelection) -> Unit,
 ) {
-    val month = remember(heatmap.year, monthNumber) { YearMonth.of(heatmap.year, monthNumber) }
-    val cellsByDate = remember(heatmap.dayCells) { heatmap.dayCells.associateBy { it.date } }
-    val leadingBlanks = month.atDay(1).dayOfWeek.value % 7
-    val slots = List(42) { slot ->
-        val day = slot - leadingBlanks + 1
-        if (day in 1..month.lengthOfMonth()) cellsByDate[month.atDay(day)] else null
-    }
+    val slots = heatmap.calendarMonths[monthNumber - 1]
     val gap = 1.dp
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
         val cellSize = minOf(
@@ -457,7 +478,7 @@ private fun GitHubMonthDayHeatmap(
                     }
                 }
             }
-            slots.chunked(7).forEach { week ->
+            slots.forEach { week ->
                 Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
                     week.forEach { cell ->
                         if (cell == null) {
@@ -469,8 +490,7 @@ private fun GitHubMonthDayHeatmap(
                             } == true
                             val isToday = cell.date == today
                             val description = buildString {
-                                append(cell.date.format(DateTimeFormatter.ofPattern("yyyy年M月d日")))
-                                append("，${cell.count}张照片，热度${cell.level}级")
+                                append(cell.description)
                                 if (isToday) append("，今天")
                                 if (selected) append("，已选择")
                             }
@@ -536,9 +556,7 @@ private fun GitHubMonthWeekHeatmap(
     selectedRange: PhotoHeatmapSelection?,
     onSelectRange: (PhotoHeatmapSelection) -> Unit,
 ) {
-    val cells = remember(heatmap.weekCells, monthNumber) {
-        heatmap.weekCells.filter { it.startDate.monthValue == monthNumber }
-    }
+    val cells = heatmap.weeksByMonth[monthNumber].orEmpty()
     val gap = 2.dp
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
         val rowCount = maxOf(1, (cells.size + 1) / 2)

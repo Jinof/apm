@@ -6,6 +6,7 @@ import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
 import android.provider.MediaStore
+import java.io.FileNotFoundException
 import java.security.MessageDigest
 
 class MediaStoreScanner(
@@ -97,6 +98,7 @@ class MediaStoreScanner(
         val selectedUris = uris.distinctBy(Uri::toString)
         val photos = mutableListOf<ScannedPhoto>()
         val errors = mutableListOf<String>()
+        val unavailable = mutableListOf<String>()
         var hashed = 0
         selectedUris.forEachIndexed { index, uri ->
             val metadata = selectedMetadata(resolver, uri, index)
@@ -116,20 +118,50 @@ class MediaStoreScanner(
                     dateTakenMillis = metadata.dateTakenMillis,
                 )
             } catch (error: Exception) {
+                if (error is SecurityException || (error is FileNotFoundException && missingPickerRow(uri))) {
+                    unavailable += uri.toString()
+                }
                 errors += "${metadata.displayName}：${error.message ?: error.javaClass.simpleName}"
             }
         }
-        database.upsertAccessiblePhotos(photos)
+        val affected = database.upsertAccessiblePhotos(photos, unavailable)
         return SelectedScanReport(
             scan = ScanReport(
                 visible = photos.size,
                 hashed = hashed,
                 reused = 0,
-                inaccessible = 0,
+                inaccessible = unavailable.size,
                 errors = errors,
             ),
             photoIds = photos.map(ScannedPhoto::photoId).distinct(),
+            affectedPhotoIds = affected,
         )
+    }
+
+    // A provider can be temporarily offline. Only an explicit missing row or denied grant removes a location.
+    private fun missingPickerRow(uri: Uri): Boolean = try {
+        if (uri.authority == MediaStore.AUTHORITY && "com.android.providers.media.photopicker" in uri.pathSegments) {
+            // Local picker metadata can outlive its image. Opening the granted descriptor checks
+            // the original without decoding or hashing it. Cloud providers only get a metadata query.
+            try {
+                context.contentResolver.openFileDescriptor(uri, "r")?.close()
+                false
+            } catch (_: FileNotFoundException) {
+                true
+            }
+        } else {
+            context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+                ?.use { !it.moveToFirst() } ?: false
+        }
+    } catch (_: SecurityException) {
+        true
+    } catch (_: Exception) {
+        false
+    }
+
+    fun reconcilePickerAccess(): Set<String> {
+        val unavailable = database.accessiblePickerUris().filter { missingPickerRow(Uri.parse(it)) }
+        return database.upsertAccessiblePhotos(emptyList(), unavailable)
     }
 
     private fun selectedMetadata(
@@ -144,12 +176,9 @@ class MediaStoreScanner(
         runCatching {
             resolver.query(
                 uri,
-                arrayOf(
-                    OpenableColumns.DISPLAY_NAME,
-                    OpenableColumns.SIZE,
-                    MediaStore.Images.Media.DATE_MODIFIED,
-                    MediaStore.Images.Media.DATE_TAKEN,
-                ),
+                // The system picker exposes DATE_TAKEN but need not support DATE_MODIFIED.
+                // Its default projection returns the metadata this particular URI supports.
+                null,
                 null,
                 null,
                 null,

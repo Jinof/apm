@@ -33,7 +33,7 @@ class AnnotationSelectionRestartProbe {
                 val id = fixture.readText()
                 assertEquals(0, db.annotationSelectionCount())
                 assertTrue(db.galleryPhotos().any { it.photoId == id })
-                assertEquals(8, db.readableDatabase.version)
+                assertEquals(9, db.readableDatabase.version)
                 listOf("annotation_selection", "media_locations", "photo_assets").forEach {
                     db.writableDatabase.delete(it, "photo_id = ?", arrayOf(id))
                 }

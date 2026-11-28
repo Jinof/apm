@@ -41,7 +41,7 @@ class AnnotationSelectionLifecycleTest {
             assertEquals(rows, persistentRows(db))
             assertEquals(settings, settingsBytes())
             assertEquals(grants, context.contentResolver.persistedUriPermissions.map { it.uri.toString() }.sorted())
-            assertEquals(8, db.readableDatabase.version)
+            assertEquals(9, db.readableDatabase.version)
         }
     }
 

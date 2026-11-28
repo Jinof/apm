@@ -8,11 +8,14 @@ import android.database.sqlite.SQLiteOpenHelper
 import org.json.JSONArray
 import org.json.JSONObject
 import java.time.Instant
+import java.time.ZoneId
 
 class ApmDatabase(
     context: Context,
     databaseName: String = "apm-android.sqlite3",
-) : SQLiteOpenHelper(context, databaseName, null, 8) {
+) : SQLiteOpenHelper(context, databaseName, null, 9) {
+    private val heatmap = CatalogHeatmap()
+
     init {
         setWriteAheadLoggingEnabled(true)
     }
@@ -78,6 +81,7 @@ class ApmDatabase(
         createPetTables(db)
         createAnnotationSelectionTable(db)
         createVisualSimilarityTables(db)
+        CatalogHeatmap.createSchema(db)
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
@@ -121,6 +125,7 @@ class ApmDatabase(
             db.execSQL("ALTER TABLE photo_visual_features_without_grid RENAME TO photo_visual_features")
             db.execSQL("CREATE INDEX photo_visual_features_pipeline ON photo_visual_features(model_name, pipeline_version)")
         }
+        if (oldVersion < 9) CatalogHeatmap.createSchema(db)
     }
 
     private fun createAnnotationSelectionTable(db: SQLiteDatabase) {
@@ -347,36 +352,64 @@ class ApmDatabase(
         val db = writableDatabase
         db.beginTransaction()
         try {
-            db.update(
-                "media_locations",
-                ContentValues().apply { put("accessible", 0) },
-                "accessible = 1 AND uri LIKE 'content://media/%/images/media/%'",
-                null,
-            )
-            val now = Instant.now().toString()
-            upsertAccessiblePhotos(db, photos, now)
-            val currentlyInaccessible = db.rawQuery(
-                "SELECT COUNT(*) FROM media_locations WHERE accessible = 0",
-                null,
-            ).use { cursor -> cursor.moveToFirst(); cursor.getInt(0) }
+            val inaccessible = heatmap.track(db, null) {
+                db.update(
+                    "media_locations",
+                    ContentValues().apply { put("accessible", 0) },
+                    "accessible = 1 AND uri LIKE 'content://media/%/images/media/%'",
+                    null,
+                )
+                val now = Instant.now().toString()
+                upsertAccessiblePhotos(db, photos, now)
+                val currentlyInaccessible = db.rawQuery(
+                    "SELECT COUNT(*) FROM media_locations WHERE accessible = 0",
+                    null,
+                ).use { cursor -> cursor.moveToFirst(); cursor.getInt(0) }
+                currentlyInaccessible
+            }
             db.setTransactionSuccessful()
-            return currentlyInaccessible
+            return inaccessible
         } finally {
             db.endTransaction()
         }
     }
 
     @Synchronized
-    fun upsertAccessiblePhotos(photos: List<ScannedPhoto>) {
+    fun upsertAccessiblePhotos(photos: List<ScannedPhoto>, unavailableUris: List<String> = emptyList()): Set<String> {
+        if (photos.isEmpty() && unavailableUris.isEmpty()) return emptySet()
         val db = writableDatabase
         db.beginTransaction()
         try {
-            upsertAccessiblePhotos(db, photos, Instant.now().toString())
+            val ids = photos.mapTo(mutableSetOf()) { it.photoId }
+            // URI reuse can remove the previous content identity as well as adding a new one.
+            (photos.map { it.uri } + unavailableUris).distinct().chunked(800).forEach { uris ->
+                val marks = uris.joinToString(",") { "?" }
+                db.rawQuery("SELECT photo_id FROM media_locations WHERE uri IN ($marks)", uris.toTypedArray()).use { c ->
+                    while (c.moveToNext()) ids.add(c.getString(0))
+                }
+            }
+            heatmap.track(db, ids) {
+                unavailableUris.chunked(800).forEach { uris ->
+                    val marks = uris.joinToString(",") { "?" }
+                    db.execSQL("UPDATE media_locations SET accessible = 0 WHERE uri IN ($marks)", uris.toTypedArray())
+                }
+                upsertAccessiblePhotos(db, photos, Instant.now().toString())
+                db.compileStatement("INSERT OR IGNORE INTO picker_locations VALUES(?)").use { insert ->
+                    photos.forEach { photo -> insert.bindString(1, photo.uri); insert.executeInsert() }
+                }
+            }
             db.setTransactionSuccessful()
+            return ids
         } finally {
             db.endTransaction()
         }
     }
+
+    @Synchronized
+    internal fun accessiblePickerUris(): List<String> = readableDatabase.rawQuery(
+        "SELECT p.uri FROM picker_locations p JOIN media_locations m ON m.uri = p.uri WHERE m.accessible = 1",
+        null,
+    ).use { c -> buildList { while (c.moveToNext()) add(c.getString(0)) } }
 
     private fun upsertAccessiblePhotos(db: SQLiteDatabase, photos: List<ScannedPhoto>, now: String) {
         photos.forEach { photo ->
@@ -556,16 +589,26 @@ class ApmDatabase(
     }
 
     @Synchronized
-    fun galleryPhotos(): List<GalleryPhotoCard> {
+    internal fun preparedHeatmap(zone: ZoneId = ZoneId.systemDefault()): PreparedHeatmap =
+        heatmap.prepare(writableDatabase, zone)
+
+    @Synchronized
+    fun galleryPhotos(): List<GalleryPhotoCard> = galleryRows(null)
+
+    @Synchronized
+    internal fun galleryPhotos(ids: Set<String>): List<GalleryPhotoCard> = ids.chunked(400).flatMap(::galleryRows)
+
+    private fun galleryRows(ids: List<String>?): List<GalleryPhotoCard> {
+        val filter = ids?.let { "AND photo_id IN (${it.joinToString(",") { "?" }})" }.orEmpty()
         val sql = """
             WITH chosen_location AS (
                 SELECT photo_id, MIN(uri) AS uri
                 FROM media_locations
-                WHERE accessible = 1
+                WHERE accessible = 1 $filter
                 GROUP BY photo_id
             ), latest AS (
                 SELECT photo_id, MAX(annotation_id) AS annotation_id
-                FROM photo_annotations
+                FROM photo_annotations WHERE 1 = 1 $filter
                 GROUP BY photo_id
             )
             SELECT
@@ -593,7 +636,7 @@ class ApmDatabase(
                 location.date_taken_millis DESC,
                 location.photo_id ASC
         """.trimIndent()
-        return readableDatabase.rawQuery(sql, null).use { cursor ->
+        return readableDatabase.rawQuery(sql, ids?.let { (it + it).toTypedArray() }).use { cursor ->
             buildList {
                 while (cursor.moveToNext()) {
                     val photoId = cursor.getString(0)

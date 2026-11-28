@@ -1,6 +1,7 @@
 package com.jinof.apm
 
 import android.Manifest
+import android.content.BroadcastReceiver
 import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
@@ -126,10 +127,15 @@ class MainActivity : ComponentActivity() {
     private var annotationDisposed = false
     private var annotationClient: ApiVlmClient? = null
     private var uiState by mutableStateOf(GalleryUiState())
+    private var heatmap by mutableStateOf<PreparedHeatmap?>(null)
     private lateinit var startup: AppStartup
     private var selectedPhotoRange by mutableStateOf<PhotoHeatmapSelection?>(null)
     private var requestedDockDestination by mutableStateOf(DockDestination.ALBUM)
+    private lateinit var zoneReceiver: BroadcastReceiver
     private var firstResume = true
+    private var pickingPhotos = false
+    // Owned by the serial catalog worker.
+    private var catalogPhotos: List<GalleryPhotoCard>? = null
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
@@ -143,7 +149,10 @@ class MainActivity : ComponentActivity() {
 
     private val selectedPhotoLauncher = registerForActivityResult(
         ActivityResultContracts.PickMultipleVisualMedia(),
-        ::onPhotosSelected,
+        { uris ->
+            if (lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)) pickingPhotos = false
+            onPhotosSelected(uris)
+        },
     )
 
     internal fun onPhotosSelected(uris: List<Uri>) {
@@ -197,7 +206,8 @@ class MainActivity : ComponentActivity() {
                         )
 
                         DockDestination.HEATMAP -> PhotoHeatmapPage(
-                            photos = uiState.galleryPhotos,
+                            data = heatmap,
+                            loadError = uiState.catalogError,
                             onViewPhotos = { selection ->
                                 selectedPhotoRange = selection
                                 navigate(DockDestination.ALBUM)
@@ -220,6 +230,7 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+        zoneReceiver = observeHeatmapTimeZone { refreshLibraryState(checkAccess = false) }
         refreshLibraryState()
     }
 
@@ -258,11 +269,13 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        if (!firstResume && !busy.get()) refreshLibraryState()
+        if (!firstResume && !pickingPhotos && !busy.get()) refreshLibraryState()
         firstResume = false
+        pickingPhotos = false
     }
 
     override fun onDestroy() {
+        unregisterReceiver(zoneReceiver)
         if (!isChangingConfigurations) selectionSession.closeSession()
         agentController.close()
         synchronized(annotationLifetime) {
@@ -301,6 +314,7 @@ class MainActivity : ComponentActivity() {
             updateStatus("已有任务正在运行，请稍候。")
             return
         }
+        pickingPhotos = true
         selectedPhotoLauncher.launch(
             PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
         )
@@ -335,6 +349,7 @@ class MainActivity : ComponentActivity() {
                 }
                 publishLibraryState(
                     "已授权并选择 ${result.photoIds.size} 张 · 内容校验 ${report.hashed} 张$errorSuffix$persistSuffix",
+                    changedIds = result.affectedPhotoIds,
                 )
             } catch (error: Exception) {
                 failWork("读取所选照片失败：${error.message}")
@@ -375,6 +390,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun publishAnnotationTask(task: AnnotationTaskProgress, photos: List<GalleryPhotoCard>? = null) {
+        if (photos != null) catalogPhotos = photos
         runOnUiThread {
             if (!isDestroyed && !isFinishing) {
                 uiState = uiState.copy(annotationTask = task, galleryPhotos = photos ?: uiState.galleryPhotos)
@@ -414,7 +430,8 @@ class MainActivity : ComponentActivity() {
                 val pending = if (scope == AnnotationScope.SELECTED) {
                     database.pendingSelectedPhotos(config.modelName, BatchAnnotationContract.compatiblePromptVersions)
                 } else database.pendingAllPhotos(config.modelName, BatchAnnotationContract.compatiblePromptVersions)
-                var gallery = database.galleryPhotos()
+                if (scanReport != null) publishLibraryState()
+                var gallery = catalogPhotos ?: database.galleryPhotos()
                 task = task.copy(total = pending.size, skipped = (scopeCount - pending.size).coerceAtLeast(0), phase = "标注中")
                     .log("待标注 ${pending.size} 张，跳过 ${scopeCount - pending.size} 张", SystemClock.elapsedRealtime())
                 publishAnnotationTask(task, gallery)
@@ -517,11 +534,15 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun refreshLibraryState() {
+    private fun refreshLibraryState(checkAccess: Boolean = true) {
         executor.execute {
             try {
                 selectionSession.initialize(database)
-                publishLibraryState()
+                publishLibraryState(changedIds = if (checkAccess) null else emptySet())
+                if (checkAccess) {
+                    val removed = scanner.reconcilePickerAccess()
+                    if (removed.isNotEmpty()) publishLibraryState(changedIds = removed)
+                }
             } catch (error: Exception) {
                 runOnUiThread {
                     if (!isDestroyed && !isFinishing) {
@@ -535,8 +556,16 @@ class MainActivity : ComponentActivity() {
     }
 
     // Called on the serial catalog worker. Search suggestions reuse the wall's decoded annotations.
-    private fun publishLibraryState(completionMessage: String? = null) {
-        val photos = database.galleryPhotos()
+    private fun publishLibraryState(completionMessage: String? = null, changedIds: Set<String>? = null) {
+        val previous = catalogPhotos
+        val photos = when {
+            changedIds == null || previous == null -> database.galleryPhotos()
+            changedIds.isEmpty() -> previous
+            else -> (previous.filterNot { it.photoId in changedIds } + database.galleryPhotos(changedIds))
+                .sortedWith(PhotoWallOrganizer.captureOrder)
+        }
+        catalogPhotos = photos
+        val prepared = database.preparedHeatmap()
         val availability = SearchAvailability.fromGallery(photos)
         val selected = database.annotationSelectionCount()
         val query = uiState.activeSearchQuery?.takeIf { availability.enabled }
@@ -544,6 +573,8 @@ class MainActivity : ComponentActivity() {
         runOnUiThread {
             if (isDestroyed || isFinishing) return@runOnUiThread
             if (completionMessage != null) busy.set(false)
+            heatmap = prepared
+            selectedPhotoRange = selectedPhotoRange?.let { prepared.years[it.startDate.year]?.selection(it.granularity, it.startDate) }
             val current = uiState
             val activeQuery = current.activeSearchQuery?.takeIf { availability.enabled }
             uiState = current.copy(

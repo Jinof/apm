@@ -26,14 +26,22 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import kotlin.math.abs
+import kotlin.math.sign
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
@@ -43,7 +51,22 @@ private val PAGER_SETTLE_ANIMATION_SPEC = spring<Float>(
     dampingRatio = Spring.DampingRatioNoBouncy,
     stiffness = 650f,
 )
-private class PagerNavigationState(var job: Job? = null)
+private class PagerNavigationState {
+    var job: Job? = null
+    var transition by mutableStateOf<DockTransition?>(null)
+}
+
+private data class DockTransition(val from: DockDestination, val to: DockDestination) {
+    // Put the origin in the slot beside the target. The target keeps its natural
+    // index, so restoring the normal order at rest never moves the visible page.
+    val startPage = to.ordinal - (to.ordinal - from.ordinal).sign
+
+    fun destinationAt(page: Int): DockDestination = when (page) {
+        startPage -> from
+        from.ordinal -> DockDestination.entries[startPage]
+        else -> DockDestination.entries[page]
+    }
+}
 
 internal enum class DockDestination(val label: String) {
     ALBUM("相册"),
@@ -85,35 +108,48 @@ internal fun AppDockPager(
     val navigationState = remember { PagerNavigationState() }
     val navigate: (DockDestination) -> Unit = remember(pagerState, scope, navigationState) {
         { destination ->
-            if (destination.ordinal != pagerState.settledPage || pagerState.isScrollInProgress) {
-                val replacesProgrammaticSettle = navigationState.job?.isActive == true
-                navigationState.job?.cancel()
+            navigationState.job?.cancel()
+            val previous = navigationState.transition
+            if (previous?.to != destination &&
+                (destination.ordinal != pagerState.settledPage || pagerState.isScrollInProgress || previous != null)
+            ) {
                 navigationState.job = scope.launch {
-                    if (!replacesProgrammaticSettle && pagerState.isScrollInProgress) {
-                        snapshotFlow { pagerState.isScrollInProgress }
-                            .first { inProgress -> !inProgress }
+                    if (previous == null && pagerState.isScrollInProgress) {
+                        snapshotFlow { pagerState.isScrollInProgress }.first { !it }
                     }
-                    if (destination.ordinal != pagerState.settledPage) {
-                        pagerState.animateScrollToPage(
-                            page = destination.ordinal,
-                            animationSpec = PAGER_SETTLE_ANIMATION_SPEC,
-                        )
-                    }
+                    val from = previous?.let { if (pagerState.currentPage == it.to.ordinal) it.to else it.from }
+                        ?: destinations[pagerState.currentPage]
+                    navigationState.transition = DockTransition(from, destination)
                 }
             }
         }
     }
-    val selected = destinations[pagerState.currentPage]
-    val settled = destinations[pagerState.settledPage]
+    val transition = navigationState.transition
+    val selected = transition?.let { if (pagerState.currentPage == it.to.ordinal) it.to else it.from }
+        ?: destinations[pagerState.currentPage]
 
-    LaunchedEffect(requestedDestination) {
-        if (requestedDestination.ordinal != pagerState.settledPage) {
-            navigate(requestedDestination)
+    // Start after composition has installed the endpoint keys in the pager.
+    // A new tap cancels this effect and installs its own endpoint pair.
+    LaunchedEffect(transition) {
+        val move = transition ?: return@LaunchedEffect
+        pagerState.scrollToPage(move.startPage)
+        if (move.from != move.to) {
+            pagerState.animateScrollToPage(move.to.ordinal, animationSpec = PAGER_SETTLE_ANIMATION_SPEC)
         }
+        navigationState.transition = null
     }
-    LaunchedEffect(settled) { onDestinationSettled(settled) }
+    LaunchedEffect(requestedDestination) {
+        if (requestedDestination.ordinal != pagerState.settledPage) navigate(requestedDestination)
+    }
+    val onSettled by rememberUpdatedState(onDestinationSettled)
+    LaunchedEffect(pagerState) {
+        snapshotFlow {
+            if (navigationState.transition == null && !pagerState.isScrollInProgress) destinations[pagerState.settledPage]
+            else null
+        }.filterNotNull().collect { onSettled(it) }
+    }
     BackHandler {
-        if (pagerState.currentPage == DockDestination.ALBUM.ordinal) {
+        if (selected == DockDestination.ALBUM && transition == null) {
             onExit()
         } else {
             navigate(DockDestination.ALBUM)
@@ -133,6 +169,7 @@ internal fun AppDockPager(
     ) { padding ->
         HorizontalPager(
             state = pagerState,
+            userScrollEnabled = transition == null,
             flingBehavior = PagerDefaults.flingBehavior(
                 state = pagerState,
                 pagerSnapDistance = PagerSnapDistance.atMost(1),
@@ -146,9 +183,17 @@ internal fun AppDockPager(
                 .semantics {
                     contentDescription = "平滑横向分页，当前${selected.label}页面"
                 },
-            key = { destinations[it].name },
+            key = { page -> (transition?.destinationAt(page) ?: destinations[page]).name },
         ) { page ->
-            val destination = destinations[page]
+            val move = navigationState.transition
+            val destination = move?.destinationAt(page) ?: destinations[page]
+            val inViewport by remember(pagerState, page) {
+                derivedStateOf { abs(pagerState.currentPage - page + pagerState.currentPageOffsetFraction) < 1f }
+            }
+            // Lazy pager can precompose a speculative slot. Only actual gesture
+            // surfaces or the two requested endpoints may mount a page body.
+            if (move != null && destination != move.from && destination != move.to) return@HorizontalPager
+            if (move == null && !inViewport) return@HorizontalPager
             Box(
                 modifier = Modifier
                     .fillMaxSize()

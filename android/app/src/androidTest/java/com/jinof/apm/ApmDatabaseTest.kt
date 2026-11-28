@@ -294,7 +294,7 @@ class ApmDatabaseTest {
                 db.version = version
             }
             ApmDatabase(context, name).use { database ->
-                assertEquals(8, database.readableDatabase.version)
+                assertEquals(9, database.readableDatabase.version)
                 assertEquals("历史人物和历史宠物在室内", database.galleryPhotos().single().annotation!!.caption)
                 assertEquals(photo.photoId, database.search("历史人物").single().photoId)
                 assertEquals(photo.photoId, database.search("历史宠物").single().photoId)

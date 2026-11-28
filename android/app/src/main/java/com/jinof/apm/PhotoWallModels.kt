@@ -5,6 +5,8 @@ import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 import java.time.temporal.ChronoUnit
 import java.time.temporal.TemporalAdjusters
 import kotlin.math.ceil
@@ -57,12 +59,16 @@ data class PhotoDayGroup(
     val photos: List<GalleryPhotoCard>,
 )
 
+private val heatmapDayFormat = DateTimeFormatter.ofPattern("yyyy年M月d日", Locale.CHINA)
+
 data class PhotoHeatmapDayCell(
     val date: LocalDate,
     val count: Int,
     val level: Int,
     val inYear: Boolean,
-)
+) {
+    val description = "${date.format(heatmapDayFormat)}，${count}张照片，热度${level}级"
+}
 
 data class PhotoHeatmapPeriodCell(
     val startDate: LocalDate,
@@ -91,6 +97,32 @@ data class PhotoHeatmapYear(
 ) {
     val weekCount: Int get() = weekCells.size
 
+    // Each month has a Sunday-first, six-row grid. Prepare its slots with the annual data.
+    val calendarMonths = (1..12).map { number ->
+        val month = YearMonth.of(year, number)
+        val first = month.atDay(1)
+        val firstIndex = (first.toEpochDay() - gridStart.toEpochDay()).toInt()
+        val leadingBlanks = first.dayOfWeek.value % 7
+        List(42) { slot ->
+            val index = slot - leadingBlanks
+            if (index in 0 until month.lengthOfMonth()) dayCells[firstIndex + index] else null
+        }.chunked(7)
+    }
+    val weeksByMonth = weekCells.groupBy { it.startDate.monthValue }
+
+    fun selection(granularity: PhotoHeatmapGranularity, start: LocalDate): PhotoHeatmapSelection? {
+        if (granularity == PhotoHeatmapGranularity.DAY) {
+            val cell = dayCells.getOrNull((start.toEpochDay() - gridStart.toEpochDay()).toInt())
+            return cell?.takeIf { it.date == start && it.count > 0 }?.let {
+                PhotoHeatmapSelection(granularity, start, start, it.count)
+            }
+        }
+        val periods = if (granularity == PhotoHeatmapGranularity.WEEK) weekCells else monthCells
+        return periods.firstOrNull { it.startDate == start && it.count > 0 }?.let {
+            PhotoHeatmapSelection(granularity, start, it.endDate, it.count)
+        }
+    }
+
     fun maxCount(granularity: PhotoHeatmapGranularity): Int = when (granularity) {
         PhotoHeatmapGranularity.DAY -> maxDayCount
         PhotoHeatmapGranularity.WEEK -> maxWeekCount
@@ -110,17 +142,17 @@ data class PhotoHeatmapSelection(
 }
 
 object PhotoWallOrganizer {
+    internal val captureOrder = compareByDescending<GalleryPhotoCard> { it.dateTakenMillis != null }
+        .thenByDescending { it.dateTakenMillis ?: Long.MIN_VALUE }
+        .thenBy(GalleryPhotoCard::photoId)
+
     fun groupByDay(
         photos: List<GalleryPhotoCard>,
         zoneId: ZoneId,
     ): List<PhotoDayGroup> {
         val ordered = photos
             .distinctBy(GalleryPhotoCard::photoId)
-            .sortedWith(
-                compareByDescending<GalleryPhotoCard> { it.dateTakenMillis != null }
-                    .thenByDescending { it.dateTakenMillis ?: Long.MIN_VALUE }
-                    .thenBy(GalleryPhotoCard::photoId),
-            )
+            .sortedWith(captureOrder)
         val groups = linkedMapOf<LocalDate?, MutableList<GalleryPhotoCard>>()
         ordered.forEach { photo ->
             val date = photo.dateTakenMillis?.let { captureMillis ->
@@ -147,12 +179,15 @@ object PhotoWallOrganizer {
         zoneId: ZoneId,
     ): PhotoHeatmapYear {
         val counts = groupByDay(photos, zoneId)
-            .mapNotNull { group -> group.date?.let { it to group.photos.size } }
+            .mapNotNull { group -> group.date?.takeIf { it.year == year }?.let { it to group.photos.size } }
             .toMap()
+        return heatmap(year, counts)
+    }
+
+    internal fun heatmap(year: Int, counts: Map<LocalDate, Int>): PhotoHeatmapYear {
         val yearStart = LocalDate.of(year, 1, 1)
         val yearEnd = LocalDate.of(year, 12, 31)
-        val yearCounts = counts.filterKeys { it.year == year }
-        val maxDayCount = yearCounts.values.maxOrNull() ?: 0
+        val maxDayCount = counts.values.maxOrNull() ?: 0
         val gridStart = yearStart.with(TemporalAdjusters.previousOrSame(DayOfWeek.SUNDAY))
         val gridEnd = yearEnd.with(TemporalAdjusters.nextOrSame(DayOfWeek.SATURDAY))
         val dayCellCount = ChronoUnit.DAYS.between(gridStart, gridEnd).toInt() + 1
@@ -174,7 +209,7 @@ object PhotoWallOrganizer {
             PhotoHeatmapPeriodCell(
                 startDate = startDate,
                 endDate = endDate,
-                count = countRange(counts, startDate, endDate),
+                count = week.sumOf { it.count },
                 level = 0,
             )
         }
@@ -188,7 +223,7 @@ object PhotoWallOrganizer {
             PhotoHeatmapPeriodCell(
                 startDate = month.atDay(1),
                 endDate = month.atEndOfMonth(),
-                count = countRange(counts, month.atDay(1), month.atEndOfMonth()),
+                count = (1..month.lengthOfMonth()).sumOf { counts[month.atDay(it)] ?: 0 },
                 level = 0,
             )
         }
@@ -217,19 +252,11 @@ object PhotoWallOrganizer {
             weekCells = weekCells,
             monthCells = monthCells,
             monthLabels = monthLabels,
-            totalCount = yearCounts.values.sum(),
+            totalCount = counts.values.sum(),
             maxDayCount = maxDayCount,
             maxWeekCount = maxWeekCount,
             maxMonthCount = maxMonthCount,
         )
-    }
-
-    private fun countRange(
-        counts: Map<LocalDate, Int>,
-        startDate: LocalDate,
-        endDate: LocalDate,
-    ): Int = counts.entries.sumOf { (date, count) ->
-        if (!date.isBefore(startDate) && !date.isAfter(endDate)) count else 0
     }
 
     private fun discreteHeatLevel(count: Int, maxCount: Int): Int = when {
